@@ -19,6 +19,13 @@ The browsers find each other through the free public PeerJS meeting server, then
 If a school/office network blocks direct links, use "Trouble connecting? Swap long codes" in the
 same screen, or add a TURN relay to EXTRA_ICE in the code (search index.html for EXTRA_ICE).
 
+CLOCKS AND RATINGS
+------------------
+Two players, online and vs computer each let you pick: No clock, 10, 5, 2 or 1 minute per player.
+Run out of time and you lose (unless the other side has nothing left to checkmate with: then it's a draw).
+Online games are rated (Bullet = 1-2 min, Blitz = 5 min, Rapid = 10 min, untimed games separately).
+Everyone starts at 1200. Ratings are saved in each player's own browser, so they're honour-system.
+
 GAME REVIEW
 -----------
 After any game (computer, two players, online) press Review game. Every move is rated
