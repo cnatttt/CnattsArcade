@@ -139,6 +139,7 @@ details summary{cursor:pointer;color:var(--dim);font-size:13px;margin-top:14px}
   <div class="row"><button class="pill" id="tgQuality"></button></div>
   <h3>Sound mixer</h3>
   <div class="mixer" id="mixer"></div>
+  <div class="row" style="margin-top:8px"><select id="voiceSel" title="Narrator voice"></select><button class="pill" id="btnVoice">Test narrator voice</button></div>
   <div class="row" style="margin-top:8px"><button class="pill" id="tgMute"></button><button class="pill" id="btnTest">Test sound</button><button class="pill" id="btnMixReset">Reset mixer</button></div>
   <p class="note" id="musicName"></p>
   <div class="back"><button data-back="resume">Done</button></div>
@@ -5629,7 +5630,7 @@ function drawDragon(g, d) {
     R.partDyn('drgBody', BM, P, BM.n, MB, false, palB);
     // jaw: open while roaring or breathing fire
     const roar = g.drgRoar > 0 ? Math.sin(PI * clamp(1 - g.drgRoar / 2.4, 0, 1)) : 0;
-    const open = Math.max(d.breath > 0 ? 0.48 : 0, roar * 0.62) + 0.03 + 0.02 * Math.sin(t * 1.3);
+    const open = Math.max(d.fire > 0 ? 0.5 : 0, roar * 0.62) + 0.03 + 0.02 * Math.sin(t * 1.3);
     const J = m34Mul(MB, m34Rot([1, 0, 0], open, DRG.HINGE[0], DRG.HINGE[1], DRG.HINGE[2]));
     R.part(DRG.JAW_MESH, J, false, palB);
     // wings: the arm beats from the shoulder, the hand lags behind and whips through
@@ -5663,6 +5664,139 @@ function drawDragon(g, d) {
 }
 DRAGON_MOUTH[1] = 1.12; DRAGON_MOUTH[2] = 5.72;      // fire comes from the new, longer snout
 
+// ═══════════════════════════════════════════ DRAGON FIRE ═══════════════════════════════════════════
+// A stream of flame drawn as soft, turbulent puffs: white-hot at the jaws, orange, then deep red, and
+// finally rolling into dark smoke. The puffs grow, slow down, rise with the heat and spread when they hit the ground.
+
+const FireFX = (() => {
+    const MAX = 2400;
+    const px = new Float32Array(MAX), py = new Float32Array(MAX), pz = new Float32Array(MAX), vx = new Float32Array(MAX), vy = new Float32Array(MAX), vz = new Float32Array(MAX);
+    const age = new Float32Array(MAX), life = new Float32Array(MAX), size = new Float32Array(MAX), seed = new Float32Array(MAX), kind = new Uint8Array(MAX), smoked = new Uint8Array(MAX);
+    let n = 0, carry = 0;
+    const inst = new Float32Array(MAX * 8);
+    function add(x, y, z, ax, ay, az, lf, sz, k) {
+        if (n >= MAX) return;
+        px[n] = x; py[n] = y; pz[n] = z; vx[n] = ax; vy[n] = ay; vz[n] = az; age[n] = 0; life[n] = lf; size[n] = sz; seed[n] = Math.random(); kind[n] = k; smoked[n] = 0; n++;
+    }
+    /** Pour flame from (x, y, z) along (dx, dy, dz) for dt seconds. */
+    function emit(g, x, y, z, dx, dy, dz, dt, power) {
+        carry += dt * 300 * power;
+        const R = Math.random;
+        // a frame of two vectors across the jet, for the cone
+        let ux = -dz, uz = dx, uy = 0; let l = Math.hypot(ux, uz) || 1; ux /= l; uz /= l;
+        const wx = dy * uz - dz * uy, wy = dz * ux - dx * uz, wz = dx * uy - dy * ux;
+        while (carry >= 1) {
+            carry -= 1;
+            const a = R() * TAU, s = Math.sqrt(R()) * 0.14, sp = 15 + R() * 6;
+            const ex = dx + (ux * Math.cos(a) + wx * Math.sin(a)) * s, ey = dy + (uy * Math.cos(a) + wy * Math.sin(a)) * s, ez = dz + (uz * Math.cos(a) + wz * Math.sin(a)) * s;
+            const off = R() * 0.3;
+            add(x + ex * off, y + ey * off, z + ez * off, ex * sp, ey * sp, ez * sp, 0.75 + R() * 0.45, 0.32 + R() * 0.3, 0);
+            if (R() < 0.12) g.parts.add(x, y, z, ex * sp * 0.9 + (R() - .5) * 3, ey * sp * 0.9 + (R() - .5) * 3, ez * sp * 0.9 + (R() - .5) * 3, 0.9 + R() * 1.2, 0.035, 255, 170 + R() * 60, 70, 1.5, 0.6);   // sparks
+        }
+    }
+    function update(dt, g) {
+        const R = Math.random, t = g.time;
+        for (let i = 0; i < n;) {
+            age[i] += dt;
+            if (age[i] >= life[i]) { n--; px[i] = px[n]; py[i] = py[n]; pz[i] = pz[n]; vx[i] = vx[n]; vy[i] = vy[n]; vz[i] = vz[n]; age[i] = age[n]; life[i] = life[n]; size[i] = size[n]; seed[i] = seed[n]; kind[i] = kind[n]; smoked[i] = smoked[n]; continue; }
+            const u = age[i] / life[i];
+            if (kind[i] === 0) {
+                const drag = Math.exp(-dt * 1.9);
+                vx[i] *= drag; vz[i] *= drag; vy[i] = vy[i] * drag + 3.2 * dt;           // heat rises
+                const s = seed[i] * 40;                                                   // a curling, turbulent stream
+                vx[i] += Math.sin(t * 6.1 + s + py[i] * 0.9) * 9 * dt * u; vz[i] += Math.cos(t * 5.3 + s * 1.3 + px[i] * 0.9) * 9 * dt * u; vy[i] += Math.sin(t * 7.7 + s * 0.7) * 3 * dt * u;
+                if (!smoked[i] && u > 0.55) { smoked[i] = 1; if (R() < 0.45) add(px[i], py[i], pz[i], vx[i] * 0.3, vy[i] * 0.3 + 1.2, vz[i] * 0.3, 1.6 + R() * 1.2, size[i] * 1.6, 1); }
+            } else {
+                const drag = Math.exp(-dt * 0.9);
+                vx[i] *= drag; vz[i] *= drag; vy[i] = vy[i] * drag + 0.9 * dt;
+            }
+            px[i] += vx[i] * dt; py[i] += vy[i] * dt; pz[i] += vz[i] * dt;
+            const inBoard = Math.abs(px[i]) < 4.75 && Math.abs(pz[i]) < 4.75, gy = inBoard ? 0.05 : terrainH(px[i], pz[i]) + 0.1;
+            if (py[i] < gy) {                                                             // the flame splashes along the ground
+                py[i] = gy; const h = Math.hypot(vx[i], vz[i]) + Math.abs(vy[i]) * 0.6;
+                const hl = Math.hypot(vx[i], vz[i]) || 1; vx[i] = vx[i] / hl * h; vz[i] = vz[i] / hl * h; vy[i] = Math.abs(vy[i]) * 0.1;
+            }
+            i++;
+        }
+    }
+    function draw(Rd, g) {
+        if (n === 0) return;
+        const gl = Rd.gl;
+        if (!Rd.progs.fire) Rd.mk('fire', VS_FIRE, FS_FIRE);
+        if (!Rd.fireVao) { Rd.fireVao = gl.createVertexArray(); Rd.fireBuf = gl.createBuffer(); }
+        // smoke first (it darkens), then the flames on top (they add light)
+        for (const pass of [1, 0]) {
+            let m = 0;
+            for (let i = 0; i < n; i++) {
+                if (kind[i] !== pass) continue;
+                const u = age[i] / life[i], o = m * 8;
+                inst[o] = px[i]; inst[o + 1] = py[i]; inst[o + 2] = pz[i];
+                inst[o + 3] = pass === 0 ? size[i] * (0.35 + 2.7 * u) : size[i] * (1 + 2.2 * u);
+                inst[o + 4] = u; inst[o + 5] = seed[i]; inst[o + 6] = pass; inst[o + 7] = 0; m++;
+            }
+            if (!m) continue;
+            Rd.use('fire'); Rd.m4('uVP', Rd.vp); Rd.f3('uR', [g.rx, 0, g.rz]); Rd.f3('uU', [g.ux, g.uy, g.uz]); Rd.f3('uCam', [g.camX, g.camY, g.camZ]);
+            Rd.f1('uFogD', g.fogK / 215); Rd.f1('uTime', g.time); Rd.f3('uAmb', AMBC); Rd.f3('uMoonC', MOONC);
+            gl.bindVertexArray(Rd.fireVao); gl.bindBuffer(gl.ARRAY_BUFFER, Rd.fireBuf); gl.bufferData(gl.ARRAY_BUFFER, inst.subarray(0, m * 8), gl.STREAM_DRAW);
+            gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 32, 0); gl.vertexAttribDivisor(0, 1);
+            gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 32, 16); gl.vertexAttribDivisor(1, 1);
+            gl.enable(gl.BLEND); gl.depthMask(false); gl.enable(gl.DEPTH_TEST);
+            if (pass === 1) gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); else gl.blendFunc(gl.ONE, gl.ONE);
+            gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, m);
+            gl.vertexAttribDivisor(0, 0); gl.vertexAttribDivisor(1, 0); gl.disableVertexAttribArray(1);
+            gl.disable(gl.BLEND); gl.depthMask(true); gl.bindVertexArray(null);
+        }
+    }
+    /** A rough centre of the flames, for lighting the scene. */
+    function glow() {
+        let sx = 0, sy = 0, sz = 0, c = 0;
+        for (let i = 0; i < n; i += 4) if (kind[i] === 0 && age[i] / life[i] < 0.5) { sx += px[i]; sy += py[i]; sz += pz[i]; c++; }
+        return c ? [sx / c, sy / c, sz / c, Math.min(1, c / 40)] : null;
+    }
+    return { emit, update, draw, glow, count: () => n, clear: () => { n = 0; } };
+})();
+
+const VS_FIRE = GLSL_COMMON + `
+layout(location=0) in vec4 aPS; layout(location=1) in vec4 aA;
+uniform mat4 uVP; uniform vec3 uR; uniform vec3 uU; uniform vec3 uCam; uniform float uFogD;
+out vec2 vQ; out vec3 vA; out float vFog;
+void main(){
+  vec2 q = vec2(float(gl_VertexID&1), float((gl_VertexID>>1)&1))*2.0-1.0;
+  float an = aA.y*6.2831 + aA.x*(aA.y-0.5)*3.0;
+  vec2 rq = vec2(q.x*cos(an)-q.y*sin(an), q.x*sin(an)+q.y*cos(an));
+  vQ = q; vA = aA.xyz;
+  vec3 w = aPS.xyz + (uR*rq.x + uU*rq.y)*aPS.w;
+  vFog = exp(-length(aPS.xyz-uCam)*uFogD*0.5);
+  gl_Position = uVP*vec4(w,1.0);
+}`;
+const FS_FIRE = GLSL_COMMON + `
+in vec2 vQ; in vec3 vA; in float vFog; out vec4 o;
+uniform float uTime; uniform vec3 uAmb; uniform vec3 uMoonC;
+float h21(vec2 p){ p = fract(p*vec2(123.34, 456.21)); p += dot(p, p+45.32); return fract(p.x*p.y); }
+float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
+  return mix(mix(h21(i), h21(i+vec2(1,0)), f.x), mix(h21(i+vec2(0,1)), h21(i+vec2(1,1)), f.x), f.y); }
+float fbm(vec2 p){ return 0.5*vn(p) + 0.28*vn(p*2.03+7.1) + 0.14*vn(p*4.1+3.3) + 0.08*vn(p*8.2+1.7); }
+void main(){
+  float age = vA.x, seed = vA.y, smoke = vA.z;
+  vec2 p = vQ;
+  float n = fbm(p*1.6 + vec2(seed*17.0, seed*31.0 - uTime*2.4));
+  float r = length(p);
+  float body = 1.0 - smoothstep(0.25, 1.0, r + (n - 0.5)*0.9);
+  if (body <= 0.001) discard;
+  if (smoke < 0.5) {
+    float hot = 1.0 - age;
+    vec3 c = mix(vec3(1.6, 0.30, 0.04), vec3(3.4, 1.35, 0.30), smoothstep(0.30, 0.65, hot));
+    c = mix(c, vec3(5.0, 3.9, 2.4), smoothstep(0.80, 0.97, hot));
+    float core = smoothstep(0.35, 0.95, body);
+    float k = body*body * (0.35 + 0.65*core) * pow(hot, 0.7) * min(1.0, age*30.0 + 0.3);
+    o = vec4(c*k*vFog*0.55, 1.0);
+  } else {
+    float a = body * 0.42 * (1.0 - age) * min(1.0, age*5.0);
+    vec3 c = vec3(0.045, 0.04, 0.038) + uAmb*0.12 + vec3(0.5, 0.18, 0.05)*max(0.0, 0.6 - age)*0.5;
+    o = vec4(c, a*vFog);
+  }
+}`;
+
 // ═══════════════════════════════ THE GAME, EXTENDED: victory sequence, new dragon, move record, review hooks ═══════════════════════════════
 
 class NGame extends BGame {
@@ -5695,6 +5829,162 @@ class NGame extends BGame {
     sfx(id, vol, x, z, pitch) {
         if (id === Sfx.ROAR) this.drgRoar = 2.4;
         super.sfx(id, vol, x, z, pitch);
+    }
+
+    // ───────────── the dragon's flight: never through a castle ─────────────
+    arenaReset() { super.arenaReset(); this.buildSafe(); if (typeof FireFX !== 'undefined') FireFX.clear(); }
+
+    /** A smooth "ceiling of obstacles" over the whole arena, taken from the scenery itself, so the dragon flies over spires and trees. */
+    buildSafe() {
+        const N = 128, E = 150, cell = 2 * E / N, w = this.world;
+        if (!w) return;
+        const G = new Float32Array(N * N).fill(-50);
+        for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) G[j * N + i] = terrainH(-E + (i + 0.5) * cell, -E + (j + 0.5) * cell);
+        const p = w.p, t = w.t;
+        for (let k = 0; k < w.nt; k++) {
+            const a = t[k * 3] * 3, b = t[k * 3 + 1] * 3, c = t[k * 3 + 2] * 3;
+            const top = Math.max(p[a + 1], p[b + 1], p[c + 1]);
+            const i0 = Math.max(0, Math.floor((Math.min(p[a], p[b], p[c]) + E) / cell)), i1 = Math.min(N - 1, Math.floor((Math.max(p[a], p[b], p[c]) + E) / cell));
+            const j0 = Math.max(0, Math.floor((Math.min(p[a + 2], p[b + 2], p[c + 2]) + E) / cell)), j1 = Math.min(N - 1, Math.floor((Math.max(p[a + 2], p[b + 2], p[c + 2]) + E) / cell));
+            if (i1 - i0 > 12 || j1 - j0 > 12) continue;                    // huge ground triangles: the terrain sample covers them
+            for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) if (top > G[j * N + i]) G[j * N + i] = top;
+        }
+        const pass = (src, r, op) => {                                    // separable max (op 0) or box blur (op 1)
+            const tmp = new Float32Array(N * N), out = new Float32Array(N * N);
+            for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { let v = op ? 0 : -1e9, c = 0; for (let d = -r; d <= r; d++) { const ii = clamp(i + d, 0, N - 1), x = src[j * N + ii]; if (op) { v += x; c++; } else if (x > v) v = x; } tmp[j * N + i] = op ? v / c : v; }
+            for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { let v = op ? 0 : -1e9, c = 0; for (let d = -r; d <= r; d++) { const jj = clamp(j + d, 0, N - 1), x = tmp[jj * N + i]; if (op) { v += x; c++; } else if (x > v) v = x; } out[j * N + i] = op ? v / c : v; }
+            return out;
+        };
+        const dil = pass(G, 5, 0), soft = pass(dil, 3, 1);
+        for (let i = 0; i < N * N; i++) soft[i] = Math.max(soft[i], dil[i] - 1.5);
+        this.safe = { G: soft, N, E, cell };
+    }
+    safeY(x, z) {
+        const S = this.safe; if (!S) return terrainH(x, z) + 8;
+        const fx = clamp((x + S.E) / S.cell - 0.5, 0, S.N - 1.001), fz = clamp((z + S.E) / S.cell - 0.5, 0, S.N - 1.001), i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j, G = S.G, N = S.N;
+        const h = (G[j * N + i] * (1 - u) + G[j * N + i + 1] * u) * (1 - v) + (G[(j + 1) * N + i] * (1 - u) + G[(j + 1) * N + i + 1] * u) * v;
+        return h + 6;
+    }
+    placeCircle(d, dt) {
+        const s = d.sw > 0 ? ease(Math.sin(PI * d.sw)) : 0;
+        const R = lerp(62 + 9 * Math.sin(d.a * 0.37), 24, s); let H = lerp(32 + 5 * Math.sin(d.a * 0.61), 15, s);
+        let nx = R * Math.cos(d.a), nz = R * Math.sin(d.a);
+        if (d.rejoin < 1) { const u = ease(d.rejoin); nx = lerp(d.from[0], nx, u); H = lerp(d.from[1], H, u); nz = lerp(d.from[2], nz, u); }
+        // look a little ahead too, so it starts climbing before it reaches a spire
+        const ax = (R + 0) * Math.cos(d.a + 0.12), az = R * Math.sin(d.a + 0.12);
+        H = Math.max(H, this.safeY(nx, nz), this.safeY(ax, az) - 2);
+        this.orient(d, nx, H, nz, dt);
+    }
+    breathe(d, upward) {
+        d.fire = upward ? 2.2 : 1.5; this.breathUp = upward;
+        this.sfx(Sfx.FIRE, upward ? 0.95 : 0.65, d.x, d.z);
+    }
+    /** Lands on open ground in front of the winner's castle, facing the board (never on the walls). */
+    dragonLand(perch) {
+        const d = this.drg;
+        if (d == null || perch == null || !this.creatures) return;
+        const fy = perch[3], fx = Math.sin(fy), fz = Math.cos(fy);
+        let best = null;
+        for (const dist of [10, 12, 14, 16, 9, 18]) {
+            const gx = perch[0] + fx * dist, gz = perch[2] + fz * dist, gy = terrainH(gx, gz);
+            const clear = this.safeY(gx, gz) - 6 - gy;
+            if (!best || clear < best.clear) best = { gx, gz, gy, clear };
+            if (clear < 1.5) break;
+        }
+        d.perch = [best.gx, best.gy + 1.2, best.gz, fy];
+        d.state = Game.D_LAND; d.t = 0; d.phase = 0; d.rejoin = 1;
+        // first fly to a point in the air beside the landing spot, coming in over open ground
+        const sx = Math.cos(fy), sz = -Math.sin(fy), side = ((d.x - best.gx) * sx + (d.z - best.gz) * sz) >= 0 ? 1 : -1;
+        const hx = best.gx + sx * side * 13 + fx * 6, hz = best.gz + sz * side * 13 + fz * 6;
+        const hy = Math.max(best.gy + 9, this.safeY(hx, hz) - 1);
+        const fwx = Math.sin(d.yaw), fwz = Math.cos(d.yaw), dist = Math.hypot(hx - d.x, hz - d.z);
+        d.p0.set([d.x, d.y, d.z]); d.p1.set([d.x + fwx * dist * 0.35, d.y, d.z + fwz * dist * 0.35]);
+        d.p2.set([hx + sx * side * dist * 0.3, hy + 4, hz + sz * side * dist * 0.3]); d.p3.set([hx, hy, hz]);
+        d.dur = clamp(dist / 20, 3.5, 7);
+    }
+    dragonTakeOff() {
+        const d = this.drg;
+        if (d == null || (d.state != Game.D_PERCH && d.state != Game.D_LAND)) return;
+        d.state = Game.D_TAKEOFF; d.t = 0; d.y0 = d.y;
+    }
+    updateDragon(dt) {
+        const d = this.drg;
+        if (d == null) return;
+        if (d.fire === undefined) d.fire = 0;
+        if (d.state === Game.D_CIRCLE) {
+            d.breath = 0; super.updateDragon(dt);
+        } else {
+            d.t += dt;
+            const turnTo = (target, k) => { let dy = target - d.yaw; while (dy > PI) dy -= TAU; while (dy < -PI) dy += TAU; d.yaw += dy * Math.min(1, dt * k); return dy; };
+            if (d.state === Game.D_LAND) {
+                if (d.phase === 0) {                                          // the approach: a curve to the hover point, over the obstacles
+                    const u = Math.min(1, d.t / d.dur), w = 1 - (1 - u) * (1 - u), iw = 1 - w;
+                    const B = k => iw * iw * iw * d.p0[k] + 3 * iw * iw * w * d.p1[k] + 3 * iw * w * w * d.p2[k] + w * w * w * d.p3[k];
+                    const x = B(0), z = B(2); let y = B(1);
+                    y = Math.max(y, this.safeY(x, z) * (u < 0.85 ? 1 : 0));
+                    this.orient(d, x, y, z, dt);
+                    d.ampT = u > 0.7 ? 1.3 : 0.5;
+                    if (u >= 1) { d.phase = 1; d.t = 0; d.h0 = [d.x, d.y, d.z]; d.yaw0 = d.yaw; }
+                } else {                                                      // hover, turn to face the board, and come down
+                    const u = Math.min(1, d.t / 3.4), e = ease(u), P = d.perch;
+                    d.x = lerp(d.h0[0], P[0], ease(Math.min(1, u * 1.25))); d.z = lerp(d.h0[2], P[2], ease(Math.min(1, u * 1.25)));
+                    d.y = lerp(d.h0[1], P[1], e) + Math.sin(d.t * 5.5) * 0.12 * (1 - u);
+                    turnTo(P[3], 2.2);
+                    d.pitch += (lerp(0.55, 0.05, smooth(0.35, 1, u)) - d.pitch) * Math.min(1, dt * 4); d.roll *= Math.exp(-dt * 4);
+                    d.ampT = 1.55; d.flapK = 1.35;
+                    const dust = clamp((3 - (d.y - P[1])) / 3, 0, 1);         // its wingbeats raise dust as it nears the ground
+                    if (dust > 0 && Math.random() < dust * 0.8) for (let i = 0; i < 4; i++) { const an = Math.random() * TAU, r = 3 + Math.random() * 4; this.parts.add(P[0] + Math.cos(an) * r, P[1] - 1.1, P[2] + Math.sin(an) * r, Math.cos(an) * 3, 0.6 + Math.random(), Math.sin(an) * 3, 1.5 + Math.random(), 1.2 + Math.random() * 1.2, 16, 15, 18, -0.1, 0.8); }
+                    if (u >= 1) {
+                        d.state = Game.D_PERCH; d.t = 0; d.roared = false; d.flapK = 1;
+                        this.sfx(Sfx.STOMP, 0.8, d.x, d.z); this.sfx(Sfx.FLAP, 0.9, d.x, d.z, 0.7); this.shake = Math.max(this.shake, 0.12);
+                        for (let i = 0; i < 40; i++) { const an = Math.random() * TAU, sp = 2 + Math.random() * 5; this.parts.add(P[0] + Math.cos(an) * 2, P[1] - 1.1, P[2] + Math.sin(an) * 2, Math.cos(an) * sp, 0.4 + Math.random(), Math.sin(an) * sp, 1.6 + Math.random() * 1.4, 1 + Math.random() * 1.5, 18, 17, 20, -0.05, 0.9); }
+                    }
+                }
+            } else if (d.state === Game.D_PERCH) {                             // folds its wings, rears up, roars and breathes fire at the sky
+                const P = d.perch;
+                d.fold = Math.min(1, d.fold + dt / 1.0);
+                const rear = smooth(1.0, 1.7, d.t) * (1 - smooth(4.6, 5.6, d.t));
+                d.x = P[0]; d.z = P[2]; d.y = P[1] + 0.04 * Math.sin(d.t * 1.6) + rear * 0.45;
+                turnTo(P[3], 3); d.pitch += (rear * 0.42 - 0.03 - d.pitch) * Math.min(1, dt * 5); d.roll *= Math.exp(-dt * 5); d.ampT = 0;
+                if (!d.roared && d.t > 1.6) { d.roared = true; this.sfx(Sfx.ROAR, 1, d.x, d.z, 0.9); }
+                if (d.roared && !d.fired && d.t > 2.1) { d.fired = true; this.breathe(d, true); }
+                if (d.t < 0.1) d.fired = false;
+            } else {                                                          // taking off: crouch, leap, beat hard, climb away
+                d.fold = Math.max(0, d.fold - dt / 0.45);
+                const t = d.t;
+                if (t < 0.45) { d.y = d.y0 - 0.3 * Math.sin(PI * t / 0.45 * 0.5); d.ampT = 0.3; }
+                else if (t < 2.4) { d.y += (5 + (t - 0.45) * 4) * dt; d.pitch += (0.35 - d.pitch) * Math.min(1, dt * 3); d.ampT = 1.6; d.flapK = 1.3; if (!d.leapt) { d.leapt = true; this.sfx(Sfx.FLAP, 1, d.x, d.z, 0.7); } }
+                else {
+                    const sp = 6 + (t - 2.4) * 7, fx = Math.sin(d.yaw), fz = Math.cos(d.yaw);
+                    const nx = d.x + fx * sp * dt, nz = d.z + fz * sp * dt;
+                    this.orient(d, nx, Math.max(d.y + 5 * dt, this.safeY(nx + fx * 8, nz + fz * 8)), nz, dt);
+                    d.ampT = 1.3; d.flapK = 1.1;
+                }
+                if (t > 5) { d.state = Game.D_CIRCLE; d.t = 0; d.rejoin = 0; d.leapt = false; d.flapK = 1; d.from[0] = d.x; d.from[1] = d.y; d.from[2] = d.z; d.a = Math.atan2(d.z, d.x); }
+            }
+            d.amp += (d.ampT - d.amp) * Math.min(1, dt * 2.5);
+            const fl0 = d.flap; d.flap += dt * (2.6 + 1.4 * d.amp) * (d.flapK || 1);
+            if (d.amp > 0.6 && Math.floor(fl0 / TAU) !== Math.floor(d.flap / TAU)) { const dx = d.x - this.camX, dy = d.y - this.camY, dz = d.z - this.camZ; if (dx * dx + dy * dy + dz * dz < 2500) this.sfx(Sfx.FLAP, 0.5, d.x, d.z); }
+        }
+        // fire
+        if (d.fire > 0) {
+            d.fire -= dt;
+            this.dragonFrame(d);
+            const M = this.MBODY, m = DRAGON_MOUTH;
+            const mx = M[0] * m[0] + M[1] * m[1] + M[2] * m[2] + M[3], my = M[4] * m[0] + M[5] * m[1] + M[6] * m[2] + M[7], mz = M[8] * m[0] + M[9] * m[1] + M[10] * m[2] + M[11];
+            let fx = M[2], fy = M[6] + (this.breathUp ? 1.25 : -0.3), fz = M[10]; const fl = Math.hypot(fx, fy, fz); fx /= fl; fy /= fl; fz /= fl;
+            const ramp = Math.min(1, (this.breathUp ? 2.2 : 1.5) - d.fire < 0.15 ? 0.6 : 1) * Math.min(1, d.fire / 0.25);
+            FireFX.emit(this, mx, my, mz, fx, fy, fz, dt, ramp);
+        }
+    }
+    buildLights() {
+        super.buildLights();
+        const f = typeof FireFX !== 'undefined' ? FireFX.glow() : null;
+        if (f && f[3] > 0.05) {                                               // the fire lights up everything around it
+            const o = Math.min(this.nL, 7) * 7; if (this.nL < 8) this.nL++;
+            const k = f[3] * (5 + 1.5 * Math.sin(this.time * 31) + Math.sin(this.time * 17));
+            this.LT[o] = f[0]; this.LT[o + 1] = f[1]; this.LT[o + 2] = f[2]; this.LT[o + 3] = 1.0 * k; this.LT[o + 4] = 0.45 * k; this.LT[o + 5] = 0.12 * k; this.LT[o + 6] = 0.03;
+        }
     }
 
     // ───────────── the new dragon ─────────────
@@ -5761,6 +6051,11 @@ class NGame extends BGame {
     update(dt) {
         super.update(dt);
         if (this.drgRoar > 0) this.drgRoar -= dt;
+        FireFX.update(dt, this);
+        if (this.finale === 1 && this.drg && this.drg.perch && this.fallen) {   // keep the landing dragon and the castle behind it in the shot
+            const G = this.world.dragonPerch[3 - this.fallen], P = this.drg.perch;
+            if (G) { this.txG = lerp(G[0], P[0], 0.6); this.tzG = lerp(G[2], P[2], 0.6); }
+        }
         if (this.over && !this.vic && !this.reviewing && this.started && this.anim == null) this.startVictory();
         if (this.vic && !this.reviewing) this.updateVictory(dt);
         this.updateRockets(dt);
@@ -6830,22 +7125,39 @@ function sanOf(r, m, legal) {
     return s;
 }
 function findMove(r, mv) { for (const m of r.legal()) if (m.from === mv.from && m.to === mv.to && m.promo === mv.promo) return m; return null; }
-/** "Nxe5+" -> "knight takes e5, check" */
+/** "Nxe5+" -> "knight takes E5, check" — written so any voice reads it clearly. */
 function speakSan(s) {
     if (!s) return '';
-    if (s.startsWith('O-O-O')) return 'castles queenside' + (s.endsWith('#') ? ', checkmate' : s.endsWith('+') ? ', check' : '');
-    if (s.startsWith('O-O')) return 'castles kingside' + (s.endsWith('#') ? ', checkmate' : s.endsWith('+') ? ', check' : '');
+    const tail = s.endsWith('#') ? ', checkmate' : s.endsWith('+') ? ', check' : '';
+    if (s.startsWith('O-O-O')) return 'castles queenside' + tail;
+    if (s.startsWith('O-O')) return 'castles kingside' + tail;
     const names = { N: 'knight', B: 'bishop', R: 'rook', Q: 'queen', K: 'king' };
-    let out = '', i = 0;
-    if (names[s[0]]) { out = names[s[0]] + ' '; i = 1; }
-    let rest = s.slice(i).replace(/[+#]/g, '');
-    const promo = rest.match(/=([NBRQ])/); rest = rest.replace(/=[NBRQ]/, '');
-    rest = rest.replace('x', ' takes ');
-    out += rest.replace(/([a-h])([1-8])/g, ' $1 $2 ').replace(/\s+/g, ' ').trim();
-    if (promo) out += ', promoting to a ' + names[promo[1]];
-    if (s.endsWith('#')) out += ', checkmate'; else if (s.endsWith('+')) out += ', check';
-    return out;
+    const m = s.replace(/[+#]/g, '').match(/^([NBRQK])?([a-h])?([1-8])?(x)?([a-h][1-8])(=([NBRQ]))?$/);
+    if (!m) return s;
+    const piece = m[1] ? names[m[1]] : 'pawn', sq = m[5][0].toUpperCase() + m[5][1];
+    let out = piece + (m[4] ? ' takes ' : ' to ') + sq;
+    if (m[7]) out += ', becoming a ' + names[m[7]];
+    return out + tail;
 }
+
+/** Picks the clearest voice the browser has: modern "natural" voices first, novelty voices never. */
+const NARRATOR = {
+    voices() { return typeof speechSynthesis === 'undefined' ? [] : speechSynthesis.getVoices().filter(v => /^en(-|_|$)/i.test(v.lang)); },
+    score(v) {
+        const n = v.name;
+        if (/Albert|Bad News|Bahh|Bells|Boing|Bubbles|Cellos|Deranged|Good News|Hysterical|Jester|Organ|Superstar|Trinoids|Whisper|Wobble|Zarvox|Fred|Junior|Ralph|Kathy|Grandma|Grandpa|Rocko|Shelley|Flo|Eddy|Reed|Sandy/i.test(n)) return -100;
+        let s = 0;
+        if (/Natural|Neural|Online/i.test(n)) s += 50;
+        if (/Premium|Enhanced/i.test(n)) s += 40;
+        if (/Google/i.test(n)) s += 30;
+        if (/Aria|Jenny|Guy|Davis|Ava|Andrew|Emma|Brian|Samantha|Daniel|Karen|Moira|Serena|Libby|Ryan|Sonia/i.test(n)) s += 15;
+        if (/en-US/i.test(v.lang)) s += 6; else if (/en-GB/i.test(v.lang)) s += 4;
+        if (v.localService === false) s += 3;
+        return s;
+    },
+    ranked() { return this.voices().slice().sort((a, b) => this.score(b) - this.score(a)); },
+    pick(name) { const r = this.ranked(); return (name && r.find(v => v.name === name)) || r[0] || null; },
+};
 
 // ─────────────────────────── a small opening book ───────────────────────────
 const OPENINGS = [
@@ -7020,7 +7332,7 @@ class Review {
             if (sc < -MATE_V + 200) { const n = mateIn(sc); return `This walks into checkmate${n > 1 ? ' in ' + n : ''}: ${opp} answers ${refSan || 'with a mating attack'}.`; }
             if (ref && ref.captureSq >= 0) {
                 const lost = Math.abs(after.b[ref.captureSq]);
-                if (Brain.VAL[lost] + 150 < Math.abs(bestSc - sc) && line.length >= 3) return `${opp} answers ${refSan}, and after ${line.slice(1, 3).join(' ')} you lose a lot more than a ${PNAME[lost]}.`;
+                if (Brain.VAL[lost] + 150 < Math.abs(bestSc - sc) && line.length >= 3) return `${opp} answers ${refSan}, and after ${line.slice(1, 3).join(', ')}, you lose a lot more than a ${PNAME[lost]}.`;
                 if (ref.captureSq === m.to) return `This leaves your ${PNAME[lost]} hanging on ${sqName(m.to)}, and ${opp} can take it with ${refSan}.`;
                 if (lost >= KNIGHT) return `This leaves your ${PNAME[lost]} on ${sqName(ref.captureSq)} undefended: ${opp} plays ${refSan}.`;
                 return `${opp} replies ${refSan}, and you lose material.`;
@@ -7053,7 +7365,7 @@ class Review {
             case 'blunder': text = `${describeHarm()} ${bestGain()}`; break;
             case 'miss': text = `You missed a chance. ${bestGain()}`; break;
         }
-        const speech = `${CLS[cls].t}. ${mover} played ${speakSan(san)}. ${text.replace(/([NBRQK]?[a-h]?[1-8]?x?[a-h][1-8](=[NBRQ])?[+#]?|O-O(-O)?[+#]?)/g, s => speakSan(s))}`;
+        const speech = `${CLS[cls].t}. ${mover} plays ${speakSan(san)}. ${text.replace(/\bon ([a-h])([1-8])\b/g, (m, f, r) => 'on ' + f.toUpperCase() + r).replace(/(^|[\s(])([NBRQK]?[a-h]?[1-8]?x?[a-h][1-8](=[NBRQ])?[+#]?|O-O(-O)?[+#]?)(?=[\s.,:;)]|$)/g, (m, pre, mv) => pre + speakSan(mv))}`.replace(/(check(mate)?) (?=[a-z])/g, '$1, ').replace(/([.!?:] )([a-z])/g, (m, p, c) => p + c.toUpperCase());
         return { cls, san, text, speech, best: !isBest && best && ['inaccuracy', 'mistake', 'blunder', 'miss', 'good', 'excellent'].indexOf(cls) >= 0 ? best : null, bestSan, wAfter: winPct(P.white ? sc : -sc), drop };
     }
 
@@ -7145,12 +7457,12 @@ class Review {
         if (typeof speechSynthesis === 'undefined' || !text) return;
         this.hush();
         const u = new SpeechSynthesisUtterance(text);
-        const vs = speechSynthesis.getVoices().filter(v => /^en/i.test(v.lang));
-        const pref = ['Daniel', 'Google UK English Male', 'Microsoft Ryan', 'Microsoft Guy', 'Arthur', 'Microsoft George', 'Alex'];
-        let v = null; for (const p of pref) { v = vs.find(x => x.name.indexOf(p) >= 0); if (v) break; }
-        u.voice = v || vs[0] || null; u.rate = 0.98; u.pitch = 0.85;
-        const A = this.g.audio; u.volume = A ? clamp((A.mute ? 0 : A.vol.master * A.vol.voice), 0, 1) : 0.9;
-        speechSynthesis.speak(u);
+        const v = NARRATOR.pick(this.voiceName);
+        if (v) { u.voice = v; u.lang = v.lang; } else u.lang = 'en-US';
+        u.rate = 0.95; u.pitch = 1.0;                         // an ordinary speaking voice, a touch slower than default for clarity
+        const A = this.g.audio; u.volume = A ? clamp((A.mute ? 0 : A.vol.master * A.vol.voice * 1.15), 0, 1) : 0.9;
+        // Chrome sometimes drops an utterance spoken straight after cancel(): give it a moment
+        setTimeout(() => speechSynthesis.speak(u), 60);
     }
     hush() { if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel(); }
 }
@@ -7332,7 +7644,14 @@ function buildSettings() {
     $('tgStorm').textContent = 'Storm: ' + ['follows the game', 'always', 'never'][PREFS.storm];
     $('tgQuality').textContent = 'Graphics: ' + ['Low', 'Medium', 'High'][PREFS.quality];
     $('tgMute').textContent = PREFS.mute ? 'Sound: Off' : 'Sound: On';
-    buildMixer(); musicLine();
+    buildMixer(); musicLine(); buildVoices();
+}
+function buildVoices() {
+    const sel = $('voiceSel'); if (!sel) return;
+    const vs = NARRATOR.ranked().filter(v => NARRATOR.score(v) > -50);
+    const best = vs[0];
+    sel.innerHTML = vs.length ? vs.map(v => `<option value="${v.name.replace(/"/g, '&quot;')}">${v.name}${v === best ? ' (clearest)' : ''}</option>`).join('') : '<option value="">Default voice</option>';
+    const cur = NARRATOR.pick(PREFS.voiceName); if (cur) sel.value = cur.name;
 }
 
 // ───────────────────────────── online play ─────────────────────────────
@@ -7584,8 +7903,9 @@ function boot() {
         game = new NGame();
         rend = new Renderer(cv, game); game.renderer = rend;
         audio = new SoundEngine(); game.audio = audio; audio.loadVolumes(PREFS.mix); audio.onMusic = musicLine;
-        review = new Review(game, reviewUI);
+        review = new Review(game, reviewUI); review.voiceName = PREFS.voiceName;
     } catch (e) { $('fatal').classList.remove('hidden'); $('fatalMsg').textContent = String(e && e.message || e); console.error(e); return; }
+    rend.extraDraw = (R, g) => FireFX.draw(R, g);
     window.__game = game; window.__rend = rend; window.__audio = audio; window.__review = review;
     game.onVictory = onVictory;
     game.onRemote = (what, white) => { if (what === 'restart') { hideVictory(); game.startOnline(white); toast('Rematch! You play ' + (white ? 'White' : 'Black'), 3000); } };
@@ -7635,7 +7955,9 @@ function boot() {
     $('rvPrev').onclick = () => { review.stopPlay(); review.back(); }; $('rvNext').onclick = () => { review.stopPlay(); review.forward(); };
     $('rvPlay').onclick = () => review.togglePlay(); $('rvExit').onclick = exitReview;
     $('rvVoice').onclick = () => { review.speak = PREFS.voice = !review.speak; savePrefs(); $('rvVoice').style.opacity = review.speak ? 1 : 0.4; if (!review.speak) review.hush(); else review.showCurrent(); };
-    if (typeof speechSynthesis !== 'undefined') speechSynthesis.getVoices();
+    if (typeof speechSynthesis !== 'undefined') { speechSynthesis.getVoices(); speechSynthesis.addEventListener && speechSynthesis.addEventListener('voiceschanged', buildVoices); }
+    $('voiceSel').onchange = () => { PREFS.voiceName = $('voiceSel').value; review.voiceName = PREFS.voiceName; savePrefs(); review.say('Blunder. White plays knight takes F7. Black answers queen takes G2, and White loses a lot more than a pawn.'); };
+    $('btnVoice').onclick = () => review.say('Great move. Black plays queen to G5. The only good move here: everything else would have lost ground.');
     // online: once the game has started the panel closes
     const origStart = game.startOnline.bind(game);
     game.startOnline = w => { origStart(w); hideAll(); hideVictory(); $('hud').classList.remove('hidden'); toast('Online game: you play ' + (w ? 'White' : 'Black'), 3000); };
