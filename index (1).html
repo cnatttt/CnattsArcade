@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fishing Simulator</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #07061a; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center; }
+  canvas {
+    image-rendering: pixelated; image-rendering: crisp-edges;
+    width: min(100vw, calc(100vh * 16 / 9));
+    height: min(100vh, calc(100vw * 9 / 16));
+    touch-action: none; display: block;
+  }
+</style>
+</head>
+<body>
+<canvas id="game" width="1280" height="720"></canvas>
+<script>
+// =====================================================================
+//  Fishing Simulator - browser version (same game as FishingGame.java)
+//  CAST / SPACE: cast.  REEL / SPACE: hook when the bobber goes under,
+//  then HOLD to reel. Let go when tension gets high or the line snaps.
+//  Progress saves automatically in this browser.
+// =====================================================================
+const W = 1280, H = 720;
+const cv = document.getElementById('game');
+const ctx = cv.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+
+const ROD_X = 140, ROD_Y = 288;
+const BOB_X = 472, BOB_Y = 539, BOB_W = 224, BOB_H = 144;
+const MAX_LEVEL = 5;
+
+// ---------------------------------------------------------- images
+const pending = [];
+function load(name) {
+  const im = new Image();
+  pending.push(new Promise(res => { im.onload = res; im.onerror = () => { console.warn('Missing image: ' + name); res(); }; }));
+  im.src = 'images/' + name;
+  return im;
+}
+function frames(base, n) {
+  const a = [];
+  for (let i = 1; i <= n; i++) a.push(load(`${base}_${String(i).padStart(2, '0')}.png`));
+  return a;
+}
+
+class Anim {
+  constructor(frames, durations, loop) {
+    this.frames = frames; this.loop = loop; this.start = 0;
+    this.ms = frames.map((_, i) => durations.length === 1 ? durations[0] : durations[i]);
+    this.total = this.ms.reduce((a, b) => a + b, 0);
+  }
+  restart(now) { this.start = now; }
+  done(now) { return !this.loop && now - this.start >= this.total; }
+  index(now) {
+    let t = now - this.start;
+    if (this.loop) t %= this.total;
+    else if (t >= this.total) return this.frames.length - 1;
+    for (let i = 0; i < this.ms.length; i++) { if (t < this.ms[i]) return i; t -= this.ms[i]; }
+    return this.frames.length - 1;
+  }
+  frame(now) { return this.frames[this.index(now)]; }
+}
+
+class Button {
+  constructor(name, x, y) {
+    this.normal = load(`fishbtn_${name}_normal.png`);
+    this.hoverImg = load(`fishbtn_${name}_hover.png`);
+    this.pressedImg = load(`fishbtn_${name}_pressed.png`);
+    this.x = x; this.y = y; this.w = 176; this.h = 72;
+    this.hover = false; this.pressed = false; this.enabled = true;
+  }
+  contains(p) { return this.enabled && p.x >= this.x && p.x < this.x + this.w && p.y >= this.y && p.y < this.y + this.h; }
+  draw() {
+    const img = this.pressed ? this.pressedImg : (this.hover ? this.hoverImg : this.normal);
+    ctx.globalAlpha = this.enabled ? 1 : 0.4;
+    ctx.drawImage(img, this.x, this.y);
+    ctx.globalAlpha = 1;
+  }
+}
+
+const background = load('fishbg_moonlit_lake_clean_1280x720.png');
+const coinIcon = load('fishitem_coin_x6.png');
+const panelImg = load('fishui_panel_9slice_x4.png');
+
+const rodIdle    = new Anim(frames('fishrod_uncasted_idle', 8), [140], true);
+const rodCast    = new Anim(frames('fishrod_cast', 9), [120, 90, 80, 120, 60, 60, 70, 110, 400], false);
+const rodCasted  = new Anim(frames('fishrod_casted_idle', 4), [220], true);
+const rodReel    = new Anim(frames('fishrod_reeling_fish_on', 6), [90], true);
+const bobBobbing = new Anim(frames('fishbobber_bobbing', 6), [160], true);
+const bobBite    = new Anim(frames('fishbobber_bite', 8), [200, 120, 200, 120, 250, 70, 70, 400], false);
+const bobLand    = new Anim(frames('fishbobber_land_splash', 6), [70, 70, 90, 90, 130, 300], false);
+
+const castBtn = new Button('cast', 904, 548);
+const reelBtn = new Button('reel', 1090, 548);
+const sellBtn = new Button('sell', 904, 630);
+const shopBtn = new Button('shop', 1090, 630);
+const buttons = [castBtn, reelBtn, sellBtn, shopBtn];
+
+function fish(id, name, rarity, tier, weight, value, strength) {
+  return { id, name, rarity, tier, weight, value, strength, card: load(`fishcard_${id}_x4.png`) };
+}
+const fishTypes = [
+  fish('bluegill',        'Bluegill',        'Common',    0, 30,   5,   0.6),
+  fish('perch',           'Perch',           'Common',    0, 26,   6,   0.7),
+  fish('largemouth_bass', 'Largemouth Bass', 'Uncommon',  1, 16,  15,   1.0),
+  fish('rainbow_trout',   'Rainbow Trout',   'Uncommon',  1, 14,  18,   1.0),
+  fish('catfish',         'Catfish',         'Rare',      2,  7,  40,   1.4),
+  fish('northern_pike',   'Northern Pike',   'Rare',      2,  5,  50,   1.6),
+  fish('golden_koi',      'Golden Koi',      'Legendary', 3, 1.6, 150,  1.9),
+  fish('abyss_eel',       'Abyss Eel',       'Mythic',    4, 0.4, 400,  2.3),
+];
+
+// ---------------------------------------------------------- game state
+let state = 'IDLE';   // IDLE CASTING WAITING NIBBLE HOOKSET REELING CAUGHT
+let coins = 0, rodLevel = 1, baitLevel = 1;
+let bucket = [];
+let hookedFish = null, lastCatch = null;
+let bobberIn = false, biteAt = 0, hookDeadline = 0;
+let reelHeld = false, spaceDown = false;
+let progress = 0, tension = 0, nextSurge = 0, surgeEnd = 0;
+let message = '', messageUntil = 0, messageColor = '#fff';
+let shopOpen = false, mouse = { x: -1, y: -1 };
+const shopRodRow = { x: 0, y: 0, w: 0, h: 0 }, shopBaitRow = { x: 0, y: 0, w: 0, h: 0 }, shopClose = { x: 0, y: 0, w: 0, h: 0 };
+
+const SAVE_KEY = 'fishing_sim_save_v1';
+function save() {
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify({ coins, rodLevel, baitLevel, bucket: bucket.map(f => f.id) })); } catch (e) {}
+}
+function loadSave() {
+  try {
+    const d = JSON.parse(localStorage.getItem(SAVE_KEY));
+    if (!d) return;
+    coins = d.coins | 0; rodLevel = d.rodLevel || 1; baitLevel = d.baitLevel || 1;
+    bucket = (d.bucket || []).map(id => fishTypes.find(f => f.id === id)).filter(Boolean);
+  } catch (e) {}
+}
+
+function showMessage(s, c) { message = s; messageColor = c; messageUntil = performance.now() + 2200; }
+
+function resetToIdle(now) {
+  state = 'IDLE'; bobberIn = false; reelHeld = false; hookedFish = null;
+  rodIdle.restart(now);
+}
+
+function rollFish() {
+  const bonus = 1 + 0.45 * (baitLevel - 1);
+  const w = fishTypes.map(f => f.weight * Math.pow(bonus, f.tier));
+  let r = Math.random() * w.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < w.length; i++) { r -= w[i]; if (r <= 0) return fishTypes[i]; }
+  return fishTypes[0];
+}
+
+// ---------------------------------------------------------- update
+function update(now, dt) {
+  castBtn.enabled = state === 'IDLE' && !shopOpen;
+  reelBtn.enabled = ['WAITING', 'NIBBLE', 'HOOKSET', 'REELING'].includes(state) && !shopOpen;
+  sellBtn.enabled = state === 'IDLE' && bucket.length > 0 && !shopOpen;
+  shopBtn.enabled = state === 'IDLE';
+
+  if (state === 'CASTING') {
+    if (!bobberIn && rodCast.index(now) >= 7) { bobberIn = true; bobLand.restart(now); }
+    if (rodCast.done(now)) {
+      state = 'WAITING';
+      rodCasted.restart(now); bobBobbing.restart(now);
+      const wait = 2.5 + Math.random() * 4.5 - (baitLevel - 1) * 0.35;
+      biteAt = now + wait * 1000;
+    }
+  } else if (state === 'WAITING') {
+    if (now >= biteAt) { hookedFish = rollFish(); state = 'NIBBLE'; bobBite.restart(now); }
+  } else if (state === 'NIBBLE') {
+    if (bobBite.index(now) >= 5) { state = 'HOOKSET'; hookDeadline = now + 900; }
+  } else if (state === 'HOOKSET') {
+    if (now > hookDeadline) { showMessage('Too slow... it got away.', '#ff8c78'); resetToIdle(now); }
+  } else if (state === 'REELING') {
+    updateReeling(now, dt);
+  }
+}
+
+function updateReeling(now, dt) {
+  const str = hookedFish.strength;
+  const power = 1 + 0.25 * (rodLevel - 1);
+  const maxTension = 100 + 15 * (rodLevel - 1);
+  if (now >= nextSurge) { surgeEnd = now + 400 + Math.random() * 400; nextSurge = now + 1000 + Math.random() * 1500; }
+  const surging = now < surgeEnd;
+  if (reelHeld) {
+    progress += 22 * power * dt;
+    tension += Math.max(8, 34 * str - 6 * (rodLevel - 1)) * dt;
+    if (surging) tension += 28 * str * dt;
+  } else {
+    progress -= 10 * str * dt;
+    tension -= 45 * dt;
+  }
+  if (surging) progress -= 8 * str * dt;
+  tension = Math.max(0, tension);
+
+  if (tension >= maxTension) { showMessage('SNAP! The line broke.', '#ff6464'); resetToIdle(now); }
+  else if (progress <= 0) { showMessage(`The ${hookedFish.name} got away...`, '#ff8c78'); resetToIdle(now); }
+  else if (progress >= 100) {
+    bucket.push(hookedFish); lastCatch = hookedFish; save();
+    state = 'CAUGHT'; reelHeld = false; bobberIn = false; rodIdle.restart(now);
+  }
+}
+
+// ---------------------------------------------------------- actions
+function doCast() {
+  if (state !== 'IDLE' || shopOpen) return;
+  state = 'CASTING'; bobberIn = false; rodCast.restart(performance.now());
+}
+function reelDown() {
+  const now = performance.now();
+  if (state === 'WAITING') { showMessage('Nothing yet. You reeled in.', '#c8c8dc'); resetToIdle(now); }
+  else if (state === 'NIBBLE') { showMessage('Too early! You spooked it.', '#ffb464'); resetToIdle(now); }
+  else if (state === 'HOOKSET') {
+    state = 'REELING'; progress = 25; tension = 10; nextSurge = now + 800; surgeEnd = 0; reelHeld = true;
+    rodReel.restart(now);
+    showMessage('Hooked! Hold REEL, let go when tension is high.', '#8ce68c');
+  } else if (state === 'REELING') reelHeld = true;
+}
+function doSell() {
+  if (!bucket.length || state !== 'IDLE') return;
+  const total = bucket.reduce((a, f) => a + f.value, 0);
+  showMessage(`Sold ${bucket.length} fish for ${total} coins!`, '#ffd65a');
+  coins += total; bucket = []; save();
+}
+const rodCost = () => 60 * rodLevel, baitCost = () => 45 * baitLevel;
+function buyRod() {
+  if (rodLevel >= MAX_LEVEL) return showMessage('Rod is maxed out!', '#fff');
+  if (coins < rodCost()) return showMessage('Not enough coins.', '#ff8c78');
+  coins -= rodCost(); rodLevel++; save(); showMessage(`Rod upgraded to level ${rodLevel}!`, '#8ce68c');
+}
+function buyBait() {
+  if (baitLevel >= MAX_LEVEL) return showMessage('Bait is maxed out!', '#fff');
+  if (coins < baitCost()) return showMessage('Not enough coins.', '#ff8c78');
+  coins -= baitCost(); baitLevel++; save(); showMessage(`Bait upgraded to level ${baitLevel}!`, '#8ce68c');
+}
+
+// ---------------------------------------------------------- drawing
+function text(s, x, y, color, font) {
+  if (font) ctx.font = font;
+  ctx.fillStyle = 'rgba(0,0,0,0.75)'; ctx.fillText(s, x + 2, y + 2);
+  ctx.fillStyle = color; ctx.fillText(s, x, y);
+}
+function textC(s, y, color, font) { if (font) ctx.font = font; text(s, (W - ctx.measureText(s).width) / 2, y, color); }
+function rrect(x, y, w, h, r, fill) {
+  ctx.fillStyle = fill; ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h);
+  ctx.fill();
+}
+function bar(x, y, w, h, frac, color) {
+  frac = Math.max(0, Math.min(1, frac));
+  ctx.fillStyle = '#0a0814'; ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
+  ctx.fillStyle = '#282840'; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = color; ctx.fillRect(x, y, w * frac, h);
+  ctx.fillStyle = 'rgba(255,255,255,0.24)'; ctx.fillRect(x, y, w * frac, 4);
+}
+const inside = (p, r) => p.x >= r.x && p.x < r.x + r.w && p.y >= r.y && p.y < r.y + r.h;
+
+function draw(now) {
+  ctx.drawImage(background, 0, 0, W, H);
+
+  let bob = null;
+  if (state === 'CASTING' && bobberIn) bob = bobLand.frame(now);
+  else if (state === 'WAITING') bob = bobLand.done(now) ? bobBobbing.frame(now) : bobLand.frame(now);
+  else if (state === 'NIBBLE' || state === 'HOOKSET') bob = bobBite.frame(now);
+  else if (state === 'REELING') bob = bobBite.frames[6 + Math.floor(now / 150) % 2];
+  if (bob) ctx.drawImage(bob, BOB_X, BOB_Y, BOB_W, BOB_H);
+
+  let rod;
+  if (state === 'CASTING') rod = rodCast.frame(now);
+  else if (['WAITING', 'NIBBLE', 'HOOKSET'].includes(state)) rod = rodCasted.frame(now);
+  else if (state === 'REELING') rod = rodReel.frame(now);
+  else rod = rodIdle.frame(now);
+  ctx.drawImage(rod, ROD_X, ROD_Y);
+
+  if (state === 'HOOKSET') text('!', BOB_X + BOB_W / 2 - 14, BOB_Y + 10, '#ffe650', 'bold 54px monospace');
+
+  // HUD
+  rrect(16, 16, 300, 124, 14, 'rgba(10,8,24,0.67)');
+  ctx.drawImage(coinIcon, 28, 26, 36, 36);
+  text(String(coins), 74, 54, '#ffd65a', 'bold 26px monospace');
+  const bv = bucket.reduce((a, f) => a + f.value, 0);
+  text(`Bucket: ${bucket.length} fish (${bv}c)`, 30, 92, '#fff', 'bold 18px monospace');
+  text(`Rod Lv ${rodLevel}   Bait Lv ${baitLevel}`, 30, 122, '#bec8e6');
+  if (state === 'IDLE' && !shopOpen) text('Press CAST or SPACE to fish', 904, 536, '#dcdcf0', 'bold 16px monospace');
+
+  buttons.forEach(b => b.draw());
+
+  if (state === 'REELING') drawReelMeter();
+  if (state === 'CAUGHT') drawCatch();
+  if (shopOpen) drawShop();
+
+  if (now < messageUntil) textC(message, state === 'REELING' ? 290 : 120, messageColor, 'bold 26px monospace');
+}
+
+function drawReelMeter() {
+  const pw = panelImg.width, px = (W - pw) / 2, py = 20;
+  ctx.drawImage(panelImg, px, py);
+  textC('REEL IT IN!', py + 52, '#fff', 'bold 22px monospace');
+  const maxT = 100 + 15 * (rodLevel - 1), t = tension / maxT;
+  text('CATCH', px + 30, py + 92, '#8ce68c', 'bold 15px monospace');
+  bar(px + 30, py + 100, pw - 60, 22, progress / 100, '#5ac864');
+  text('TENSION', px + 30, py + 148, '#ffa08c');
+  bar(px + 30, py + 156, pw - 60, 22, t, t < 0.6 ? '#f0c846' : (t < 0.85 ? '#f08232' : '#e63c3c'));
+}
+
+function drawCatch() {
+  ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, W, H);
+  const f = lastCatch, cw = f.card.width * 1.5, ch = f.card.height * 1.5;
+  const cx = (W - cw) / 2, cy = (H - ch) / 2 - 20;
+  ctx.drawImage(f.card, cx, cy, cw, ch);
+  textC(`You caught a ${f.name}!`, cy - 24, '#fff', 'bold 34px monospace');
+  textC(`Worth ${f.value} coins  -  added to bucket`, cy + ch + 40, '#ffd65a', 'bold 22px monospace');
+  textC('Click or press SPACE to continue', cy + ch + 74, '#c8c8dc', '18px monospace');
+}
+
+function drawShop() {
+  ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, W, H);
+  const pw = panelImg.width * 1.6, ph = panelImg.height * 1.6, px = (W - pw) / 2, py = (H - ph) / 2;
+  ctx.drawImage(panelImg, px, py, pw, ph);
+  textC('SHOP', py + 60, '#c46cff', 'bold 32px monospace');
+  Object.assign(shopRodRow, { x: px + 40, y: py + 90, w: pw - 80, h: 70 });
+  Object.assign(shopBaitRow, { x: px + 40, y: py + 170, w: pw - 80, h: 70 });
+  Object.assign(shopClose, { x: px + pw - 70, y: py + 22, w: 40, h: 40 });
+  shopRow(shopRodRow, `Better Rod  (Lv ${rodLevel})`, 'Reel faster, more tension', rodLevel >= MAX_LEVEL ? 'MAX' : rodCost() + 'c');
+  shopRow(shopBaitRow, `Better Bait (Lv ${baitLevel})`, 'Rarer fish, faster bites', baitLevel >= MAX_LEVEL ? 'MAX' : baitCost() + 'c');
+  text('X', shopClose.x + 10, shopClose.y + 30, '#ff8c78', 'bold 30px monospace');
+}
+function shopRow(r, title, sub, price) {
+  rrect(r.x, r.y, r.w, r.h, 12, inside(mouse, r) ? 'rgba(70,60,110,0.86)' : 'rgba(30,30,56,0.86)');
+  text(title, r.x + 16, r.y + 30, '#fff', 'bold 22px monospace');
+  text(sub, r.x + 16, r.y + 56, '#bec8e6', '16px monospace');
+  ctx.font = 'bold 24px monospace';
+  text(price, r.x + r.w - ctx.measureText(price).width - 16, r.y + 44, '#ffd65a');
+}
+
+// ---------------------------------------------------------- input (mouse + touch)
+function toGame(e) {
+  const r = cv.getBoundingClientRect();
+  return { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height };
+}
+cv.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  const p = toGame(e); mouse = p;
+  cv.setPointerCapture(e.pointerId);
+  const now = performance.now();
+  if (state === 'CAUGHT') return resetToIdle(now);
+  if (shopOpen) {
+    if (inside(p, shopRodRow)) buyRod();
+    else if (inside(p, shopBaitRow)) buyBait();
+    else if (inside(p, shopClose)) shopOpen = false;
+    return;
+  }
+  for (const b of buttons) if (b.contains(p)) { b.pressed = true; if (b === reelBtn) reelDown(); }
+});
+cv.addEventListener('pointerup', e => {
+  const p = toGame(e);
+  for (const b of buttons) {
+    if (b.pressed && b.contains(p)) {
+      if (b === castBtn) doCast();
+      else if (b === sellBtn) doSell();
+      else if (b === shopBtn) shopOpen = !shopOpen;
+    }
+    b.pressed = false;
+  }
+  reelHeld = false;
+});
+cv.addEventListener('pointercancel', () => { buttons.forEach(b => b.pressed = false); reelHeld = false; });
+cv.addEventListener('pointermove', e => { mouse = toGame(e); buttons.forEach(b => b.hover = b.contains(mouse)); });
+cv.addEventListener('pointerleave', () => buttons.forEach(b => b.hover = false));
+
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space') {
+    e.preventDefault();
+    if (spaceDown) { if (state === 'REELING') reelHeld = true; return; }
+    spaceDown = true;
+    if (state === 'CAUGHT') return resetToIdle(performance.now());
+    if (shopOpen) return;
+    if (state === 'IDLE') { castBtn.pressed = true; doCast(); }
+    else { reelBtn.pressed = true; reelDown(); }
+  } else if (e.code === 'Escape') shopOpen = false;
+});
+window.addEventListener('keyup', e => {
+  if (e.code === 'Space') { spaceDown = false; reelHeld = false; castBtn.pressed = false; reelBtn.pressed = false; }
+});
+window.addEventListener('blur', () => { reelHeld = false; spaceDown = false; });
+
+// ---------------------------------------------------------- start
+ctx.fillStyle = '#07061a'; ctx.fillRect(0, 0, W, H);
+ctx.fillStyle = '#fff'; ctx.font = 'bold 28px monospace'; ctx.fillText('Loading...', W / 2 - 80, H / 2);
+let last = 0;
+Promise.all(pending).then(() => {
+  loadSave();
+  last = performance.now();
+  rodIdle.restart(last);
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    update(now, dt);
+    ctx.imageSmoothingEnabled = false;
+    draw(now);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cnatt's Arcade</title>
+<link rel="icon" href="assets/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #07061a; --panel: #141029; --panel2: #1d1838; --line: #3a2f63;
+    --text: #ece8ff; --muted: #9a92c4; --gold: #ffcc33;
+    --pixel: 'Press Start 2P', monospace; --body: 'VT323', monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--body); font-size: 22px;
+    background-image:
+      radial-gradient(1px 1px at 12% 18%, #fff8 50%, transparent 51%),
+      radial-gradient(1px 1px at 72% 12%, #fff8 50%, transparent 51%),
+      radial-gradient(1px 1px at 38% 32%, #fff6 50%, transparent 51%),
+      radial-gradient(1px 1px at 88% 40%, #fff6 50%, transparent 51%),
+      radial-gradient(1px 1px at 22% 62%, #fff4 50%, transparent 51%),
+      radial-gradient(1px 1px at 58% 78%, #fff4 50%, transparent 51%),
+      radial-gradient(ellipse at 50% -10%, #3a1e5280, transparent 60%),
+      radial-gradient(ellipse at 50% 120%, #1e2a5280, transparent 60%);
+    background-attachment: fixed;
+  }
+
+  /* ---------------- menu ---------------- */
+  #menu { min-height: 100%; display: flex; flex-direction: column; align-items: center; padding: 56px 20px 32px; }
+  h1 {
+    font-family: var(--pixel); font-size: clamp(22px, 4.4vw, 46px); margin: 0 0 14px; letter-spacing: 2px;
+    color: var(--gold); text-align: center;
+    text-shadow: 0 4px 0 #6a3a10, 0 0 24px #ffcc3355;
+  }
+  .subtitle { font-family: var(--pixel); font-size: 12px; color: var(--muted); margin-bottom: 44px; letter-spacing: 3px; text-transform: uppercase; }
+  .subtitle::before, .subtitle::after { content: " ✦ "; color: var(--line); }
+
+  #grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 28px; width: 100%; max-width: 1180px; }
+  .card {
+    --accent: #b07cff;
+    background: var(--panel); border: 4px solid var(--line); cursor: pointer; text-align: left; color: inherit;
+    font: inherit; padding: 0; display: flex; flex-direction: column;
+    box-shadow: 0 6px 0 #00000088; transition: transform .12s, border-color .12s, box-shadow .12s;
+    outline: none;
+  }
+  .card:hover, .card:focus-visible { transform: translateY(-6px); border-color: var(--accent); box-shadow: 0 12px 0 #00000088, 0 0 30px color-mix(in srgb, var(--accent) 35%, transparent); }
+  .card:active { transform: translateY(0); box-shadow: 0 2px 0 #00000088; }
+  .thumb { aspect-ratio: 16 / 9; background: #000 center / cover no-repeat; image-rendering: pixelated; border-bottom: 4px solid var(--line); position: relative; }
+  .card:hover .thumb { border-color: var(--accent); }
+  .tag {
+    position: absolute; top: 12px; left: 12px; font-family: var(--pixel); font-size: 9px; padding: 7px 9px;
+    background: #07061acc; color: var(--accent); border: 2px solid var(--accent); letter-spacing: 1px; text-transform: uppercase;
+  }
+  .info { padding: 18px 20px 22px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
+  .title { font-family: var(--pixel); font-size: 15px; line-height: 1.4; }
+  .desc { color: var(--muted); line-height: 1.1; flex: 1; }
+  .play {
+    align-self: flex-start; font-family: var(--pixel); font-size: 11px; padding: 11px 16px; margin-top: 6px;
+    background: var(--accent); color: #07061a; box-shadow: inset 0 -4px 0 #0005, 0 3px 0 #000a;
+  }
+  footer { margin-top: auto; padding-top: 48px; color: var(--muted); font-size: 18px; }
+
+  /* ---------------- player ---------------- */
+  #player { position: fixed; inset: 0; display: none; flex-direction: column; background: #000; }
+  #player.open { display: flex; }
+  #bar {
+    display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: var(--panel);
+    border-bottom: 3px solid var(--line); font-family: var(--pixel); font-size: 11px;
+  }
+  #bar button, #bar a {
+    font-family: var(--pixel); font-size: 10px; color: var(--text); background: var(--panel2); text-decoration: none;
+    border: 2px solid var(--line); padding: 8px 12px; cursor: pointer; box-shadow: 0 3px 0 #000a;
+  }
+  #bar button:hover, #bar a:hover { border-color: var(--gold); color: var(--gold); }
+  #bar button:active, #bar a:active { transform: translateY(2px); box-shadow: none; }
+  #nowPlaying { flex: 1; text-align: center; color: var(--gold); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #frame { flex: 1; width: 100%; border: 0; background: #000; }
+
+  @media (max-width: 600px) {
+    #bar { font-size: 9px; gap: 6px; }
+    #bar .hide-sm { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="menu">
+  <h1 id="siteTitle">CNATT'S ARCADE</h1>
+  <div class="subtitle" id="siteSubtitle">Pick a game</div>
+  <div id="grid"></div>
+  <footer id="siteFooter"></footer>
+</div>
+
+<div id="player">
+  <div id="bar">
+    <button id="backBtn" title="Back to menu (Esc)">◀ MENU</button>
+    <div id="nowPlaying"></div>
+    <button id="fsBtn" class="hide-sm" title="Fullscreen">⛶ FULL</button>
+    <a id="tabBtn" class="hide-sm" target="_blank" rel="noopener" title="Open in a new tab">↗ TAB</a>
+  </div>
+  <iframe id="frame" allow="fullscreen; autoplay; gamepad" allowfullscreen></iframe>
+</div>
+
+<script src="games.js"></script>
+<script>
+  const $ = id => document.getElementById(id);
+  const menu = $('menu'), player = $('player'), frame = $('frame');
+
+  // site text from games.js
+  $('siteTitle').textContent = SITE.title;
+  $('siteSubtitle').textContent = SITE.subtitle;
+  $('siteFooter').textContent = SITE.footer;
+  document.title = SITE.title.replace(/'S /, "'s ");
+
+  // build the cards
+  for (const g of GAMES) {
+    const card = document.createElement('button');
+    card.className = 'card';
+    card.style.setProperty('--accent', g.accent || '#b07cff');
+    card.innerHTML = `
+      <div class="thumb" style="background-image:url('${g.thumbnail}')"><span class="tag"></span></div>
+      <div class="info">
+        <div class="title"></div>
+        <div class="desc"></div>
+        <span class="play">▶ PLAY</span>
+      </div>`;
+    card.querySelector('.tag').textContent = g.tag || 'Game';
+    card.querySelector('.title').textContent = g.title;
+    card.querySelector('.desc').textContent = g.description || '';
+    card.onclick = () => { location.hash = g.id; };
+    $('grid').appendChild(card);
+  }
+
+  // routing: yoursite.com/#fishing opens that game directly
+  function route() {
+    const id = decodeURIComponent(location.hash.slice(1));
+    const g = GAMES.find(x => x.id === id);
+    if (!g) {
+      player.classList.remove('open'); menu.style.display = '';
+      frame.src = 'about:blank';
+      document.title = SITE.title.replace(/'S /, "'s ");
+      return;
+    }
+    const url = g.folder.replace(/\/+$/, '') + '/index.html';
+    $('nowPlaying').textContent = g.title;
+    $('tabBtn').href = url;
+    document.title = g.title + ' | ' + SITE.title.replace(/'S /, "'s ");
+    menu.style.display = 'none'; player.classList.add('open');
+    if (!frame.src.endsWith(url)) frame.src = url;
+  }
+  window.addEventListener('hashchange', route);
+  route();
+
+  frame.addEventListener('load', () => { try { frame.contentWindow.focus(); } catch (e) {} });
+  $('backBtn').onclick = () => { history.pushState('', '', location.pathname + location.search); route(); };
+  $('fsBtn').onclick = () => {
+    const el = frame;
+    (el.requestFullscreen || el.webkitRequestFullscreen || (() => {})).call(el);
+  };
+  // Esc goes back to the menu (only when the page itself has focus, so games can still use Esc)
+  window.addEventListener('keydown', e => { if (e.key === 'Escape' && player.classList.contains('open')) $('backBtn').click(); });
+</script>
+</body>
+</html>
