@@ -122,3 +122,20 @@ Object.assign(SONGS, {
     arp: true, arpRate: 2, pad: true, inst: { lead: { type: 'triangle', vol: 0.14, verb: 0.4 } } },
   death:  { seed: 13, bpm: 60, root: 45, scale: 'minor', prog: [0, 5, 3, 4], density: 0.35, bass: 'x...............', pad: true, inst: { lead: { type: 'triangle', vol: 0.1, echo: 0.4, verb: 0.6 } } },
 });
+
+// level-up choices (pick 1 of 3 each time you level up)
+const LEVELUPS = [
+  { id: 'dmg',    name: 'SHARPER',      desc: '+15% damage',            col: '#ff6a5a', w: 10, fx: { dmg: 0.15 } },
+  { id: 'rate',   name: 'FASTER HANDS', desc: '+15% attack speed',      col: '#ffcc33', w: 10, fx: { rate: 0.15 } },
+  { id: 'speed',  name: 'LIGHT FEET',   desc: '+10% move speed',        col: '#6ad0ff', w: 8,  fx: { speed: 0.1 } },
+  { id: 'hp',     name: 'TOUGHER',      desc: '+1 heart and heal it',   col: '#e83a4a', w: 9,  fx: { maxhp: 2 } },
+  { id: 'heal',   name: 'SECOND WIND',  desc: 'Heal to full health',    col: '#ff9ab0', w: 6,  heal: true },
+  { id: 'range',  name: 'LONG ARMS',    desc: '+20% range and size',    col: '#a8f0ff', w: 7,  fx: { range: 0.2 } },
+  { id: 'crit',   name: 'KEEN EYE',     desc: '+8% critical chance',    col: '#ffe650', w: 7,  fx: { crit: 0.08 } },
+  { id: 'multi',  name: 'ONE MORE',     desc: '+1 projectile / sword wave', col: '#c46cff', w: 3, fx: { multi: 1 } },
+  { id: 'spec',   name: 'FOCUS',        desc: 'Special recharges 25% faster', col: '#b07cff', w: 6, fx: { spec: 0.25 } },
+  { id: 'dodge',  name: 'NIMBLE',       desc: 'Dodge recharges 25% faster',   col: '#6affd0', w: 5, fx: { dodge: 0.25 } },
+  { id: 'gold',   name: 'GREEDY',       desc: '+40% gold from monsters',      col: '#f2c14e', w: 5, fx: { gold: 0.4 } },
+  { id: 'orbit',  name: 'BONE BUDDY',   desc: 'Another skull orbits you',     col: '#e8e4d8', w: 3, fx: { orbitals: 1 } },
+  { id: 'relic',  name: 'TREASURE',     desc: 'Get a random relic now',       col: '#4aa8ff', w: 3, relic: true },
+];
