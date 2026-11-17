@@ -492,14 +492,25 @@ function recalc() {
   run.st = st;
   const old = P.maxhp; P.maxhp = Math.max(2, maxhp); if (P.maxhp > old) P.hp += P.maxhp - old; P.hp = Math.min(P.hp, P.maxhp);
 }
-function newRun(clsId, daily) {
+function newRun(clsId, daily, snap) {
   dailyMode = !!daily;
-  const seed = daily ? Number(new Date().toISOString().slice(0, 10).replace(/-/g, '')) : Math.floor(Math.random() * 1e9);
+  const seed = snap ? snap.seed : daily ? Number(new Date().toISOString().slice(0, 10).replace(/-/g, '')) : Math.floor(Math.random() * 1e9);
   rng = seeded(seed);
   boss = null; bossIntro = null; relicBanner = null; banner = null; parts = []; shots = []; hazards = []; beams = []; fx = []; slowmo = 1; fade = 0; fadeCb = null; transition = null;
   const cls = CLASSES.find(c => c.id === clsId);
   run = { seed, cls, fi: 0, relics: [], ups: [], xp: 0, lvl: 1, gold: 10 + 20 * upLvl('fort'), keys: 1, potions: 1 + upLvl('alch'), souls: 0, kills: 0, time: 0, dmgDealt: 0, killedBy: '', st: null, revived: false, startT: performance.now() };
   P = { x: 8.5 * TS, y: 5.5 * TS, vx: 0, vy: 0, r: 5, hp: cls.hp, maxhp: cls.hp, iframes: 0, roll: 0, rollCd: 0, rollDir: { x: 1, y: 0 }, atkCd: 0, specCd: 0, aim: 0, face: 1, swing: 0, spin: 0, walkT: 0, orbT: 0, wispCd: 0, wisp: { x: 8.5 * TS, y: 5.5 * TS } };
+  if (snap) {
+    Object.assign(run, { xp: snap.xp, lvl: snap.lvl, gold: snap.gold, keys: snap.keys, potions: snap.potions, souls: snap.souls, kills: snap.kills, time: snap.time, dmgDealt: snap.dmgDealt, revived: snap.revived });
+    run.relics = snap.relics.map(id => RELICS.find(r => r.id === id)).filter(Boolean);
+    run.ups = snap.ups.map(id => LEVELUPS.find(u => u.id === id)).filter(Boolean);
+    recalc();
+    startFloor(snap.fi);
+    P.hp = Math.max(1, Math.min(P.maxhp, snap.hp));
+    screen = 'play';
+    toast('Run restored: floor ' + (snap.fi + 1), '#8aff8a', 3);
+    return;
+  }
   if (upLvl('heir')) run.relics.push(rollRelic(0));
   recalc(); P.hp = P.maxhp;
   save.runs++; store();
@@ -511,6 +522,8 @@ function startFloor(fi) {
   run.fi = fi;
   run.theme = FLOORS[fi % FLOORS.length];
   run.loop = Math.floor(fi / FLOORS.length);
+  if (!run.seed2) run.seed2 = run.seed;
+  rng = seeded(run.seed2 + fi * 7919);
   run.map = genFloor(fi); boss = null; beams = [];
   run.map.list.forEach(r => { r.seen = true; });
   if (fi > 0 && P.hp < P.maxhp) { P.hp = Math.min(P.maxhp, P.hp + 2); }
@@ -518,6 +531,23 @@ function startFloor(fi) {
   banner = { title: (run.loop ? `ENDLESS ${run.loop} - ` : `FLOOR ${fi + 1} - `) + run.theme.name, sub: run.theme.sub, t: 0, col: run.theme.accent };
   Sound.playSong(SONGS[run.theme.song]);
   save.bestFloor = Math.max(save.bestFloor, fi + 1); store();
+  saveRun();
+}
+// ---- mid-run save: written at the start of every floor, cleared when the run ends
+const RUN_KEY = 'cnatt_nightfall_run';
+function saveRun() {
+  if (!run || !P) return;
+  const snap = { v: 1, cls: run.cls.id, seed: run.seed2 || run.seed, fi: run.fi, daily: dailyMode,
+    relics: run.relics.map(r => r.id), ups: run.ups.map(u => u.id), xp: run.xp, lvl: run.lvl, gold: run.gold, keys: run.keys, potions: run.potions,
+    souls: run.souls, kills: run.kills, time: run.time, dmgDealt: run.dmgDealt, revived: run.revived, hp: P.hp, when: Date.now() };
+  try { localStorage.setItem(RUN_KEY, JSON.stringify(snap)); } catch (e) {}
+}
+function loadRunSave() { try { return JSON.parse(localStorage.getItem(RUN_KEY)); } catch (e) { return null; } }
+function clearRunSave() { try { localStorage.removeItem(RUN_KEY); } catch (e) {} }
+function continueRun() {
+  const s = loadRunSave(); if (!s) return;
+  const cls = CLASSES.find(c => c.id === s.cls); if (!cls) { clearRunSave(); return; }
+  newRun(s.cls, s.daily, s);
 }
 function enterRoom(rm, fromDir) {
   room = rm; room.visited = true;
@@ -1830,6 +1860,8 @@ function drawMenu() {
   text(`${fmt(save.souls)} souls`, W / 2 - 90, 552, 12, '#8ad8ff');
   text(`Runs ${save.runs}   Best floor ${save.bestFloor}   Wins ${save.wins}   Kills ${fmt(save.kills)}`, W / 2, 590, 8, '#8a84b0', 'center');
   text('WASD move - MOUSE aim/attack (or ARROWS) - SPACE dodge - RIGHT CLICK special - Q potion', W / 2, 680, 8, '#6a6488', 'center');
+  const rs = loadRunSave();
+  if (rs) { const c = CLASSES.find(k => k.id === rs.cls); if (button('cont', bx, 612, 400, 52, `CONTINUE: ${c ? c.name : ''} FLOOR ${rs.fi + 1}`, { color: '#2a6a3a', size: 12 })) continueRun(); }
 }
 function drawClasses() {
   drawMenuBg();
@@ -1924,15 +1956,19 @@ function drawPause() {
   if (button('mus', 140, 476, 145, 44, Sound.musicOn ? 'MUSIC ON' : 'MUSIC OFF', { color: '#2a2434', size: 8 })) Sound.setMusic(!Sound.musicOn);
   if (button('sfx', 295, 476, 145, 44, Sound.sfxOn ? 'SOUND ON' : 'SOUND OFF', { color: '#2a2434', size: 8 })) Sound.setSfx(!Sound.sfxOn);
   if (button('quit', 140, 540, 300, 52, 'ABANDON RUN', { color: '#6a1a2a', size: 12, sfx: 'back' })) { run.killedBy = 'giving up'; die(); }
+  if (button('saveq', 140, 604, 300, 44, 'SAVE & QUIT', { color: '#2a4a6a', size: 8, sfx: 'back' })) goMenu();
+  text('Your run is saved at the start of each floor', 290, 656, 8, '#8a84b0', 'center');
 }
 let deathT = 0;
 function die() {
+  clearRunSave();
   screen = 'dead'; deathT = 0; P.hp = 0;
   const souls = run.souls; save.souls += souls;
   if (dailyMode) { const d = new Date().toISOString().slice(0, 10); save.daily[d] = Math.max(save.daily[d] || 0, run.fi + 1); }
   store(); Sound.playSong(SONGS.death); SND.kill(true);
 }
 function victory() {
+  clearRunSave();
   screen = 'victory'; deathT = 0;
   save.wins++; save.souls += run.souls + 100; run.souls += 100;
   if (dailyMode) { const d = new Date().toISOString().slice(0, 10); save.daily[d] = Math.max(save.daily[d] || 0, 6); }

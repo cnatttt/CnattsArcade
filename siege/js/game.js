@@ -245,7 +245,18 @@ let screen = 'loading', t = 0;
 let G = null, placing = null, selected = null, targeting = null, hoverTile = null;
 let enemies = [], towers = [], shots = [], bolts = [], parts = [], floats = [], rings = [], amb = [];
 let banner = null, shake = 0, flashRed = 0, speed = 1, menuMap = 0;
-function newGame(mi, endless) {
+// ---- mid-map save: written when a map starts and after every wave, cleared when the map ends
+const RUN_KEY = 'cnatt_siege_run';
+function saveRun() {
+  if (!G) return;
+  const snap = { v: 1, mi: G.mi, gold: G.gold, lives: G.lives, wave: G.wave, kills: G.kills, leaks: G.leaks, endless: G.endless, won: G.won, time: G.time,
+    towers: towers.map(tw => ({ id: tw.id, c: tw.c, r: tw.r, lv: tw.lv, spent: tw.spent, mode: tw.mode })), when: Date.now() };
+  try { localStorage.setItem(RUN_KEY, JSON.stringify(snap)); } catch (e) {}
+}
+function loadRunSave() { try { return JSON.parse(localStorage.getItem(RUN_KEY)); } catch (e) { return null; } }
+function clearRunSave() { try { localStorage.removeItem(RUN_KEY); } catch (e) {} }
+function continueRun() { const s = loadRunSave(); if (s && MAPS[s.mi]) newGame(s.mi, s.endless, s); }
+function newGame(mi, endless, snap) {
   const M = MAPS[mi];
   renderMap(M);
   G = { mi, M, gold: 260 + mi * 50 + (perk('chest') ? 100 : 0), lives: 20 + (perk('walls') ? 5 : 0), maxLives: 20 + (perk('walls') ? 5 : 0), wave: 0, active: false, queue: [], qT: 0,
@@ -255,6 +266,13 @@ function newGame(mi, endless) {
   screen = 'play';
   banner = { title: M.name, sub: M.sub, t: 0, col: THEMES[M.theme].accent };
   Sound.playSong(SONGS[M.song]);
+  if (snap) {
+    Object.assign(G, { gold: snap.gold, lives: snap.lives, wave: snap.wave, kills: snap.kills, leaks: snap.leaks, won: snap.won, time: snap.time || 0 });
+    snap.towers.forEach(s => { const T = TOWERS.find(t => t.id === s.id); if (!T || !tileFree(s.c, s.r)) return; towers.push({ id: T.id, T, c: s.c, r: s.r, x: s.c * TS + 8, y: s.r * TS + 8, lv: s.lv, cd: 0.2, ang: -Math.PI / 2, spent: s.spent, mode: s.mode || 'first', built: 9, kills: 0 }); });
+    banner = { title: 'MAP RESTORED', sub: `${M.name} - WAVE ${G.wave + 1} NEXT`, t: 0, col: THEMES[M.theme].accent };
+    return;
+  }
+  saveRun();
   if (!save.tutorial) setTimeout(() => !save.tutorial && screen === 'play' && toast('Pick a tower on the right, then click next to the road to build it', '#ffe680', 6), 1500);
 }
 
@@ -316,6 +334,7 @@ function endWave() {
   SND.clear();
   if (G.wave % 10 === 0) Sound.playSong(SONGS[G.M.song]);
   if (G.wave >= WAVES_PER_MAP && !G.won) { win(); return; }
+  saveRun();
   if (G.endless) { save.best[G.M.id] = Math.max(save.best[G.M.id] || 0, G.wave); store(); }
   if (G.auto) setTimeout(() => { if (screen === 'play' && !G.active) startWave(); }, 1500);
 }
@@ -878,7 +897,9 @@ function drawMapHUD() {
 
 // ------------------------------------------------------------ screens
 let menuDemo = null;
+let runSaveCache = null, runSaveT = -1;
 function drawMenu() {
+  if (t - runSaveT > 1) { runSaveCache = loadRunSave(); runSaveT = t; }
   if (!menuDemo) { renderMap(MAPS[0]); menuDemo = { cv: mapCv, en: [] }; }
   lx.setTransform(1, 0, 0, 1, 0, 0);
   lx.drawImage(menuDemo.cv, 0, MY);
@@ -902,8 +923,14 @@ function drawMenu() {
     for (let k = 0; k < 3; k++) { const sx = x + cw / 2 - 42 + k * 30; drawStar(sx, y + 182, k < st); }
     if (save.best[M.id]) text(`Endless best: ${save.best[M.id]}`, x + cw / 2, y + 220, 8, '#c46cff', 'center');
     if (ok) {
-      if (button('play' + i, x + 20, y + 246, cw - 40, 48, 'PLAY', { color: '#3a6a2a' })) newGame(i, false);
-      if (st > 0 && button('endl' + i, x + 20, y + 302, cw - 40, 40, 'ENDLESS', { color: '#4a2a6a', size: 12 })) newGame(i, true);
+      const rs = runSaveCache && runSaveCache.mi === i ? runSaveCache : null;
+      if (rs) {
+        if (button('cont' + i, x + 20, y + 246, cw - 40, 48, `CONTINUE W${rs.wave + 1}`, { color: '#2a5a7a', size: 12 })) continueRun();
+        if (button('new' + i, x + 20, y + 302, cw - 40, 40, rs.endless ? 'NEW ENDLESS' : 'NEW GAME', { color: '#5a3a1a', size: 8 })) newGame(i, rs.endless);
+      } else {
+        if (button('play' + i, x + 20, y + 246, cw - 40, 48, 'PLAY', { color: '#3a6a2a' })) newGame(i, false);
+        if (st > 0 && button('endl' + i, x + 20, y + 302, cw - 40, 40, 'ENDLESS', { color: '#4a2a6a', size: 12 })) newGame(i, true);
+      }
     } else text('Beat the last map', x + cw / 2, y + 266, 8, '#6a6058', 'center');
   });
   const avail = starsEarned() - starsSpent();
@@ -935,6 +962,7 @@ function drawPerks() {
   if (button('back', W - 330, 640, 220, 48, 'BACK', { color: '#3a2a1e', size: 12, sfx: 'back' })) screen = 'menu';
 }
 function win() {
+  clearRunSave();
   G.won = true;
   const stars = G.lives >= G.maxLives * 0.9 ? 3 : G.lives >= G.maxLives * 0.5 ? 2 : 1;
   G.stars = stars; const prev = save.stars[G.M.id] || 0;
@@ -942,6 +970,7 @@ function win() {
   screen = 'win'; endT = 0; Sound.playSong(SONGS.swin); Sound.play('catch', 4);
 }
 function lose() {
+  clearRunSave();
   if (G.endless) { save.best[G.M.id] = Math.max(save.best[G.M.id] || 0, G.wave - 1); store(); }
   screen = 'lose'; endT = 0; Sound.playSong(SONGS.slose); SND.leak();
 }
@@ -970,13 +999,14 @@ function drawPause() {
   text('PAUSED', W / 2, 216, 32, '#ffcc66', 'center');
   if (button('res', W / 2 - 160, 280, 320, 60, 'RESUME', { color: '#3a6a2a' })) resume();
   if (button('rst', W / 2 - 160, 356, 320, 50, 'RESTART MAP', { color: '#6a3a1a', size: 12 })) newGame(G.mi, G.endless);
-  if (button('men', W / 2 - 160, 422, 320, 50, 'MAP SELECT', { color: '#3a2a1e', size: 12, sfx: 'back' })) goMenu();
+  if (button('men', W / 2 - 160, 422, 320, 50, 'SAVE & QUIT', { color: '#2a4a6a', size: 12, sfx: 'back' })) goMenu();
+  text('Saved after every wave', W / 2, 528, 8, '#8a7a6a', 'center');
   if (button('mus', W / 2 - 160, 486, 155, 36, Sound.musicOn ? 'MUSIC ON' : 'MUSIC OFF', { color: '#2a2420', size: 8 })) Sound.setMusic(!Sound.musicOn);
   if (button('sfx', W / 2 + 5, 486, 155, 36, Sound.sfxOn ? 'SFX ON' : 'SFX OFF', { color: '#2a2420', size: 8 })) Sound.setSfx(!Sound.sfxOn);
 }
 function pause() { screen = 'pause'; Sound.play('back'); }
 function resume() { screen = 'play'; Sound.play('click'); }
-function goMenu() { screen = 'menu'; menuDemo = null; Sound.playSong(SONGS.smenu); }
+function goMenu() { runSaveT = -9; screen = 'menu'; menuDemo = null; Sound.playSong(SONGS.smenu); }
 
 // ------------------------------------------------------------ sounds
 const SND = {

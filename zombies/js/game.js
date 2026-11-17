@@ -237,7 +237,18 @@ let cards = [], pickT = 0, pickHover = -1, shake = 0, hurtFlash = 0, whiteFlash 
 const cam = { x: 0, y: 0 };
 
 function charDef(id) { return CHARACTERS.find(c => c.id === id) || CHARACTERS[0]; }
-function startRun(charId) {
+// ---- mid-run save: written at the start of every wave, cleared when the run ends
+const RUN_KEY = 'cnatt_horde_run';
+function saveRun() {
+  if (!run || !P) return;
+  const snap = { v: 1, char: run.char.id, wave: run.wave, kills: run.kills, coins: run.coins, time: run.time, rerolls: run.rerolls, revive: run.revive, endless: run.endless,
+    weapons: P.weapons.map(w => [w.id, w.lv]), passives: P.passives, hp: P.hp, when: Date.now() };
+  try { localStorage.setItem(RUN_KEY, JSON.stringify(snap)); } catch (e) {}
+}
+function loadRunSave() { try { return JSON.parse(localStorage.getItem(RUN_KEY)); } catch (e) { return null; } }
+function clearRunSave() { try { localStorage.removeItem(RUN_KEY); } catch (e) {} }
+function continueRun() { const s = loadRunSave(); if (s) startRun(s.char, s); }
+function startRun(charId, snap) {
   const C = charDef(charId || save.char);
   run = { char: C, wave: 0, kills: 0, coins: 0, time: 0, spawnLeft: 0, quota: 0, spawnAcc: 0, spawnDur: 1, spawnT: 0, hordes: [], bossDone: false, boss: null,
     phase: 'ready', phaseT: 2.5, rerolls: shopLv('reroll'), revive: shopLv('revive') > 0, endless: false, extraPicks: 0, killedWave: 0 };
@@ -248,7 +259,18 @@ function startRun(charId) {
   zs = []; bullets = []; ebullets = []; rangs = []; pools = []; rockets = []; beams = []; novas = []; slashes = []; strikes = []; lobs = [];
   pickups = []; parts = []; floats = []; rings = []; tele = []; toastQ = [];
   buildGround();
-  state = 'play'; save.runs++; store();
+  state = 'play';
+  if (snap) {
+    Object.assign(run, { wave: snap.wave, kills: snap.kills, coins: snap.coins, time: snap.time, rerolls: snap.rerolls, revive: snap.revive, endless: snap.endless });
+    P.weapons = []; snap.weapons.forEach(([id, lv]) => { if (WEAPONS[id]) { addWeapon(id); P.weapons[P.weapons.length - 1].lv = lv; } });
+    P.passives = {}; Object.entries(snap.passives || {}).forEach(([id, lv]) => { if (PASSIVES[id]) P.passives[id] = lv; });
+    recalc(); P.hp = Math.max(1, Math.min(P.maxHp, snap.hp));
+    run.phase = 'ready'; run.phaseT = 3;
+    banner = { title: 'RUN RESTORED', sub: `WAVE ${run.wave + 1} IN...`, t: 0, col: '#8aff6a', dur: 3, count: true };
+    Sound.playSong(run.wave + 1 > 20 ? SONGS.zfight3 : run.wave + 1 > 10 ? SONGS.zfight2 : SONGS.zfight1);
+    return;
+  }
+  save.runs++; store();
   openPick();
 }
 function addWeapon(id) { P.weapons.push({ id, lv: 1, cd: 0.5, st: {} }); }
@@ -272,6 +294,7 @@ function recalc() {
 
 // ------------------------------------------------------------ waves
 function beginWave() {
+  saveRun();
   run.wave++; run.killedWave = 0;
   const n = run.wave;
   run.quota = run.endless ? Math.round(waveQuota(Math.min(n, 40)) * (1 + (n - 30) * 0.03)) : waveQuota(n);
@@ -495,7 +518,7 @@ function hurtPlayer(d, src = '?') {
   }
 }
 function die() {
-  P.hp = 0; state = 'dead'; endT = 0; toastQ = []; bankCoins();
+  P.hp = 0; state = 'dead'; endT = 0; toastQ = []; clearRunSave(); bankCoins();
   Sound.playSong(SONGS.zlose); SND.death();
   for (let k = 0; k < 60; k++) parts.push({ x: P.x, y: P.y - 6, vx: rand(-90, 90), vy: rand(-120, 20), life: rand(0.5, 1.2), t: 0, col: pick(['#c83a3a', '#8a1a1a', '#2a6ad0']), s: 2, g: 200 });
 }
@@ -1059,7 +1082,9 @@ function drawTitle() {
   if (button('shop', W / 2 + 5, 384, 165, 70, '', { color: '#5a4a1a', draw: (X, Y) => { ctx.drawImage(sprite('coin').n, X + 14, Y + 18, 30, 30); text('SHOP', X + 105, Y + 16, 8, '#ffe8a0', 'center'); text(fmt(save.coins), X + 105, Y + 36, 12, '#ffd65a', 'center'); } })) state = 'shop';
   if (button('mus', W / 2 - 170, 472, 165, 44, Sound.musicOn ? 'MUSIC ON' : 'MUSIC OFF', { color: '#2a2a2a', size: 8 })) Sound.setMusic(!Sound.musicOn);
   if (button('sfx', W / 2 + 5, 472, 165, 44, Sound.sfxOn ? 'SFX ON' : 'SFX OFF', { color: '#2a2a2a', size: 8 })) Sound.setSfx(!Sound.sfxOn);
-  if (save.best) text(`BEST WAVE: ${save.best}    MOST KILLS: ${fmt(save.bestKills)}`, W / 2, 548, 8, '#ffe680', 'center');
+  const rs = loadRunSave();
+  if (rs) { const rc = charDef(rs.char); if (button('cont', W / 2 - 170, 534, 340, 56, `CONTINUE: ${rc.name} WAVE ${rs.wave + 1}`, { color: '#2a5a7a', size: 12 })) continueRun(); }
+  if (save.best) text(`BEST WAVE: ${save.best}    MOST KILLS: ${fmt(save.bestKills)}`, W / 2, rs ? 604 : 548, 8, '#ffe680', 'center');
   text('WASD / ARROWS move  -  weapons fire on their own  -  pick 1 of 3 upgrades after each wave', W / 2, 640, 8, '#8a9a8a', 'center');
   text('Picking something you already have levels it up (max 5 = super version)', W / 2, 662, 8, '#8a9a8a', 'center');
 }
@@ -1164,7 +1189,7 @@ function drawEnd(won) {
   }
 }
 function win() {
-  toastQ = []; state = 'win'; endT = 0; addCoins(500); bankCoins(); Sound.playSong(SONGS.zwin); SND.pick(true);
+  toastQ = []; clearRunSave(); state = 'win'; endT = 0; addCoins(500); bankCoins(); Sound.playSong(SONGS.zwin); SND.pick(true);
   if (!save.won) { save.won = 1; store(); }
 }
 function drawPause() {
@@ -1173,7 +1198,9 @@ function drawPause() {
   text('PAUSED', W / 2, 186, 32, '#8aff6a', 'center');
   text(`Wave ${run.wave}  -  ${fmt(run.kills)} kills  -  ${fmt(run.coins)} coins`, W / 2, 236, 8, '#a8b8a8', 'center');
   if (button('res', W / 2 - 180, 280, 360, 64, 'RESUME', { color: '#2a6a1a' })) resume();
-  if (button('quit', W / 2 - 180, 364, 360, 56, 'GIVE UP (KEEP COINS)', { color: '#6a2a1a', size: 12 })) { bankCoins(); goTitle(); }
+  if (button('saveq', W / 2 - 180, 364, 175, 56, 'SAVE & QUIT', { color: '#2a4a6a', size: 8 })) goTitle();
+  if (button('quit', W / 2 + 5, 364, 175, 56, 'GIVE UP', { color: '#6a2a1a', size: 8 })) { bankCoins(); clearRunSave(); goTitle(); }
+  text('Save & quit: continue from the start of this wave', W / 2, 428, 8, '#8a9a8a', 'center');
   if (button('mus', W / 2 - 180, 446, 175, 44, Sound.musicOn ? 'MUSIC ON' : 'MUSIC OFF', { color: '#2a2a2a', size: 8 })) Sound.setMusic(!Sound.musicOn);
   if (button('sfx', W / 2 + 5, 446, 175, 44, Sound.sfxOn ? 'SFX ON' : 'SFX OFF', { color: '#2a2a2a', size: 8 })) Sound.setSfx(!Sound.sfxOn);
   text('ESC / P to resume', W / 2, 520, 8, '#6a7a6a', 'center');
@@ -1244,7 +1271,7 @@ fontReady.then(() => { state = 'title'; Sound.playSong(SONGS.zmenu); requestAnim
 
 window.__zb = {
   get eb() { return ebullets; }, get tele() { return tele; }, get boss() { return run && run.boss; }, get pk() { return pickups.map(p => [p.kind, Math.round(p.x), Math.round(p.y), p.pull, p.v]).slice(0, 6); }, get state() { return state; }, get run() { return run; }, get P() { return P; }, get zs() { return zs; },
-  start: startRun, choose, deal: dealCards, get cards() { return cards; }, save: () => save, recalc,
+  start: startRun, continueRun, choose, deal: dealCards, get cards() { return cards; }, save: () => save, recalc,
   setWave(n) { run.wave = n - 1; run.phase = 'ready'; run.phaseT = 0.1; }, sim(dt, n) { for (let k = 0; k < n; k++) { if (state === 'pick') return 'pick'; if (state !== 'play') return state; update(dt); updateFx(dt); } return state; },
   setLv(kind, id, lv) { if (kind === 'weapon') { let w = P.weapons.find(x => x.id === id); if (!w) { addWeapon(id); w = P.weapons[P.weapons.length - 1]; } w.lv = lv; } else P.passives[id] = lv; recalc(); },
 };
