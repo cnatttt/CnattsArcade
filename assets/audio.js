@@ -1,5 +1,5 @@
 // =====================================================================
-//  Chiptune audio engine - music + sound effects, all synthesized live
+//  Audio engine - music + sound effects, all synthesized live
 //  (no sound files needed). Shared by the arcade menu and the games.
 //  Mute settings are shared across the whole site.
 // =====================================================================
@@ -196,7 +196,7 @@ const Sound = (() => {
       }
       return m;
     }
-    const mA = motif(def.density || 0.8, 7), mB = motif((def.density || 0.8) * 0.9, 9), mC = motif((def.density || 0.8) * 1.1, 11);
+    const dn = (def.density || 0.8) * 0.8, mA = motif(dn, 7), mB = motif(dn * 0.9, 9), mC = motif(dn * 1.1, 11);
     const form = def.form || ['A', 'A', 'B', 'A'];
     const events = []; // {step, kind, midi, len}
     let bar0 = 0;
@@ -210,7 +210,7 @@ const Sound = (() => {
         const bp = def.bass || 'x.......x.......';
         for (let s = 0; s < 16; s++) if (bp[s] === 'x' || bp[s] === 'o') events.push({ step: base + s, kind: 'bass', midi: deg(chordDeg + (bp[s] === 'o' ? 4 : 0), -2), len: def.bassLen || 3 });
         // pad
-        if (def.pad) chord.forEach(m => events.push({ step: base, kind: 'pad', midi: m - 12 + (def.padOct || 0) * 12, len: 16 }));
+        if (def.pad) [...chord, deg(chordDeg + 6)].forEach(m => events.push({ step: base, kind: 'pad', midi: m - 12 + (def.padOct || 0) * 12, len: 16 }));
         // arp
         if (def.arp && !(si === 0 && def.introNoArp)) {
           const pattern = def.arpPattern || [0, 1, 2, 1];
@@ -241,17 +241,44 @@ const Sound = (() => {
     return { def, byStep, total: bar0 * steps, stepDur: 60 / def.bpm / 4 };
   }
 
+  // ------------------------------------------------------------ clean instruments
+  // soft electric-piano lead, bell plucks, warm detuned pad, round bass and gentle drums
+  function synth(t, freq, dur, o) {
+    const g = ctx.createGain(), f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = o.q || 0.6;
+    f.frequency.setValueAtTime(o.cut, t);
+    if (o.cutEnd) f.frequency.exponentialRampToValueAtTime(o.cutEnd, t + (o.cutTime || 0.6));
+    const end = t + dur;
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(o.vol, t + o.att);
+    if (o.decay) g.gain.setTargetAtTime(Math.max(0.0001, o.vol * (o.sus ?? 0)), t + o.att, o.decay);
+    g.gain.setTargetAtTime(0.0001, Math.max(end, t + o.att + 0.01), o.rel / 4);
+    for (const [type, mult, det, lv] of o.oscs) {
+      const osc = ctx.createOscillator(), og = ctx.createGain();
+      osc.type = type; osc.frequency.value = freq * mult; osc.detune.value = det; og.gain.value = lv;
+      osc.connect(og); og.connect(f); osc.start(t); osc.stop(end + o.rel + 0.1);
+    }
+    f.connect(g); g.connect(musicBus);
+    if (o.verb && reverbSend) { const s = ctx.createGain(); s.gain.value = o.verb; g.connect(s); s.connect(reverbSend); }
+    if (o.echo && echo) { const s = ctx.createGain(); s.gain.value = o.echo; g.connect(s); s.connect(echo); }
+  }
   function voice(e, t, def, stepDur) {
-    const d = (e.len || 1) * stepDur;
-    const I = def.inst || {};
+    const d = (e.len || 1) * stepDur, I = def.inst || {}, hv = 0.85 + Math.random() * 0.3, dv = I.drumVol ?? 1;
+    const f = e.midi != null ? mtof(e.midi) : 0, L = I.lead || {};
     switch (e.kind) {
-      case 'lead': tone(t, mtof(e.midi), d * 0.9, Object.assign({ type: 'square', vol: 0.09, vib: 0.006, release: 0.08, lp: 3500, verb: 0.25, dest: musicBus }, I.lead)); break;
-      case 'bass': tone(t, mtof(e.midi), d * 0.8, Object.assign({ type: 'triangle', vol: 0.22, release: 0.05, dest: musicBus }, I.bass)); break;
-      case 'arp':  tone(t, mtof(e.midi), d * 0.8, Object.assign({ type: 'square', vol: 0.035, release: 0.04, lp: 2500, dest: musicBus, verb: 0.2 }, I.arp)); break;
-      case 'pad':  tone(t, mtof(e.midi), d, Object.assign({ type: 'triangle', vol: 0.04, attack: 0.4, release: 0.6, sustain: 0.9, dest: musicBus, verb: 0.5 }, I.pad)); break;
-      case 'kick': tone(t, 150, 0.08, { type: 'sine', vol: 0.4 * (I.drumVol ?? 1), slide: 45, slideTime: 0.08, release: 0.04, dest: musicBus }); break;
-      case 'snare': noise(t, 0.12, { freq: 1800, vol: 0.12 * (I.drumVol ?? 1), dest: musicBus, verb: 0.2 }); tone(t, 220, 0.04, { type: 'triangle', vol: 0.08 * (I.drumVol ?? 1), dest: musicBus }); break;
-      case 'hat': noise(t, 0.03, { freq: 8000, vol: 0.05 * (I.drumVol ?? 1), dest: musicBus }); break;
+      case 'lead': synth(t + Math.random() * 0.006, f, Math.max(d * 0.95, 0.12), { oscs: [['triangle', 1, -5, 0.7], ['sine', 1, 6, 0.6], ['sine', 2, 0, 0.1]], cut: 3400, cutEnd: 1300, cutTime: 0.45,
+        vol: 0.1 * hv * (L.vol ? Math.min(1.6, L.vol / 0.09) : 1), att: 0.008, decay: 0.38, sus: 0.32, rel: 0.4, verb: 0.32, echo: L.echo != null ? L.echo * 0.6 : 0.1 }); break;
+      case 'arp': synth(t, f, d, { oscs: [['sine', 1, 0, 0.85], ['sine', 3, 0, 0.07]], cut: 4200, vol: 0.05 * hv, att: 0.004, decay: 0.14, sus: 0, rel: 0.3, verb: 0.4, echo: 0.18 }); break;
+      case 'pad': synth(t, f, d, { oscs: [['sawtooth', 1, -10, 0.3], ['sawtooth', 1, 10, 0.3], ['triangle', 0.5, 0, 0.45]], cut: 950, q: 0.4, vol: 0.022, att: 0.7, rel: 1.4, verb: 0.6 }); break;
+      case 'bass': synth(t, f, Math.max(d * 0.85, 0.1), { oscs: [['sine', 1, 0, 0.95], ['triangle', 1, 0, 0.3]], cut: 650, vol: 0.2, att: 0.012, decay: 0.45, sus: 0.55, rel: 0.12 }); break;
+      case 'kick': {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'sine'; o.frequency.setValueAtTime(115, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.12);
+        g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.42 * dv, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+        o.connect(g); g.connect(musicBus); o.start(t); o.stop(t + 0.35);
+        noise(t, 0.012, { filter: 'lowpass', freq: 2500, vol: 0.05 * dv, dest: musicBus });
+        break;
+      }
+      case 'snare': noise(t, 0.16, { filter: 'bandpass', freq: 2100, q: 0.7, vol: 0.075 * dv * hv, dest: musicBus, verb: 0.35 }); tone(t, 190, 0.03, { type: 'sine', vol: 0.05 * dv, release: 0.05, dest: musicBus }); break;
+      case 'hat': noise(t, 0.02 + Math.random() * 0.02, { freq: 9000, vol: 0.022 * dv * hv, dest: musicBus }); break;
     }
   }
 
@@ -314,10 +341,11 @@ const Sound = (() => {
 
 // --------------------------------------------------------------- song book
 const SONGS = {
-  arcade: { seed: 7, bpm: 128, root: 60, scale: 'major', prog: [0, 5, 3, 4, 0, 5, 3, 4], density: 0.95,
-    bass: 'x..x..x.x..x..x.', kick: 'x...x...x...x...', snare: '....x.......x...', hat: '..x...x...x...x.',
-    arp: true, arpRate: 2, arpPattern: [0, 1, 2, 1], form: ['A', 'B', 'A', 'C'],
-    inst: { lead: { type: 'square', vol: 0.08 } } },
+  // arcade menu: chill, warm and clean
+  arcade: { seed: 12, bpm: 88, root: 57, scale: 'dorian', prog: [0, 5, 2, 6, 0, 5, 3, 4], density: 0.55, swing: 0.12,
+    bass: 'x.....x...x.....', kick: 'x.....x...x.....', snare: '....x.......x...', hat: '..x...x...x...x.',
+    pad: true, arp: true, arpRate: 2, arpOct: 1, arpPattern: [0, 1, 2, 1, 2, 0], introNoLead: true, introNoDrums: true, form: ['A', 'A', 'B', 'A'],
+    inst: { drumVol: 0.8 } },
   moonlit: { seed: 11, bpm: 76, root: 57, scale: 'dorian', prog: [0, 3, 5, 4, 0, 3, 1, 4], density: 0.55, swing: 0.12,
     bass: 'x.......x...o...', kick: 'x.......x.......', hat: '....x.......x..x', snare: '........x.......',
     pad: true, arp: true, arpRate: 4, arpOct: 1, introNoLead: true, introNoDrums: true,

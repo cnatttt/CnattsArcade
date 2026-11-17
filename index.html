@@ -24,9 +24,15 @@
   html, body { margin: 0; min-height: 100%; }
   body { background: var(--bg); color: var(--text); font: 15px/1.5 var(--ui); overflow-x: hidden; -webkit-font-smoothing: antialiased; }
   button { font-family: inherit; }
-  /* soft color wash that follows the featured game */
-  #glow { position: fixed; inset: 0 0 auto 0; height: 760px; z-index: 0; pointer-events: none; transition: background 1.2s;
-    background: radial-gradient(60% 70% at 30% 0%, color-mix(in srgb, var(--hero-accent) 22%, transparent), transparent 70%), radial-gradient(40% 50% at 85% 10%, color-mix(in srgb, var(--hero-accent) 12%, transparent), transparent 70%); }
+  /* animated aurora + dot grid that lights up around the mouse + film grain */
+  #aurora { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+  #dotgrid { position: fixed; inset: 0; z-index: 0; pointer-events: none; --mx: 50%; --my: 30%;
+    background-image: radial-gradient(#ffffff 1px, transparent 1.4px); background-size: 26px 26px; opacity: .07;
+    -webkit-mask-image: radial-gradient(420px circle at var(--mx) var(--my), #000, transparent 70%), linear-gradient(#0008, transparent 70%);
+    mask-image: radial-gradient(420px circle at var(--mx) var(--my), #000, transparent 70%), linear-gradient(#0008, transparent 70%); }
+  #grain { position: fixed; inset: -50%; z-index: 0; pointer-events: none; opacity: .06; animation: grain 1s steps(4) infinite;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+  @keyframes grain { 0% { transform: translate(0, 0); } 25% { transform: translate(-3%, 2%); } 50% { transform: translate(2%, -3%); } 75% { transform: translate(-2%, -1%); } }
 
   /* ---------------- top bar ---------------- */
   #nav { position: sticky; top: 0; z-index: 25; display: flex; align-items: center; gap: 12px; padding: 12px clamp(16px, 3vw, 40px);
@@ -55,7 +61,12 @@
 
   /* ---------------- hero ---------------- */
   #heroWrap { display: grid; grid-template-columns: 1fr 300px; gap: 16px; margin: 28px 0 26px; }
-  #hero { position: relative; min-height: 440px; border-radius: 20px; overflow: hidden; background: #000; isolation: isolate; }
+  #hero { position: relative; min-height: 440px; border-radius: 20px; overflow: hidden; background: #000; isolation: isolate; box-shadow: 0 30px 80px -20px #000, 0 0 0 1px var(--line); }
+  #hero::after { content: ''; position: absolute; inset: 0; z-index: 3; border-radius: 20px; pointer-events: none; padding: 1px;
+    background: radial-gradient(500px circle at var(--hx, 50%) var(--hy, 50%), color-mix(in srgb, var(--hero-accent) 90%, white), transparent 45%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; opacity: 0; transition: opacity .3s; }
+  #hero:hover::after { opacity: 1; }
+  .slide .bgimg { translate: calc(var(--px, 0) * -14px) calc(var(--py, 0) * -10px); }
   .slide { position: absolute; inset: 0; display: flex; align-items: flex-end; padding: clamp(24px, 4vw, 48px); opacity: 0; transition: opacity .8s; pointer-events: none; }
   .slide.on { opacity: 1; pointer-events: auto; }
   .slide .bgimg { position: absolute; top: 0; bottom: 0; right: 0; left: 36%; z-index: -2; background: center / cover; -webkit-mask-image: linear-gradient(90deg, transparent, #000 40%); mask-image: linear-gradient(90deg, transparent, #000 40%); transform: scale(1.06); transition: transform 7s linear; }
@@ -129,6 +140,10 @@
   .card:hover .thumb, .card:focus-visible .thumb { transform: translateY(-4px); box-shadow: 0 0 0 1px var(--line2), 0 18px 40px #000a, 0 8px 40px color-mix(in srgb, var(--accent) 25%, transparent); }
   .card .thumb i { position: absolute; inset: 0; background: center / cover; transition: transform .5s cubic-bezier(.2,.8,.3,1); }
   .card:hover .thumb i { transform: scale(1.05); }
+  .card .thumb::before { content: ''; position: absolute; inset: 0; z-index: 3; border-radius: 16px; pointer-events: none; padding: 1px; opacity: 0; transition: opacity .3s;
+    background: radial-gradient(240px circle at var(--mx, 50%) var(--my, 0%), color-mix(in srgb, var(--accent) 90%, white), transparent 60%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
+  .card:hover .thumb::before { opacity: 1; }
   .card .thumb::after { content: ''; position: absolute; inset: 0; background: linear-gradient(0deg, #00000080, transparent 45%); opacity: 0; transition: opacity .3s; }
   .card:hover .thumb::after { opacity: 1; }
   .card .tl { position: absolute; top: 10px; left: 10px; right: 10px; z-index: 2; display: flex; gap: 6px; flex-wrap: wrap; }
@@ -220,7 +235,7 @@
 </style>
 </head>
 <body>
-<div id="glow"></div>
+<canvas id="aurora"></canvas><div id="dotgrid"></div><div id="grain"></div>
 
 <nav id="nav">
   <a class="brand" id="brand" title="Home"><img src="assets/icon.svg" alt=""><span id="siteTitle">CNATT'S ARCADE</span></a>
@@ -490,6 +505,46 @@
   }
 
   const bg = { run: true };
+  // ---------------- background: slow aurora blobs that pick up the featured game's colour
+  (function () {
+    const cv = $('aurora'), x = cv.getContext('2d'); let W, H;
+    const resize = () => { W = cv.width = Math.ceil(innerWidth / 4); H = cv.height = Math.ceil(innerHeight / 4); };   // drawn small, scaled up = free blur
+    resize(); addEventListener('resize', resize);
+    const blobs = [{ c: 'accent', x: .25, y: .1, r: .55, sx: .07, sy: .05, p: 0 }, { c: '#7c3aed', x: .8, y: .15, r: .5, sx: .05, sy: .08, p: 2 },
+      { c: '#0ea5e9', x: .55, y: .55, r: .45, sx: .06, sy: .04, p: 4 }, { c: '#db2777', x: .1, y: .7, r: .4, sx: .04, sy: .06, p: 1 }];
+    let acc = '#8b5cf6', accT = acc;
+    const rgb = h => { h = h.replace('#', ''); if (h.length === 3) h = [...h].map(c => c + c).join(''); return [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16)); };
+    let cur = rgb(acc);
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    function draw(t) {
+      requestAnimationFrame(draw);
+      if (!bg.run || document.hidden) return;
+      t = reduce ? 0 : t / 1000;
+      accT = getComputedStyle(document.documentElement).getPropertyValue('--hero-accent').trim() || accT;
+      const tgt = rgb(accT); cur = cur.map((v, i) => v + (tgt[i] - v) * 0.02);
+      const sy = Math.min(1, scrollY / 900);
+      x.clearRect(0, 0, W, H); x.globalCompositeOperation = 'lighter';
+      for (const b of blobs) {
+        const bx = (b.x + Math.sin(t * b.sx + b.p) * 0.12) * W, by = (b.y + Math.cos(t * b.sy + b.p) * 0.1 - sy * 0.25) * H, r = b.r * Math.max(W, H);
+        const [cr, cg, cb] = b.c === 'accent' ? cur : rgb(b.c);
+        const g = x.createRadialGradient(bx, by, 0, bx, by, r);
+        const a = (b.c === 'accent' ? 0.5 : 0.26) * (1 - sy * 0.45);
+        g.addColorStop(0, `rgba(${cr|0},${cg|0},${cb|0},${a})`); g.addColorStop(1, 'rgba(0,0,0,0)');
+        x.fillStyle = g; x.fillRect(0, 0, W, H);
+      }
+      x.globalCompositeOperation = 'source-over';
+    }
+    requestAnimationFrame(draw);
+    // mouse: dot grid spotlight, hero light border + parallax, card border spotlight
+    addEventListener('pointermove', e => {
+      const dg = $('dotgrid').style; dg.setProperty('--mx', e.clientX + 'px'); dg.setProperty('--my', e.clientY + 'px');
+      const h = $('hero'), r = h.getBoundingClientRect();
+      h.style.setProperty('--hx', (e.clientX - r.left) + 'px'); h.style.setProperty('--hy', (e.clientY - r.top) + 'px');
+      if (e.clientY < r.bottom + 40) { h.style.setProperty('--px', ((e.clientX - r.left) / r.width - 0.5).toFixed(3)); h.style.setProperty('--py', ((e.clientY - r.top) / r.height - 0.5).toFixed(3)); }
+      const c = e.target.closest && e.target.closest('.card');
+      if (c) { const cr = c.querySelector('.thumb').getBoundingClientRect(); c.style.setProperty('--mx', (e.clientX - cr.left) + 'px'); c.style.setProperty('--my', (e.clientY - cr.top) + 'px'); }
+    }, { passive: true });
+  })();
 
   window.addEventListener('hashchange', route);
   route();
