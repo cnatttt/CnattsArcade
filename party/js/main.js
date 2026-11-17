@@ -59,7 +59,12 @@ function newS(mode, players) {
 }
 function startMatch(mode, gameId) {
   const players = net.role ? [{ name: save.players[0].name, look: save.players[0].look }, net.guest || { name: 'Guest', look: { col: COLORS[1], face: 'happy' } }] : [save.players[0], save.cpu >= 0 ? { name: ['CPU (EASY)', 'CPU', 'CPU (HARD)'][save.cpu], look: { col: save.players[1].look.col === save.players[0].look.col ? COLORS[5] : save.players[1].look.col, face: 'angry' } } : save.players[1]];
-  S = newS(mode, JSON.parse(JSON.stringify(players)));
+  const pl = JSON.parse(JSON.stringify(players));
+  if (net.role) { // online: both players may still have the default look, so make sure they differ
+    if (pl[1].look.col === pl[0].look.col) pl[1].look.col = COLORS.find(c => c !== pl[0].look.col && c !== COLORS[0]);
+    if (pl[1].name === pl[0].name) pl[1].name = pl[1].name === 'Player 1' ? 'Player 2' : pl[1].name.slice(0, 10) + ' 2';
+  }
+  S = newS(mode, pl);
   if (mode === 'party') { S.order = GAME_IDS.slice().sort(() => Math.random() - 0.5); S.target = net.role ? net.cfg.target : save.target; }
   S.freeGame = gameId || null;
   lastEv = 0; fx = []; floats = [];
@@ -179,10 +184,15 @@ function topBar() {
     const p = S.players[i], L = i === 0;
     drawBlob(L ? 46 : W - 46, 40, 26, p.look, { ang: L ? 0 : Math.PI, shadow: false });
     txt(p.name, L ? 86 : W - 86, 12, 26, p.look.col, L ? 'left' : 'right');
+    if (net.role && i === (net.role === 'client' ? 1 : 0)) { const nw = (ctx.font = `700 26px ${FONT}`, ctx.measureText(p.name).width); rr(L ? 96 + nw : W - 96 - nw - 54, 14, 54, 24, 8); ctx.fillStyle = '#ffffff'; ctx.fill(); txt('YOU', L ? 123 + nw : W - 123 - nw, 16, 16, '#14102a', 'center', { stroke: 0 }); }
     if (S.mode === 'party') for (let k = 0; k < S.target; k++) { const x = L ? 96 + k * 26 : W - 96 - k * 26; crown(x, 58, 0.5, k < S.crowns[i]); }
   }
   txt(GAMES[S.game].name, W / 2, 10, 30, GAMES[S.game].col, 'center');
   if (S.gs && S.gs.target > 1) drawScorePips(S.gs, S);
+  if (net.role) {
+    const pg = NetTransport.status.ping, stale = net.role === 'client' && net.lastRx && performance.now() - net.lastRx > 1500;
+    txt(stale ? 'WAITING FOR HOST...' : (pg ? `ONLINE  ${pg} ms` : 'ONLINE'), W / 2, 46, 14, stale ? '#ff8a8a' : pg > 150 ? '#ffcc55' : '#7aff9a', 'center', { stroke: 0 });
+  }
 }
 function crown(x, y, s, on) {
   ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
@@ -394,12 +404,17 @@ function hostRoom() {
 function joinRoom(code) {
   netReset(); net.role = 'client'; net.code = code.toUpperCase(); net.screen = 'connecting'; net.error = '';
   net.tr = NetTransport.join(net.code, {
-    ready: id => { net.myId = id; netSend('host', { t: 'hello', name: save.players[0].name, look: save.players[0].look }); },
+    ready: id => {
+      net.myId = id; net.joinedAt = performance.now();
+      const hello = () => netSend('host', { t: 'hello', name: save.players[0].name, look: save.players[0].look });
+      hello(); let n = 0; const tr = net.tr;
+      const iv = setInterval(() => { if (net.tr !== tr || net.screen === 'lobby' || ++n > 10) { clearInterval(iv); if (net.tr === tr && net.screen !== 'lobby') netLost('The room did not answer. Try again.'); return; } hello(); }, 1500);
+    },
     join: () => {},
     leave: () => netLost('The host left the room'),
     msg: (from, d) => {
       if (d.t === 'lobby') { net.cfg = d.cfg; net.hostP = d.host; net.guest = d.guest; net.screen = 'lobby'; if (ui !== 'game' && ui !== 'online') go('online'); }
-      else if (d.t === 'S') { net.prev = net.cur; net.cur = d.S; net.curT = performance.now(); if (!S || ui !== 'game') { lastEv = d.S.evN; fx = []; floats = []; ui = 'game'; paused = false; Sound.playSong(SONGS.pplay); } }
+      else if (d.t === 'S') { net.lastRx = performance.now(); net.prev = net.cur; net.cur = d.S; net.curT = performance.now(); if (!S || ui !== 'game') { lastEv = d.S.evN; fx = []; floats = []; ui = 'game'; paused = false; Sound.playSong(SONGS.pplay); } }
       else if (d.t === 'lobbyback') { go('online'); net.screen = 'lobby'; S = null; net.cur = net.prev = null; }
       else if (d.t === 'full') netLost('That room already has 2 players');
       else if (d.t === 'closed') netLost('The host closed the room');
@@ -446,6 +461,7 @@ function drawOnline() {
   if (net.screen === 'connecting') {
     panel(W / 2 - 300, 260, 600, 200);
     txt(net.role === 'host' ? 'Creating room...' : `Joining ${net.code}...`, W / 2, 300, 34, '#ffffff', 'center');
+    txt(NetTransport.status.text || 'Connecting...', W / 2, 346, 16, '#9a92d0', 'center', { stroke: 0 });
     if (button('cc', W / 2 - 100, 380, 200, 56, 'CANCEL', { color: '#8a2a3a', size: 22, sfx: 'back' })) { netReset(); net.screen = 'menu'; }
     return;
   }
@@ -477,12 +493,9 @@ function drawOnline() {
 }
 
 // ------------------------------------------------------------ main loop
-let last = 0, cpuPrevA = [false, false];
-function frame(now) {
-  const dt = Math.min(0.05, (now - last) / 1000 || 0); last = now; t += dt;
-  UI.hover = null;
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  if (ui === 'game' && S && (net.role !== 'client')) {
+function hostTick(dt) {
+  if (!(ui === 'game' && S && net.role !== 'client')) return;
+  {
     // host / offline: run the match
     const inp = [localInput(0, !!net.role), net.role ? net.remote : localInput(1, false)];
     if (!net.role && save.cpu >= 0 && S.cpu >= 0) {
@@ -494,6 +507,16 @@ function frame(now) {
     if (!paused || net.role) stepMatch(dt, inp);
     if (net.role === 'host') { net.sendT += dt; if (net.sendT >= 1 / 30) { net.sendT = 0; netBroadcast({ t: 'S', S: serialize(S) }); } }
   }
+}
+// the host's game keeps running (and sending) even if its tab is in the background
+NetTransport.backgroundTicker(dt => { if (net.role === 'host') { t += dt; hostTick(dt); } });
+let last = 0, cpuPrevA = [false, false];
+function frame(now) {
+  NetTransport.frame();
+  const dt = Math.min(0.05, (now - last) / 1000 || 0); last = now; t += dt;
+  UI.hover = null;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  hostTick(dt);
   if (ui === 'game' && net.role === 'client' && net.cur) {
     // guest: show the host's game, blended between snapshots
     const u = net.prev ? clamp((performance.now() - net.curT) / 33, 0, 1) : 1;

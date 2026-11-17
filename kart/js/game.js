@@ -559,7 +559,12 @@ function joinRoom(code) {
   netReset();
   net.role = 'client'; net.code = code.toUpperCase(); net.screen = 'connecting'; net.error = '';
   net.tr = NetTransport.join(net.code, {
-    ready: id => { net.myId = id; netSend('host', { t: 'hello', name: SET().name, racer: save.p1 }); },
+    ready: id => {
+      net.myId = id;
+      const hello = () => netSend('host', { t: 'hello', name: SET().name, racer: save.p1 });
+      hello(); let n = 0; const tr = net.tr;
+      const iv = setInterval(() => { if (net.tr !== tr || net.screen === 'lobby' || ++n > 10) { clearInterval(iv); if (net.tr === tr && net.screen !== 'lobby') netLost('The room did not answer. Try again.'); return; } hello(); }, 1500);
+    },
     join: () => {},
     leave: () => netLost('The host left the room'),
     msg: (from, d) => clientMsg(d),
@@ -1074,7 +1079,7 @@ function drawOnline() {
   if (net.screen === 'connecting') {
     panel(W / 2 - 300, 260, 600, 200);
     txt(net.role === 'host' ? 'Creating room...' : `Joining room ${net.code}...`, W / 2, 300, 28, '#ffffff', 'center');
-    txt('Connecting to the online service', W / 2, 346, 16, '#9aa2c0', 'center');
+    txt(NetTransport.status.text || 'Connecting to the online service', W / 2, 346, 16, '#9aa2c0', 'center');
     if (button('ccancel', W / 2 - 100, 390, 200, 50, 'CANCEL', { color: '#3a3f58', size: 20, sfx: 'back' })) { netReset(); net.screen = 'menu'; }
     return;
   }
@@ -1341,6 +1346,7 @@ const SND = {
 // ------------------------------------------------------------ main loop
 let last = 0, fpsN = 0, fpsT = 0, fpsV = 0;
 function frame(now) {
+  NetTransport.frame();
   const dt = Math.min(0.05, (now - last) / 1000 || 0); last = now; t += dt;
   UI.hover = null;
   ctx.clearRect(0, 0, W, H);
@@ -1352,7 +1358,7 @@ function frame(now) {
     views.forEach((v, i) => drawHUD(v, CAMS[i].k));
     if (race.humans === 2) { ctx.fillStyle = '#0a0a14'; ctx.fillRect(0, H / 2 - 3, W, 6); if (SET().minimap) drawMinimap(W - 170, H / 2 - 80, 160); }
     else if (SET().minimap) drawMinimap(30, H - 270, 200);
-    if (race.online) drawNames(views[0], CAMS[0]);
+    if (race.online) { drawNames(views[0], CAMS[0]); const pg = NetTransport.status.ping; txt(pg ? `ONLINE ${pg} ms` : 'ONLINE', W / 2, H - 26, 14, pg > 150 ? '#ffcc55' : '#7aff9a', 'center', { stroke: 3 }); }
     if (race.online && race.menu) drawOnlineMenu();
     if (flash > 0) { ctx.fillStyle = `rgba(200,230,255,${flash * 0.5})`; ctx.fillRect(0, 0, W, H); }
     if (touch.used && race.humans === 1) { ctx.globalAlpha = 0.35; rr(W - 290, H - 160, 130, 130, 20); ctx.fillStyle = '#ffffff'; ctx.fill(); rr(W - 145, H - 160, 130, 130, 20); ctx.fill(); ctx.globalAlpha = 1; txt('DRIFT', W - 225, H - 106, 20, '#000', 'center', { shadow: false }); txt('ITEM', W - 80, H - 106, 20, '#000', 'center', { shadow: false }); }
@@ -1389,6 +1395,8 @@ function frame(now) {
   for (const k in pressed) delete pressed[k];
   requestAnimationFrame(frame);
 }
+// keep online races running (and sending) while the tab is in the background
+NetTransport.backgroundTicker(dt => { if (state === 'race' && race && race.online) { t += dt; updateRace(dt); } });
 const fontReady = document.fonts ? Promise.race([document.fonts.load(`24px ${FONT}`), new Promise(r => setTimeout(r, 2500))]) : Promise.resolve();
 fontReady.then(() => { applySettings(); go('title'); requestAnimationFrame(n => { last = n; frame(n); }); });
 
