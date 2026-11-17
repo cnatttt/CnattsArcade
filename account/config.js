@@ -5,6 +5,6 @@
 //  database rules in setup.sql keep everyone's data safe.)
 // =====================================================================
 window.ACCOUNT_CONFIG = {
-  url: '',
-  anonKey: '',
+  url: 'https://unhybjlbvgujhmhjnapz.supabase.co',
+  anonKey: 'sb_publishable_PYCW_A8vqFcOovlSjU6xeQ_xpMURAMv',
 };
