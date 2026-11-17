@@ -32,6 +32,8 @@ try { const d = JSON.parse(localStorage.getItem(SAVE_KEY)); if (d) save = Object
 save.set = Object.assign({}, DEFAULT_SET, save.set || {});
 save.binds = { p1: Object.assign({}, DEFAULT_BINDS.p1, (save.binds || {}).p1), p2: Object.assign({}, DEFAULT_BINDS.p2, (save.binds || {}).p2) };
 if (!save.set.name) save.set.name = 'Racer' + Math.floor(100 + Math.random() * 900);
+// signed-in arcade players race under their account name
+const myName = () => (window.Account && Account.user && Account.user.username) || SET().name;
 const SET = () => save.set;
 const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {} };
 
@@ -548,7 +550,7 @@ function hostRoom() {
   net.role = 'host'; net.myId = 'host'; net.screen = 'connecting'; net.error = '';
   net.code = Array.from({ length: 5 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
   net.tr = NetTransport.host(net.code, {
-    ready: () => { net.screen = 'lobby'; net.players = [{ id: 'host', name: SET().name, racer: save.p1 }]; netLobby(); },
+    ready: () => { net.screen = 'lobby'; net.players = [{ id: 'host', name: myName(), racer: save.p1 }]; netLobby(); },
     join: () => {},
     leave: id => netPlayerLeft(id),
     msg: (from, d) => hostMsg(from, d),
@@ -561,7 +563,7 @@ function joinRoom(code) {
   net.tr = NetTransport.join(net.code, {
     ready: id => {
       net.myId = id;
-      const hello = () => netSend('host', { t: 'hello', name: SET().name, racer: save.p1 });
+      const hello = () => netSend('host', { t: 'hello', name: myName(), racer: save.p1 });
       hello(); let n = 0; const tr = net.tr;
       const iv = setInterval(() => { if (net.tr !== tr || net.screen === 'lobby' || ++n > 10) { clearInterval(iv); if (net.tr === tr && net.screen !== 'lobby') netLost('The room did not answer. Try again.'); return; } hello(); }, 1500);
     },
@@ -1064,7 +1066,7 @@ function drawOnline() {
   if (net.screen === 'menu' || !net.role && net.screen !== 'connecting') {
     panel(70, 100, 560, 520);
     txt('YOUR NAME', 100, 124, 18, '#9aa2c0');
-    if (button('fname', 100, 150, 500, 56, SET().name + (net.field === 'name' && Math.sin(t * 8) > 0 ? '_' : ''), { color: net.field === 'name' ? '#3a4a78' : '#2a3048', size: 24, sfx: 'tab' })) net.field = 'name';
+    if (button('fname', 100, 150, 500, 56, myName() + (net.field === 'name' && Math.sin(t * 8) > 0 ? '_' : ''), { color: net.field === 'name' ? '#3a4a78' : '#2a3048', size: 24, sfx: 'tab' })) net.field = 'name';
     if (button('host', 100, 236, 500, 72, 'HOST A ROOM', { color: '#1ab8a8', size: 28 })) hostRoom();
     txt('OR JOIN WITH A ROOM CODE', 100, 330, 18, '#9aa2c0');
     if (button('fcode', 100, 356, 300, 64, (net.codeInput || (net.field === 'code' ? '' : 'CODE')) + (net.field === 'code' && Math.sin(t * 8) > 0 ? '_' : ''), { color: net.field === 'code' ? '#3a4a78' : '#2a3048', size: 32, sfx: 'tab' })) net.field = 'code';

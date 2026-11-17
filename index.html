@@ -153,6 +153,10 @@
 
 <script src="assets/audio.js"></script>
 <script src="games.js"></script>
+<script>window.ACCOUNT_HUB = true;</script>
+<script src="account/config.js"></script>
+<script src="account/account.js"></script>
+<script src="account/ui.js"></script>
 <script>
   const $ = id => document.getElementById(id);
   const menu = $('menu'), player = $('player'), frame = $('frame');
@@ -189,7 +193,8 @@
     const g = GAMES.find(x => x.id === id);
     if (!g) {
       player.classList.remove('open'); menu.style.display = '';
-      Sound.playSong(SONGS.arcade); $('sound').style.display = '';
+      Sound.playSong(SONGS.arcade); $('sound').style.display = ''; $('acctBtn').style.display = '';
+      if (Account.user) { Account.setPlaying(null); Account.flush(); }
       frame.src = 'about:blank';
       document.title = SITE.title.replace(/'S /, "'s ");
       return;
@@ -199,10 +204,13 @@
     $('tabBtn').href = url;
     document.title = g.title + ' | ' + SITE.title.replace(/'S /, "'s ");
     menu.style.display = 'none'; player.classList.add('open');
-    Sound.stopSong(); $('sound').style.display = 'none';
-    if (!frame.src.endsWith(url)) frame.src = url;
+    Sound.stopSong(); $('sound').style.display = 'none'; $('acctBtn').style.display = 'none';
+    Account.setPlaying(g.title);
+    // wait (briefly) for cloud saves to come down before the game reads them
+    if (!frame.src.endsWith(url)) Promise.race([Account.init().then(() => Account.firstSync), new Promise(r => setTimeout(r, 5000))]).then(() => { if (location.hash.slice(1) === g.id && !frame.src.endsWith(url)) frame.src = url; });
   }
   window.addEventListener('hashchange', route);
+  Account.init();
   route();
 
   frame.addEventListener('load', () => { try { frame.contentWindow.focus(); } catch (e) {} });

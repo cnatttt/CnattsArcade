@@ -12,6 +12,8 @@ Object.assign(SONGS, {
 
 // ------------------------------------------------------------ save
 const SAVE_KEY = 'cnatt_party';
+// signed-in arcade players play online under their account name
+const myName = () => (window.Account && Account.user && Account.user.username) || save.players[0].name;
 const COLORS = ['#3a9aff', '#ff4a6a', '#5ad84a', '#ffcc33', '#b06aff', '#ff8a2a', '#3ae8d8', '#ff6ad8', '#e8e8f0', '#5a5a6a'];
 const FACES = ['happy', 'angry', 'cool', 'cat', 'crown'];
 const DEF_BINDS = [{ up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', act: 'KeyF' }, { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', act: 'Enter' }];
@@ -58,7 +60,7 @@ function newS(mode, players) {
   return { scr: 'card', mode, game: null, gs: null, crowns: [0, 0], target: save.target, order: [], played: [], players, timer: 0, ev: [], evN: 0, online: !!net.role, winner: -1, spin: null, cpu: net.role ? -1 : save.cpu };
 }
 function startMatch(mode, gameId) {
-  const players = net.role ? [{ name: save.players[0].name, look: save.players[0].look }, net.guest || { name: 'Guest', look: { col: COLORS[1], face: 'happy' } }] : [save.players[0], save.cpu >= 0 ? { name: ['CPU (EASY)', 'CPU', 'CPU (HARD)'][save.cpu], look: { col: save.players[1].look.col === save.players[0].look.col ? COLORS[5] : save.players[1].look.col, face: 'angry' } } : save.players[1]];
+  const players = net.role ? [{ name: myName(), look: save.players[0].look }, net.guest || { name: 'Guest', look: { col: COLORS[1], face: 'happy' } }] : [save.players[0], save.cpu >= 0 ? { name: ['CPU (EASY)', 'CPU', 'CPU (HARD)'][save.cpu], look: { col: save.players[1].look.col === save.players[0].look.col ? COLORS[5] : save.players[1].look.col, face: 'angry' } } : save.players[1]];
   const pl = JSON.parse(JSON.stringify(players));
   if (net.role) { // online: both players may still have the default look, so make sure they differ
     if (pl[1].look.col === pl[0].look.col) pl[1].look.col = COLORS.find(c => c !== pl[0].look.col && c !== COLORS[0]);
@@ -406,7 +408,7 @@ function joinRoom(code) {
   net.tr = NetTransport.join(net.code, {
     ready: id => {
       net.myId = id; net.joinedAt = performance.now();
-      const hello = () => netSend('host', { t: 'hello', name: save.players[0].name, look: save.players[0].look });
+      const hello = () => netSend('host', { t: 'hello', name: myName(), look: save.players[0].look });
       hello(); let n = 0; const tr = net.tr;
       const iv = setInterval(() => { if (net.tr !== tr || net.screen === 'lobby' || ++n > 10) { clearInterval(iv); if (net.tr === tr && net.screen !== 'lobby') netLost('The room did not answer. Try again.'); return; } hello(); }, 1500);
     },
@@ -425,7 +427,7 @@ function joinRoom(code) {
 function netReset(keepErr) { if (net.tr) try { net.tr.close(); } catch (e) {} net.tr = null; net.role = null; net.guest = null; net.guestId = null; net.prev = net.cur = null; if (!keepErr) net.error = ''; }
 function netLost(why) { netReset(); net.error = why; net.screen = 'menu'; S = null; go('online'); }
 function leaveOnline() { if (net.role === 'client') netSend('host', { t: 'bye' }); netReset(); net.screen = 'menu'; S = null; go('title'); }
-function lobbySync() { netBroadcast({ t: 'lobby', cfg: net.cfg, host: { name: save.players[0].name, look: save.players[0].look }, guest: net.guest }); }
+function lobbySync() { netBroadcast({ t: 'lobby', cfg: net.cfg, host: { name: myName(), look: save.players[0].look }, guest: net.guest }); }
 function hostStartMatch() { if (!net.guest) return; startMatch(net.cfg.mode, net.cfg.mode === 'free' ? net.cfg.game : null); }
 function myPress() { // guest presses ACTION: remember the reaction time for Quick Draw (measured on this computer)
   net.myAN++;
@@ -446,7 +448,7 @@ function drawOnline() {
     panel(W / 2 - 330, 100, 660, 540);
     txt('YOUR PLAYER', W / 2 - 290, 124, 18, '#c8c0ff', 'left', { stroke: 0 });
     drawBlob(W / 2 - 230, 200, 44, save.players[0].look, { ang: 0 });
-    txt(save.players[0].name, W / 2 - 160, 180, 32, save.players[0].look.col, 'left');
+    txt(myName(), W / 2 - 160, 180, 32, save.players[0].look.col, 'left');
     if (button('edl', W / 2 + 140, 170, 150, 46, 'CHANGE', { color: '#b06aff', size: 20 })) go('looks');
     if (button('host', W / 2 - 290, 270, 580, 76, 'HOST A ROOM', { color: '#1ab8a8', size: 34 })) hostRoom();
     txt('OR JOIN A FRIEND\'S ROOM', W / 2 - 290, 370, 18, '#c8c0ff', 'left', { stroke: 0 });
