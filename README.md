@@ -7,7 +7,7 @@ A menu page for all my games. Each game lives in its own folder:
 | `chess/`   | Dark Fantasy Chess |
 | `mush/`    | MUSH               |
 | `fishing/` | Fishing Simulator  |
-| `tag/`     | 2 Player Tag       |
+| `tag/`     | 2 Player Tag (arenas in `tag/js/arenas.js`) |
 
 ## Updating a game
 1. On GitHub, open the game's folder (for example `mush/`).

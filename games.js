@@ -38,7 +38,7 @@ const GAMES = [
     folder: "fishing",
     thumbnail: "assets/thumb_fishing.png",
     tag: "Simulator",
-    description: "5 magical lakes, 40 fish, 12 rods. Can you catch The Devourer?",
+    description: "5 magical lakes, 40 fish, weather, jobs, an aquarium and hats. Can you catch The Devourer?",
     accent: "#6ad0ff"
   },
   {
@@ -47,7 +47,7 @@ const GAMES = [
     folder: "tag",
     thumbnail: "assets/thumb_tag.png",
     tag: "2 Player",
-    description: "Runner vs tagger on one keyboard. Survive 20 seconds to score. First to 10 wins.",
+    description: "4 modes, 5 arenas, dashes and power-ups. Play a friend on one keyboard or take on the CPU.",
     accent: "#ffd400"
   }
 ];

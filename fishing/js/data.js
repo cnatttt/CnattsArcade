@@ -79,3 +79,82 @@ const BAITS = [
   { id: 'star_krill',  name: 'Star Krill',   lake: 'abyss',   price: 13000, pack: 10, bite: 0.65, luck: 0.45, col: '#ffe680', desc: 'Tiny falling stars.', glow: true },
   { id: 'void_pearl',  name: 'Void Pearl',   lake: 'abyss',   price: 32000, pack: 10, bite: 0.60, luck: 0.60, col: '#8a5ae0', desc: 'A piece of nothing. Very tasty.', glow: true },
 ];
+
+// ---------------------------------------------------------------- WEATHER
+// luck = extra rare-fish chance, bite = multiplier on waiting time
+const WEATHER = {
+  clear:    { name: 'Clear',          icon: '*', col: '#e8e4ff', luck: 0,    bite: 1.0,  desc: 'Calm waters.' },
+  rain:     { name: 'Rain',           icon: '/', col: '#8ab8ff', luck: 0.15, bite: 0.85, desc: 'Fish bite faster in the rain.' },
+  storm:    { name: 'Thunderstorm',   icon: '!', col: '#ffe650', luck: 0.35, bite: 0.8,  desc: 'Rare fish come up in storms!' },
+  fog:      { name: 'Fog',            icon: '~', col: '#c8d8c8', luck: 0.2,  bite: 1.0,  desc: 'Strange things swim in the fog.' },
+  blizzard: { name: 'Blizzard',       icon: '#', col: '#ffffff', luck: 0.35, bite: 0.9,  desc: 'Ice-loving fish go wild.' },
+  bloom:    { name: 'Crystal Bloom',  icon: '+', col: '#d8a8ff', luck: 0.4,  bite: 0.85, desc: 'The crystals glow. Fish are drawn to the light.' },
+  meteors:  { name: 'Meteor Shower',  icon: '>', col: '#ffb070', luck: 0.5,  bite: 0.85, desc: 'Falling stars wake the deep ones.' },
+  frenzy:   { name: 'Feeding Frenzy', icon: '$', col: '#ffcc33', luck: 0.1,  bite: 0.4,  desc: 'Everything is biting!' },
+};
+const LAKE_WEATHER = {
+  moonlit: ['clear', 'clear', 'rain', 'storm', 'fog', 'frenzy'],
+  swamp:   ['clear', 'fog', 'fog', 'rain', 'storm', 'frenzy'],
+  glacier: ['clear', 'clear', 'blizzard', 'blizzard', 'fog', 'frenzy'],
+  crystal: ['clear', 'clear', 'bloom', 'bloom', 'fog', 'frenzy'],
+  abyss:   ['clear', 'meteors', 'meteors', 'storm', 'fog', 'frenzy'],
+};
+
+// ---------------------------------------------------------------- JUNK & TREASURE (hooked now and then)
+const JUNK = [
+  { id: 'boot',    name: 'Old Boot',       value: 2,  w: 30, desc: 'Somebody is walking around with one sock wet.' },
+  { id: 'can',     name: 'Rusty Can',      value: 1,  w: 30, desc: 'Please recycle.' },
+  { id: 'seaweed', name: 'Seaweed',        value: 1,  w: 25, desc: 'Slimy. Smells like the ocean.' },
+  { id: 'bottle',  name: 'Message Bottle', value: 25, w: 10, desc: 'The note inside says: "the secret is a mushroom".' },
+  { id: 'chest',   name: 'Treasure Chest', value: 0,  w: 7,  desc: 'Full of coins and bait!', chest: true },
+];
+
+// ---------------------------------------------------------------- COSMETICS
+const HATS = [
+  { id: 'cap',    name: 'Fishing Cap',    price: 0 },
+  { id: 'straw',  name: 'Straw Hat',      price: 300 },
+  { id: 'beanie', name: 'Beanie',         price: 900 },
+  { id: 'cat',    name: 'Cat Ears',       price: 2500 },
+  { id: 'pirate', name: 'Pirate Hat',     price: 6000 },
+  { id: 'wizard', name: 'Wizard Hat',     price: 15000 },
+  { id: 'viking', name: 'Viking Helmet',  price: 35000 },
+  { id: 'crown',  name: 'Golden Crown',   price: 90000 },
+  { id: 'halo',   name: 'Halo',           price: 250000 },
+  { id: 'shroom', name: 'Mushroom Cap',   price: 0, secret: true },
+];
+const BOBBERS = [
+  { id: 'classic', name: 'Classic',  price: 0,     pal: { o: '#1a1420', r: '#e8443a', R: '#ff9a88', w: '#f2f0e8', W: '#ffffff' } },
+  { id: 'lime',    name: 'Lime',     price: 400,   pal: { o: '#1a1420', r: '#6ae03a', R: '#c8ff9a', w: '#f2f0e8', W: '#ffffff' } },
+  { id: 'duck',    name: 'Duckie',   price: 1500,  pal: { o: '#3a2a08', r: '#ffd84a', R: '#fff3a8', w: '#ffd84a', W: '#ff8a2a' }, duck: true },
+  { id: 'night',   name: 'Midnight', price: 5000,  pal: { o: '#000000', r: '#3a2a6a', R: '#8a6ae0', w: '#1a1430', W: '#c46cff' } },
+  { id: 'gold',    name: 'Gold',     price: 20000, pal: { o: '#5a3a0e', r: '#f2c14e', R: '#fff3c4', w: '#c08a20', W: '#ffe680' }, glow: '#ffe680' },
+  { id: 'star',    name: 'Starlight',price: 60000, pal: { o: '#1a0e36', r: '#ff9ae0', R: '#ffffff', w: '#8ab8ff', W: '#ffffff' }, glow: '#ff9ae0' },
+];
+
+// ---------------------------------------------------------------- AWARDS
+const AWARDS = [
+  { id: 'first',     name: 'First Bite',        desc: 'Catch your first fish',               reward: 20 },
+  { id: 'ten',       name: 'Getting Hooked',    desc: 'Catch 10 fish',                        reward: 50 },
+  { id: 'hundred',   name: 'Angler',            desc: 'Catch 100 fish',                       reward: 1000 },
+  { id: 'fivehund',  name: 'Master Angler',     desc: 'Catch 500 fish',                       reward: 10000 },
+  { id: 'rare',      name: 'Ooh, Shiny',        desc: 'Catch a Rare fish',                    reward: 100 },
+  { id: 'legend',    name: 'Living Legend',     desc: 'Catch a Legendary fish',               reward: 500 },
+  { id: 'mythic',    name: 'Myth Buster',       desc: 'Catch a Mythic fish',                  reward: 2000 },
+  { id: 'perfect',   name: 'Flawless',          desc: 'Make a perfect catch',                 reward: 50 },
+  { id: 'perfect10', name: 'Surgeon',           desc: 'Make 10 perfect catches',              reward: 800 },
+  { id: 'streak5',   name: 'On Fire',           desc: 'Catch 5 fish in a row',                reward: 150 },
+  { id: 'streak15',  name: 'Unstoppable',       desc: 'Catch 15 fish in a row',               reward: 2500 },
+  { id: 'complete1', name: 'Lake Expert',       desc: 'Catch all 8 species in one lake',      reward: 500 },
+  { id: 'dex40',     name: 'Fishdex Complete',  desc: 'Discover all 40 fish',                 reward: 50000 },
+  { id: 'travel',    name: 'Explorer',          desc: 'Unlock a new lake',                    reward: 200 },
+  { id: 'allLakes',  name: 'World Traveler',    desc: 'Unlock all 5 lakes',                   reward: 20000 },
+  { id: 'rich',      name: 'Pocket Money',      desc: 'Have 10,000 coins',                    reward: 500 },
+  { id: 'tycoon',    name: 'Fish Tycoon',       desc: 'Have 250,000 coins',                   reward: 10000 },
+  { id: 'treasure',  name: 'Treasure Hunter',   desc: 'Fish up a treasure chest',             reward: 300 },
+  { id: 'junk',      name: 'One Man\'s Trash',  desc: 'Fish up an old boot',                  reward: 25 },
+  { id: 'storm',     name: 'Storm Chaser',      desc: 'Catch a fish during a storm',          reward: 300 },
+  { id: 'fashion',   name: 'Fashionista',       desc: 'Buy a hat or bobber',                  reward: 100 },
+  { id: 'jobs5',     name: 'Hard Worker',       desc: 'Finish 5 shop jobs',                   reward: 1000 },
+  { id: 'giant',     name: 'Giant!',            desc: 'Catch a fish over 2 meters',           reward: 1500 },
+  { id: 'devourer',  name: 'Star Eater Eater',  desc: 'Catch The Devourer',                   reward: 100000 },
+];

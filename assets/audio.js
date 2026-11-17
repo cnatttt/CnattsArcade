@@ -302,8 +302,11 @@ const Sound = (() => {
     const d = new Float32Array(analyser.fftSize); analyser.getFloatTimeDomainData(d);
     let m = 0; for (const v of d) { if (!isFinite(v)) return NaN; m = Math.max(m, Math.abs(v)); } return m;
   }
+  // custom one-off sounds for games (respects the SFX mute)
+  function blip(freq, dur, o = {}) { if (!ctx || !sfxOn) return; tone(now() + (o.delay || 0), freq, dur, o); }
+  function hiss(dur, o = {}) { if (!ctx || !sfxOn) return; noise(now() + (o.delay || 0), dur, o); }
   return {
-    init, play, level, playSong, stopSong, setMusic, setSfx, compose,
+    init, play, level, blip, hiss, playSong, stopSong, setMusic, setSfx, compose,
     get musicOn() { return musicOn; }, get sfxOn() { return sfxOn; },
     get ready() { return !!ctx && ctx.state === 'running'; },
   };
