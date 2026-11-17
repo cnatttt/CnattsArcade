@@ -39,7 +39,7 @@
   .subtitle { font-family: var(--pixel); font-size: 12px; color: var(--muted); margin-bottom: 44px; letter-spacing: 3px; text-transform: uppercase; }
   .subtitle::before, .subtitle::after { content: " ✦ "; color: var(--line); }
 
-  #grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 28px; width: 100%; max-width: 1180px; }
+  #grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 28px; width: 100%; max-width: 1180px; }
   .card {
     --accent: #b07cff;
     background: var(--panel); border: 4px solid var(--line); cursor: pointer; text-align: left; color: inherit;
@@ -63,6 +63,38 @@
     background: var(--accent); color: #07061a; box-shadow: inset 0 -4px 0 #0005, 0 3px 0 #000a;
   }
   footer { margin-top: auto; padding-top: 48px; color: var(--muted); font-size: 18px; }
+
+  /* ---------------- sound controls ---------------- */
+  #sound { position: fixed; top: 14px; right: 14px; display: flex; gap: 8px; z-index: 20; }
+  #sound button {
+    font-family: var(--pixel); font-size: 10px; color: var(--text); background: var(--panel2);
+    border: 3px solid var(--line); padding: 9px 10px; cursor: pointer; box-shadow: 0 3px 0 #000a;
+  }
+  #sound button.off { color: #ff7a7a; text-decoration: line-through; }
+  #sound button:hover { border-color: var(--gold); }
+  #sound button:active { transform: translateY(2px); box-shadow: none; }
+  #soundHint { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); font-family: var(--pixel); font-size: 9px;
+    color: var(--muted); letter-spacing: 1px; animation: blink 1.4s steps(2) infinite; pointer-events: none; }
+  @keyframes blink { 50% { opacity: .25; } }
+
+  /* ---------------- secret ---------------- */
+  #spore { display: inline-block; width: 16px; height: 16px; margin-left: 10px; vertical-align: -2px; cursor: pointer;
+    opacity: .14; transition: opacity .3s, transform .2s; image-rendering: pixelated; }
+  #spore:hover { opacity: .5; transform: scale(1.3) rotate(-8deg); }
+  #spore.found { opacity: .9; filter: drop-shadow(0 0 6px #ff6a7a); }
+  h1.rainbow { animation: rainbow 1.2s linear infinite; }
+  @keyframes rainbow { 0%{color:#ff6a7a} 20%{color:#ffcc33} 40%{color:#6ae06a} 60%{color:#6ad0ff} 80%{color:#b07cff} 100%{color:#ff6a7a} }
+  #rain { position: fixed; inset: 0; pointer-events: none; z-index: 30; image-rendering: pixelated; }
+  #secretBox { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; z-index: 40; background: #07061acc; }
+  #secretBox.open { display: flex; }
+  #secretBox .box { background: var(--panel); border: 4px solid #ff6a7a; box-shadow: 0 8px 0 #000a, 0 0 40px #ff6a7a66;
+    padding: 34px 40px; max-width: 520px; text-align: center; animation: pop .35s cubic-bezier(.2,1.6,.4,1); }
+  @keyframes pop { from { transform: scale(.6); opacity: 0; } }
+  #secretBox h2 { font-family: var(--pixel); font-size: 18px; color: #ff9ab0; margin: 0 0 18px; line-height: 1.5; }
+  #secretBox p { color: var(--muted); margin: 0 0 14px; }
+  #secretBox b { color: var(--gold); }
+  #secretBox button { font-family: var(--pixel); font-size: 11px; padding: 12px 18px; margin-top: 8px; cursor: pointer;
+    background: #ff6a7a; color: #07061a; border: 0; box-shadow: inset 0 -4px 0 #0005, 0 3px 0 #000a; }
 
   /* ---------------- player ---------------- */
   #player { position: fixed; inset: 0; display: none; flex-direction: column; background: #000; }
@@ -92,8 +124,22 @@
   <h1 id="siteTitle">CNATT'S ARCADE</h1>
   <div class="subtitle" id="siteSubtitle">Pick a game</div>
   <div id="grid"></div>
-  <footer id="siteFooter"></footer>
+  <footer><span id="siteFooter"></span><svg id="spore" viewBox="0 0 8 8" shape-rendering="crispEdges" title="">
+    <rect x="2" y="0" width="4" height="1" fill="#b0283a"/><rect x="1" y="1" width="6" height="1" fill="#b0283a"/>
+    <rect x="0" y="2" width="8" height="2" fill="#b0283a"/><rect x="2" y="1" width="1" height="1" fill="#fff"/>
+    <rect x="5" y="2" width="1" height="1" fill="#fff"/><rect x="1" y="3" width="1" height="1" fill="#fff"/>
+    <rect x="3" y="4" width="2" height="4" fill="#e8dcc8"/><rect x="2" y="7" width="4" height="1" fill="#e8dcc8"/></svg></footer>
 </div>
+
+<div id="sound"><button id="musicBtn" title="Music">♪ MUSIC</button><button id="sfxBtn" title="Sound effects">SFX</button></div>
+<div id="soundHint">click anywhere for sound</div>
+<canvas id="rain"></canvas>
+<div id="secretBox"><div class="box">
+  <h2>YOU FOUND THE<br>SECRET SPORE!</h2>
+  <p>Only true explorers find this mushroom.</p>
+  <p>Reward unlocked: the <b>Sporecaster Rod</b> is waiting for you in <b>Fishing Simulator</b>.</p>
+  <button id="secretOk">NICE!</button>
+</div></div>
 
 <div id="player">
   <div id="bar">
@@ -105,6 +151,7 @@
   <iframe id="frame" allow="fullscreen; autoplay; gamepad" allowfullscreen></iframe>
 </div>
 
+<script src="assets/audio.js"></script>
 <script src="games.js"></script>
 <script>
   const $ = id => document.getElementById(id);
@@ -131,7 +178,8 @@
     card.querySelector('.tag').textContent = g.tag || 'Game';
     card.querySelector('.title').textContent = g.title;
     card.querySelector('.desc').textContent = g.description || '';
-    card.onclick = () => { location.hash = g.id; };
+    card.onmouseenter = () => Sound.play('hover');
+    card.onclick = () => { Sound.play('click2'); setTimeout(() => { location.hash = g.id; }, 120); };
     $('grid').appendChild(card);
   }
 
@@ -141,6 +189,7 @@
     const g = GAMES.find(x => x.id === id);
     if (!g) {
       player.classList.remove('open'); menu.style.display = '';
+      Sound.playSong(SONGS.arcade); $('sound').style.display = '';
       frame.src = 'about:blank';
       document.title = SITE.title.replace(/'S /, "'s ");
       return;
@@ -150,17 +199,90 @@
     $('tabBtn').href = url;
     document.title = g.title + ' | ' + SITE.title.replace(/'S /, "'s ");
     menu.style.display = 'none'; player.classList.add('open');
+    Sound.stopSong(); $('sound').style.display = 'none';
     if (!frame.src.endsWith(url)) frame.src = url;
   }
   window.addEventListener('hashchange', route);
   route();
 
   frame.addEventListener('load', () => { try { frame.contentWindow.focus(); } catch (e) {} });
-  $('backBtn').onclick = () => { history.pushState('', '', location.pathname + location.search); route(); };
+  ['backBtn', 'fsBtn', 'tabBtn'].forEach(id => { $(id).addEventListener('mouseenter', () => Sound.play('hover')); });
+  $('fsBtn').addEventListener('click', () => Sound.play('click'));
+  $('backBtn').onclick = () => { Sound.play('back'); history.pushState('', '', location.pathname + location.search); route(); };
   $('fsBtn').onclick = () => {
     const el = frame;
     (el.requestFullscreen || el.webkitRequestFullscreen || (() => {})).call(el);
   };
+  // ---------------- sound buttons
+  function syncSound() {
+    $('musicBtn').classList.toggle('off', !Sound.musicOn);
+    $('sfxBtn').classList.toggle('off', !Sound.sfxOn);
+  }
+  $('musicBtn').onclick = e => { e.stopPropagation(); Sound.init(); Sound.setMusic(!Sound.musicOn); Sound.play('tab'); syncSound(); };
+  $('sfxBtn').onclick = e => { e.stopPropagation(); Sound.init(); Sound.setSfx(!Sound.sfxOn); Sound.play('tab'); syncSound(); };
+  syncSound();
+  window.addEventListener('pointerdown', () => { $('soundHint').style.display = 'none'; }, { once: true });
+  window.addEventListener('keydown', () => { $('soundHint').style.display = 'none'; }, { once: true });
+
+  // ---------------- the secret spore (easter egg)
+  let secretFound = false;
+  try { secretFound = localStorage.getItem('cnatt_arcade_secret') === 'found'; } catch (e) {}
+  if (secretFound) $('spore').classList.add('found');
+  $('spore').addEventListener('click', e => {
+    e.stopPropagation(); Sound.init();
+    try { localStorage.setItem('cnatt_arcade_secret', 'found'); } catch (err) {}
+    $('spore').classList.add('found');
+    $('siteTitle').classList.add('rainbow');
+    Sound.play('secret');
+    setTimeout(() => Sound.playSong(SONGS.secret), 900);
+    makeItRain();
+    setTimeout(() => $('secretBox').classList.add('open'), 700);
+  });
+  $('secretOk').onclick = () => {
+    Sound.play('click'); $('secretBox').classList.remove('open');
+    $('siteTitle').classList.remove('rainbow');
+    if (!location.hash) Sound.playSong(SONGS.arcade);
+  };
+  function pixelSprite(rows, pal) {
+    const c = document.createElement('canvas'); c.width = rows[0].length; c.height = rows.length;
+    const x = c.getContext('2d');
+    rows.forEach((r, y) => [...r].forEach((ch, i) => { if (pal[ch]) { x.fillStyle = pal[ch]; x.fillRect(i, y, 1, 1); } }));
+    return c;
+  }
+  function makeItRain() {
+    const cv = $('rain'), x = cv.getContext('2d');
+    cv.width = innerWidth; cv.height = innerHeight; x.imageSmoothingEnabled = false;
+    const sprites = [
+      pixelSprite(['..rrrr..', '.rwrrwr.', 'rrrrrrwr', 'rwrrrrrr', '...ss...', '...ss...', '..ssss..'], { r: '#d8343c', w: '#ffffff', s: '#e8dcc8' }),
+      pixelSprite(['..pppp..', '.pcppcp.', 'pppppppp', '...ss...', '...ss...', '..ssss..'], { p: '#9a4ae0', c: '#d8a8ff', s: '#e8dcc8' }),
+      pixelSprite(['...o...', '..oyo..', 'ooyyyoo', 'oyyyyyo', '.oyyyo.', '.oyoyo.', 'oo...oo'], { o: '#5a3a0e', y: '#ffe680' }),
+      pixelSprite(['..oo..', '.oyyo.', 'oyyyyo', 'oyyyyo', '.oyyo.', '..oo..'], { o: '#5a3a0e', y: '#f2c14e' }),
+      pixelSprite(['yyyy', 'yyyy', 'yyyy', 'yyyy'], { y: '#ffd400' }), pixelSprite(['rrrr', 'rrrr', 'rrrr', 'rrrr'], { r: '#e02a2a' }),
+    ];
+    ['golden_koi', 'bluegill', 'abyss_eel', 'witchscale', 'nebula_tetra', 'prism_ray', 'devourer', 'lunar_carp'].forEach(id => {
+      const im = new Image(); im.src = 'fishing/images/fish/' + id + '.png'; sprites.push(im);
+    });
+    const glyphs = ['♞', '♛', '♜', '♚'];
+    const drops = Array.from({ length: 140 }, (_, i) => ({
+      x: Math.random() * cv.width, y: -40 - Math.random() * cv.height * 1.2, vy: 120 + Math.random() * 220, vx: (Math.random() - .5) * 60,
+      r: Math.random() * 6, vr: (Math.random() - .5) * 6, sc: 3 + Math.floor(Math.random() * 3),
+      s: i % 9 === 0 ? glyphs[i % 4] : sprites[i % sprites.length],
+    }));
+    let last = performance.now(), start = last;
+    (function step(now) {
+      const dt = Math.min(0.05, (now - last) / 1000); last = now;
+      x.clearRect(0, 0, cv.width, cv.height);
+      drops.forEach(d => {
+        d.y += d.vy * dt; d.x += d.vx * dt; d.r += d.vr * dt;
+        x.save(); x.translate(d.x, d.y); x.rotate(d.r);
+        if (typeof d.s === 'string') { x.font = `${d.sc * 10}px serif`; x.fillStyle = d.sc % 2 ? '#e8e4f0' : '#b07cff'; x.fillText(d.s, -10, 10); }
+        else if (d.s.width) { const k = d.s.width > 16 ? Math.max(1, d.sc - 2) : d.sc; x.imageSmoothingEnabled = false; x.scale(k, k); x.drawImage(d.s, -d.s.width / 2, -d.s.height / 2); }
+        x.restore();
+      });
+      if (now - start < 7000) requestAnimationFrame(step); else x.clearRect(0, 0, cv.width, cv.height);
+    })(last);
+  }
+
   // Esc goes back to the menu (only when the page itself has focus, so games can still use Esc)
   window.addEventListener('keydown', e => { if (e.key === 'Escape' && player.classList.contains('open')) $('backBtn').click(); });
 </script>

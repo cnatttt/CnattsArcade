@@ -1,7 +1,7 @@
 // =============================================================
 //  GAME LIST  -  edit this file to change what's on the menu.
 //
-//  Each game lives in its own folder (chess/, mush/, fishing/).
+//  Each game lives in its own folder (chess/, mush/, fishing/, tag/).
 //  To UPDATE a game: drag its new files into that folder on GitHub.
 //  To ADD a game: make a new folder with an index.html inside,
 //  then copy one of the blocks below and change the details.
@@ -38,7 +38,16 @@ const GAMES = [
     folder: "fishing",
     thumbnail: "assets/thumb_fishing.png",
     tag: "Simulator",
-    description: "Cast at the moonlit lake, fight the line, and catch the mythic Abyss Eel.",
+    description: "5 magical lakes, 40 fish, 12 rods. Can you catch The Devourer?",
     accent: "#6ad0ff"
+  },
+  {
+    id: "tag",
+    title: "2 Player Tag",
+    folder: "tag",
+    thumbnail: "assets/thumb_tag.png",
+    tag: "2 Player",
+    description: "Runner vs tagger on one keyboard. Survive 20 seconds to score. First to 10 wins.",
+    accent: "#ffd400"
   }
 ];

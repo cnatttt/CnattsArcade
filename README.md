@@ -7,6 +7,7 @@ A menu page for all my games. Each game lives in its own folder:
 | `chess/`   | Dark Fantasy Chess |
 | `mush/`    | MUSH               |
 | `fishing/` | Fishing Simulator  |
+| `tag/`     | 2 Player Tag       |
 
 ## Updating a game
 1. On GitHub, open the game's folder (for example `mush/`).
@@ -25,5 +26,15 @@ Files with the same name get replaced. Old files you no longer need can be delet
 ## Changing the menu text
 The title, subtitle and footer are at the top of `games.js`.
 
+## Fishing Simulator files
+- `fishing/js/data.js`: lakes, rods and bait (prices and stats). Edit this to rebalance.
+- `fishing/js/fishdata.js`: all 40 fish (value, difficulty, size, favorite bait).
+- `fishing/js/audio.js`: the music and sound effects. They're generated live, so there are no sound files.
+- `fishing/images/`: all the pixel art.
+- Progress saves in the player's browser.
+
+## Music & sounds on the menu
+`assets/audio.js` plays the menu music and the click sounds. The ♪ MUSIC / SFX buttons mute them, and that setting is shared with the fishing game.
+
 ## Links
-Every game has a direct link: `https://2playertag.com/#fishing`, `#mush`, `#chess`.
+Every game has a direct link: `https://2playertag.com/#fishing`, `#mush`, `#chess`, `#tag`.
