@@ -1094,4 +1094,14 @@ const fontReady = document.fonts ? Promise.race([document.fonts.load(`16px ${FON
 fontReady.then(() => { screen = 'menu'; Sound.playSong(SONGS.smenu); requestAnimationFrame(n => { last = n; frame(n); }); });
 
 window.__sg = { get G() { return G; }, get screen() { return screen; }, get towers() { return towers; }, get enemies() { return enemies; }, newGame, sell, cast: castSpell, meteor(x, y) { dropMeteor(x, y); }, place(id, c, r) { placing = id; place(c, r); placing = null; }, startWave, upgrade, isPath: (c, r) => isPath(c, r), tileFree: (c, r) => tileFree(c, r), sim(dt, n) { for (let k = 0; k < n && screen === 'play'; k++) { update(dt); updateFx(dt); } return screen; }, save: () => save, setScreen(s) { screen = s; }, get pathLen() { return pathLen; } };
+
+// ------------------------------------------------------------ owner cheats (only shown for the site admin, see account/cheats.js)
+const inMap = () => G && (screen === 'play' || screen === 'pause') ? '' : 'Start a map first';
+window.__cheats = [
+  { name: '+1,000 gold', icon: '💰', need: inMap, run() { G.gold += 1000; } },
+  { name: '+20 lives', icon: '❤', need: inMap, run() { G.lives += 20; G.maxLives = Math.max(G.maxLives, G.lives); } },
+  { name: 'Destroy every enemy', icon: '💥', need: inMap, run() { enemies.slice().forEach(e => hurt(e, 1e9)); } },
+  { name: '3 stars on every map', icon: '⭐', run() { MAPS.forEach(m => save.stars[m.id] = 3); store(); } },
+];
+
 })();

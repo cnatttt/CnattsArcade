@@ -295,6 +295,7 @@ function splat(x, y, col, size, a = 0.8) {
 
 // ------------------------------------------------------------ state
 let state = 'loading', t = 0, run = null, P = null;
+const CHEAT = { god: false };
 let zs = [], bullets = [], ebullets = [], rangs = [], pools = [], rockets = [], beams = [], novas = [], slashes = [], strikes = [], lobs = [];
 let pickups = [], parts = [], floats = [], rings = [], tele = [];
 let cards = [], pickT = 0, pickHover = -1, shake = 0, hurtFlash = 0, whiteFlash = 0, banner = null, toastQ = [];
@@ -567,7 +568,7 @@ function explode(x, y, r, dmg, zombieBlast, playerDmg) {
 }
 let lights = [];
 function hurtPlayer(d, src = '?') {
-  if (P.inv > 0 || state !== 'play') return;
+  if (CHEAT.god || P.inv > 0 || state !== 'play') return;
   (run.dmgLog = run.dmgLog || {})[src] = ((run.dmgLog || {})[src] || 0) + d;
   d *= 1 - P.armor;
   P.hp -= d; P.inv = src === 'boss' || src === 'slam' ? 1.0 : 0.45; hurtFlash = 0.35; shake = Math.max(shake, 0.25);
@@ -1355,4 +1356,17 @@ window.__zb = {
   setWave(n) { run.wave = n - 1; run.phase = 'ready'; run.phaseT = 0.1; }, sim(dt, n) { for (let k = 0; k < n; k++) { if (state === 'pick') return 'pick'; if (state !== 'play') return state; update(dt); updateFx(dt); } return state; },
   setLv(kind, id, lv) { if (kind === 'weapon') { let w = P.weapons.find(x => x.id === id); if (!w) { addWeapon(id); w = P.weapons[P.weapons.length - 1]; } w.lv = lv; } else P.passives[id] = lv; recalc(); },
 };
+
+// ------------------------------------------------------------ owner cheats (only shown for the site admin, see account/cheats.js)
+const inRun = () => state === 'play' || state === 'pick' ? '' : 'Start a run first';
+window.__cheats = [
+  { name: 'God mode', icon: '🛡', toggle: () => CHEAT.god, run() { CHEAT.god = !CHEAT.god; } },
+  { name: '+10,000 coins', icon: '💰', run() { save.coins += 10000; store(); } },
+  { name: 'Full heal', icon: '❤', need: inRun, run() { P.hp = P.maxHp; } },
+  { name: 'Max level every weapon', icon: '⚔', need: inRun, run() { P.weapons.forEach(w => w.lv = 5); recalc(); } },
+  { name: 'Kill every zombie', icon: '💥', need: inRun, run() { zs.slice().forEach(z => hit(z, z.hp + 1e6)); } },
+  { name: '+5 rerolls', icon: '🎲', need: inRun, run() { run.rerolls += 5; } },
+  { name: 'Unlock every hero', icon: '🦸', run() { CHARACTERS.forEach(c => save.chars[c.id] = 1); store(); } },
+];
+
 })();

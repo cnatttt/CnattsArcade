@@ -34,6 +34,10 @@ save.binds = { p1: Object.assign({}, DEFAULT_BINDS.p1, (save.binds || {}).p1), p
 if (!save.set.name) save.set.name = 'Racer' + Math.floor(100 + Math.random() * 900);
 // signed-in arcade players race under their account name
 const myName = () => (window.Account && Account.user && Account.user.username) || SET().name;
+// the site owner gets a gold OWNER tag next to their name
+const OWN = () => !!(window.Account && Account.isOwnerMe && Account.isOwnerMe());
+const ownOK = (n, f) => !!(window.Account && Account.ownerOK && Account.ownerOK(n, f));
+const ownTag = (x, y, h, align) => (window.Account && Account.drawOwnerTag ? Account.drawOwnerTag(ctx, x, y, h, align) : 0);
 const SET = () => save.set;
 const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {} };
 
@@ -157,12 +161,12 @@ function startRace(mode, ti, opts = {}) {
     let others = RACERS.filter(r => !picks.includes(r)).sort(() => Math.random() - 0.5);
     if (mode === 'quick' || mode === 'vs') others = others.slice(0, Math.max(0, Math.min(others.length, SET().ai)));
     const order = mode === 'tt' ? [picks[0]] : (opts.gridOrder || [...others, ...picks]);
-    grid = order.map(r => ({ racer: r, human: picks.indexOf(r), owner: picks.includes(r) ? 'me' : 'ai', name: r.name }));
+    grid = order.map(r => ({ racer: r, human: picks.indexOf(r), owner: picks.includes(r) ? 'me' : 'ai', name: r.name, own: picks.indexOf(r) === 0 && OWN() }));
   }
   const P = world.P, N = world.N;
   grid.forEach((gq, slot) => {
     const k = makeKart(gq.racer, gq.human, slot);
-    k.owner = gq.owner; k.name = gq.name || gq.racer.name;
+    k.owner = gq.owner; k.name = gq.name || gq.racer.name; k.own = !!gq.own;
     if (on && gq.owner !== 'ai' && gq.owner !== net.myId) k.remote = true;        // another player's kart
     if (on && net.role === 'client' && gq.owner === 'ai') k.remote = true;          // the host drives the AI
     const row = Math.floor(slot / 2), side = slot % 2 ? 1 : -1, back = 4 + row * 3.5;
@@ -550,7 +554,7 @@ function hostRoom() {
   net.role = 'host'; net.myId = 'host'; net.screen = 'connecting'; net.error = '';
   net.code = Array.from({ length: 5 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
   net.tr = NetTransport.host(net.code, {
-    ready: () => { net.screen = 'lobby'; net.players = [{ id: 'host', name: myName(), racer: save.p1 }]; netLobby(); },
+    ready: () => { net.screen = 'lobby'; net.players = [{ id: 'host', name: myName(), racer: save.p1, own: OWN() }]; netLobby(); },
     join: () => {},
     leave: id => netPlayerLeft(id),
     msg: (from, d) => hostMsg(from, d),
@@ -563,7 +567,7 @@ function joinRoom(code) {
   net.tr = NetTransport.join(net.code, {
     ready: id => {
       net.myId = id;
-      const hello = () => netSend('host', { t: 'hello', name: myName(), racer: save.p1 });
+      const hello = () => netSend('host', { t: 'hello', name: myName(), racer: save.p1, own: OWN() });
       hello(); let n = 0; const tr = net.tr;
       const iv = setInterval(() => { if (net.tr !== tr || net.screen === 'lobby' || ++n > 10) { clearInterval(iv); if (net.tr === tr && net.screen !== 'lobby') netLost('The room did not answer. Try again.'); return; } hello(); }, 1500);
     },
@@ -595,7 +599,7 @@ function freeRacer(want, id) {
 function hostMsg(from, d) {
   if (d.t === 'hello') {
     if (net.players.length >= 8) { netSend(from, { t: 'full' }); return; }
-    if (!net.players.some(p => p.id === from)) net.players.push({ id: from, name: String(d.name || 'Racer').slice(0, 12), racer: freeRacer(d.racer, from) });
+    if (!net.players.some(p => p.id === from)) net.players.push({ id: from, name: String(d.name || 'Racer').slice(0, 16), racer: freeRacer(d.racer, from), own: !!d.own });
     netLobby();
   } else if (d.t === 'pick') { const p = net.players.find(q => q.id === from); if (p) { p.racer = freeRacer(d.racer, from); netLobby(); } }
   else if (d.t === 'bye') netPlayerLeft(from);
@@ -625,7 +629,7 @@ function hostStart() {
   const c = net.cfg, humans = net.players.slice(0, 8);
   const used = new Set(humans.map(p => p.racer));
   const ai = c.ai ? RACERS.filter(r => !used.has(r.id)).slice(0, 8 - humans.length).map(r => ({ racer: r.id, owner: 'ai', name: r.name })) : [];
-  const grid = [...ai.sort(() => Math.random() - 0.5), ...humans.map(p => ({ racer: p.racer, owner: p.id, name: p.name }))];
+  const grid = [...ai.sort(() => Math.random() - 0.5), ...humans.map(p => ({ racer: p.racer, owner: p.id, name: p.name, own: !!p.own }))];
   const msg = { t: 'start', grid, ti: c.ti, mirror: c.mirror, laps: c.laps, items: c.items, cls: c.cls };
   net.inRace = true; netBroadcast(msg); netLobby();
   startRace('online', c.ti, { online: msg });
@@ -1096,7 +1100,7 @@ function drawOnline() {
     const r = RACERS.find(q => q.id === p.racer) || RACERS[0], y = 258 + i * 46;
     rr(64, y - 4, 512, 40, 10); ctx.fillStyle = p.id === net.myId ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.06)'; ctx.fill();
     ctx.fillStyle = r.body; ctx.beginPath(); ctx.arc(88, y + 16, 12, 0, 6.3); ctx.fill();
-    txt(p.name, 110, y + 4, 22, '#ffffff'); txt(r.name, 400, y + 6, 18, r.body);
+    txt(p.name, 110, y + 4, 22, '#ffffff'); if (ownOK(p.name, p.own)) ownTag(118 + ctx.measureText(p.name).width, y + 5, 24); txt(r.name, 400, y + 6, 18, r.body);
     if (p.id === 'host') txt('HOST', 560, y + 8, 15, '#ffe680', 'right'); else if (p.id === net.myId) txt('YOU', 560, y + 8, 15, '#8aff6a', 'right');
     else if (isHost && button('kick' + p.id, 506, y + 2, 54, 30, 'KICK', { color: '#6a2a2a', size: 12 })) { netSend(p.id, { t: 'closed' }); if (net.tr.kick) net.tr.kick(p.id); netPlayerLeft(p.id); }
   });
@@ -1145,6 +1149,7 @@ function drawNames(view, cam) {
     const d = Math.hypot(k.x - cam.eye[0], k.z - cam.eye[2]); if (d > 120) continue;
     const s = clamp(30 / d, 0.5, 1.2);
     txt(k.name, p[0], p[1] - 20 * s, 18 * s, k.racer.body, 'center', { stroke: 4 * s });
+    if (ownOK(k.name, k.own)) ownTag(p[0], p[1] - 46 * s, 22 * s, 'center');
   }
 }
 function trophyIcon(x, y, s, kind) {
@@ -1228,7 +1233,9 @@ function drawResults(dt) {
     if (hum) { rr(W / 2 - 348, y - 6, 696, 46, 10); ctx.fillStyle = 'rgba(255,255,255,0.14)'; ctx.fill(); }
     txt(ORD(i + 1), W / 2 - 320, y, 26, i === 0 ? '#ffe03a' : i === 1 ? '#d8e0f0' : i === 2 ? '#ff9a4a' : '#ffffff', 'left', { stroke: 5, italic: true });
     ctx.fillStyle = k.racer.body; ctx.beginPath(); ctx.arc(W / 2 - 220, y + 16, 14, 0, 6.3); ctx.fill();
-    txt(k.racer.name + (hum ? (race.humans === 2 ? ` (P${k.human + 1})` : ' (YOU)') : ''), W / 2 - 194, y + 2, 24, hum ? '#ffe680' : '#ffffff', 'left', { stroke: 5 });
+    const rName = (race.online && k.owner !== 'ai' ? k.name : k.racer.name) + (hum ? (race.humans === 2 ? ` (P${k.human + 1})` : ' (YOU)') : '');
+    txt(rName, W / 2 - 194, y + 2, 24, hum ? '#ffe680' : '#ffffff', 'left', { stroke: 5 });
+    if (k.own && (k.owner === 'me' || ownOK(k.name, k.own))) ownTag(W / 2 - 184 + ctx.measureText(rName).width, y + 4, 24);
     txt(fmtT(k.finishT), W / 2 + 150, y + 4, 22, '#c8d0e8', 'right', { stroke: 4 });
     if (gp) { txt(`+${GP_POINTS[i]}`, W / 2 + 230, y + 4, 22, '#8aff6a', 'right', { stroke: 4 }); txt(String(gp.points[k.racer.id] || 0), W / 2 + 330, y + 2, 26, '#ffffff', 'right', { stroke: 5 }); }
     ctx.globalAlpha = 1;
@@ -1408,4 +1415,18 @@ window.__kt = {
   sim(dt, n) { for (let i = 0; i < n; i++) { if (state !== 'race') return state; updateRace(dt); } CAMS.forEach(c => { for (let j = 0; j < 90; j++) updateCam(c, 1 / 60, false); }); return state; },
   setHumanAI(on) { this._ai = on; },
 };
+
+// ------------------------------------------------------------ owner cheats (only shown for the site admin, see account/cheats.js)
+const inRace = () => state === 'race' && myKart() ? '' : 'Start a race first';
+const giveIt = id => { const k = myKart(); k.item = id; k.itemN = id === 'turbo3' ? 3 : 1; k.rouletteT = 0; };
+window.__cheats = [
+  { name: 'Get a Triple Turbo', icon: '🚀', need: inRace, run() { giveIt('turbo3'); } },
+  { name: 'Get a Homing Shell', icon: '🎯', need: inRace, run() { giveIt('homing'); } },
+  { name: 'Get a Zap', icon: '⚡', need: inRace, run() { giveIt('zap'); } },
+  { name: 'Get a Shield', icon: '🛡', need: inRace, run() { giveIt('shield'); } },
+  { name: 'Mega boost', icon: '💨', need: inRace, run() { myKart().boostT = 3.5; } },
+  { name: 'Star power', icon: '⭐', need: inRace, run() { myKart().starT = 8; } },
+  { name: 'Gold trophy in every class', icon: '🏆', run() { CLASSES.forEach(c => save.trophies[c.id] = 'gold'); store(); } },
+];
+
 })();

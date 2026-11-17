@@ -1566,4 +1566,13 @@ window.__fish = {
   winFight() { if (fight) fight.progress = 2; }, travel: arrive, openShop, setTab(tb) { shopTab = tb; },
   setWeather(id) { weather = { id, t: 0, dur: 999 }; }, openTank, setDexTab(d) { dexLake = d; }, hookJunk(id) { hooked = JUNK.find(j => j.id === id); },
 };
+
+// ------------------------------------------------------------ owner cheats (only shown for the site admin, see account/cheats.js)
+window.__cheats = [
+  { name: '+10,000 coins', icon: '💰', run() { save.coins += 10000; store(); } },
+  { name: 'Unlock every lake, rod, hat and bobber', icon: '🔓', run() { save.unlocked = LAKES.map(l => l.id); save.rods = RODS.map(r => r.id); save.hats = HATS.map(h => h.id); save.bobbers = BOBBERS.map(b => b.id); store(); } },
+  { name: 'Instant bite', icon: '🎣', run() { biteAt = 0; nextNibble = 0; nibbles = 1; stateT = 99; } },
+  { name: 'Win the fight', icon: '💪', run() { if (fight) fight.progress = 2; } },
+];
+
 })();

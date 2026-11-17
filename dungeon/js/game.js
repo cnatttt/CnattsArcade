@@ -106,6 +106,7 @@ function stick(side) { for (const s of touch.sticks.values()) if (s.side === sid
 // ------------------------------------------------------------ state
 let screen = 'loading';     // loading menu classes sanctum codex play pause dead victory
 let t = 0, run = null, room = null, P = null;
+const CHEAT = { god: false };
 let enemies = [], shots = [], pickups = [], parts = [], nums = [], hazards = [], beams = [], chests = [], fx = [];
 let shake = 0, hitstop = 0, slowmo = 1, transition = null, banner = null, toastQ = [], flashW = 0;
 let menuSel = 0, classSel = 0, dailyMode = false;
@@ -680,7 +681,7 @@ let bossIntro = null;
 
 // ------------------------------------------------------------ combat
 function hurtPlayer(dmg, src) {
-  if (P.iframes > 0 || P.roll > 0 || screen !== 'play') return;
+  if (CHEAT.god || P.iframes > 0 || P.roll > 0 || screen !== 'play') return;
   P.hp -= dmg; P.iframes = 1.0; shake = 0.35; hitstop = 0.08; flashW = 0.35;
   SND.hurt(); burst(P.x, P.y, 14, '#e83a4a', 70); splat(P.x, P.y, '#a81a2a', 8);
   if (src && src.d && run.st.thorns && src !== boss) damageEnemy(src, run.st.thorns, { noStatus: true });
@@ -2086,4 +2087,19 @@ window.__dg = {
   giveRelic(id) { run.relics.push(RELICS.find(r => r.id === id)); recalc(); }, startFloor, save: () => save, setScreen(s) { screen = s; },
   reachableTiles, blocked, enterRoomTest(r) { leaveRoom(); enterRoom(r, 's'); }, hurtBoss(f) { if (boss) { boss.hp = boss.maxhp * f; } }, godmode() { P.hp = 999; P.maxhp = 999; },
 };
+
+// ------------------------------------------------------------ owner cheats (only shown for the site admin, see account/cheats.js)
+const inRun = () => run && P && (screen === 'play' || screen === 'pause') ? '' : 'Start a run first';
+window.__cheats = [
+  { name: 'God mode', icon: '🛡', toggle: () => CHEAT.god, run() { CHEAT.god = !CHEAT.god; } },
+  { name: 'Full heal', icon: '❤', need: inRun, run() { P.hp = P.maxhp; } },
+  { name: 'Kill every enemy here', icon: '💥', need: inRun, run() { enemies.forEach(e => { if (!e.dead) { e.hp = 0.01; damageEnemy(e, 999, { raw: true }); } }); } },
+  { name: '+500 gold', icon: '💰', need: inRun, run() { run.gold += 500; } },
+  { name: '+5 keys and potions', icon: '🗝', need: inRun, run() { run.keys += 5; run.potions += 5; } },
+  { name: 'Get a random relic', icon: '💎', need: inRun, run() { const r = rollRelic(0); if (r) { run.relics.push(r); recalc(); toast('Relic: ' + r.name, '#ffd65a', 2); } } },
+  { name: 'Warp to the boss', icon: '👹', need: inRun, run() { const b = run.map.list.find(r => r.type === 'boss'); leaveRoom(); enterRoom(b, 's'); P.x = 8.5 * TS; P.y = 8.5 * TS; } },
+  { name: '+1,000 souls', icon: '👻', run() { save.souls += 1000; store(); } },
+  { name: 'Unlock every class', icon: '🧙', run() { save.classes = CLASSES.map(c => c.id); store(); } },
+];
+
 })();

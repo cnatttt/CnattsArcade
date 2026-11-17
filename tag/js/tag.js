@@ -869,4 +869,13 @@ fontReady.then(() => requestAnimationFrame(n => { last = n; frame(n); }));
 
 window.__tag = { get screen() { return screen; }, get phase() { return phase; }, get score() { return score; }, get players() { return players; }, get it() { return itIdx; },
   settings, startMatch, cpuInput, tileOf, setArena(i) { settings.arena = i; loadArena(ARENAS[i]); } };
+
+// ------------------------------------------------------------ owner cheats (only shown for the site admin, see account/cheats.js)
+const inMatch = () => screen === 'play' ? '' : 'Start a match first';
+window.__cheats = [
+  { name: '+1 point for Player 1', icon: '🏅', need: inMatch, run() { score[0]++; } },
+  { name: 'Make Player 2 IT', icon: '👉', need: inMatch, run() { itIdx = 1; } },
+  { name: 'Make Player 1 IT', icon: '👈', need: inMatch, run() { itIdx = 0; } },
+];
+
 })();

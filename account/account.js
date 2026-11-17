@@ -34,7 +34,7 @@
   ];
   const sentScore = {};
   function scoresFromSave(key, data) {
-    if (!A.user || A.user.banned || data == null) return;
+    if (!A.user || A.user.banned || A.cheated || data == null) return;
     const s = J(data); if (s == null) return;
     BOARDS.forEach(b => {
       if (!(b.key instanceof RegExp ? b.key.test(key) : b.key === key)) return;
@@ -158,6 +158,7 @@
         A.sb = window.supabase.createClient(CFG.url, CFG.anonKey, { auth: { persistSession: true, autoRefreshToken: true, storageKey: 'arcade-auth' } });
         const { data } = await A.sb.auth.getSession();
         if (data.session) { await loadProfile(data.session.user); }
+        A.loadAdmins();
         A.sb.auth.onAuthStateChange((ev, session) => { if (ev === 'SIGNED_OUT') { A.user = null; emit(); } });
       } catch (e) { A.error = e.message || String(e); }
       A.ready = true; emit();
@@ -202,6 +203,37 @@
   function stopPresence() { clearInterval(presTimer); presTimer = null; }
   A.setPlaying = g => { A.playing = g || null; beat(); };
   A.isOnline = p => p && p.last_seen && Date.now() - new Date(p.last_seen).getTime() < 150000;
+
+  // ------------------------------------------------------------ the owner tag (shown next to admin names in multiplayer)
+  A.adminNames = null;
+  A.loadAdmins = async function () {
+    try { const r = await A.sb.from('admins').select('profiles(username)'); if (!r.error) A.adminNames = new Set(r.data.map(x => x.profiles && x.profiles.username.toLowerCase()).filter(Boolean)); } catch (e) {}
+  };
+  A.isOwnerMe = () => !!(A.user && A.user.admin);
+  // a player shows the tag if their game says they're the owner AND the name really is an admin account
+  A.ownerOK = (name, flag) => !!flag && (!A.adminNames || A.adminNames.has(String(name || '').toLowerCase()));
+  // draws the tag on a game's canvas; returns its width
+  A.drawOwnerTag = function (ctx, x, y, h, align) {
+    const t = performance.now() / 1000, fs = h * 0.56, label = 'OWNER';
+    ctx.save(); ctx.font = `800 ${fs}px Rubik, Fredoka, 'Russo One', sans-serif`;
+    const cw = h * 0.95, w = cw + ctx.measureText(label).width + h * 0.55;
+    if (align === 'right') x -= w; else if (align === 'center') x -= w / 2;
+    const r = h / 2;
+    ctx.shadowColor = '#ffb020'; ctx.shadowBlur = h * 0.5 + Math.sin(t * 4) * h * 0.2;
+    const g = ctx.createLinearGradient(x, y, x + w, y + h); g.addColorStop(0, '#fff2a0'); g.addColorStop(0.45, '#ffc21a'); g.addColorStop(1, '#ff7a1a');
+    ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+    ctx.fillStyle = g; ctx.fill(); ctx.shadowBlur = 0;
+    ctx.lineWidth = Math.max(1.5, h * 0.09); ctx.strokeStyle = '#5a2a00'; ctx.stroke();
+    // shine sweeping across
+    ctx.save(); ctx.clip(); const sx = x + ((t * 0.6) % 1.6 - 0.3) * w; const sg = ctx.createLinearGradient(sx - h, 0, sx + h, 0); sg.addColorStop(0, 'rgba(255,255,255,0)'); sg.addColorStop(0.5, 'rgba(255,255,255,0.7)'); sg.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = sg; ctx.fillRect(x, y, w, h); ctx.restore();
+    // crown
+    const cx = x + h * 0.22, cy = y + h * 0.26, s = h * 0.5;
+    ctx.beginPath(); ctx.moveTo(cx, cy + s * 0.85); ctx.lineTo(cx, cy + s * 0.15); ctx.lineTo(cx + s * 0.3, cy + s * 0.45); ctx.lineTo(cx + s * 0.55, cy); ctx.lineTo(cx + s * 0.8, cy + s * 0.45); ctx.lineTo(cx + s * 1.1, cy + s * 0.15); ctx.lineTo(cx + s * 1.1, cy + s * 0.85); ctx.closePath();
+    ctx.fillStyle = '#5a2a00'; ctx.fill();
+    ctx.fillStyle = '#5a2a00'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(label, x + cw, y + h * 0.53);
+    ctx.restore();
+    return w;
+  };
 
   // ------------------------------------------------------------ site settings (set by admins) + public numbers
   const SITE_CACHE = 'arcade_site';

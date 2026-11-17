@@ -14,6 +14,10 @@ Object.assign(SONGS, {
 const SAVE_KEY = 'cnatt_party';
 // signed-in arcade players play online under their account name
 const myName = () => (window.Account && Account.user && Account.user.username) || save.players[0].name;
+// the site owner gets a gold OWNER tag next to their name
+const OWN = () => !!(window.Account && Account.isOwnerMe && Account.isOwnerMe());
+const isOwner = p => !!(p && p.own && window.Account && (!S || !S.online || Account.ownerOK(p.name, p.own)));
+const ownTag = (x, y, h, align) => (window.Account && Account.drawOwnerTag ? Account.drawOwnerTag(ctx, x, y, h, align) : 0);
 const COLORS = ['#3a9aff', '#ff4a6a', '#5ad84a', '#ffcc33', '#b06aff', '#ff8a2a', '#3ae8d8', '#ff6ad8', '#e8e8f0', '#5a5a6a'];
 const FACES = ['happy', 'angry', 'cool', 'cat', 'crown'];
 const DEF_BINDS = [{ up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', act: 'KeyF' }, { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', act: 'Enter' }];
@@ -60,7 +64,7 @@ function newS(mode, players) {
   return { scr: 'card', mode, game: null, gs: null, crowns: [0, 0], target: save.target, order: [], played: [], players, timer: 0, ev: [], evN: 0, online: !!net.role, winner: -1, spin: null, cpu: net.role ? -1 : save.cpu };
 }
 function startMatch(mode, gameId) {
-  const players = net.role ? [{ name: myName(), look: save.players[0].look }, net.guest || { name: 'Guest', look: { col: COLORS[1], face: 'happy' } }] : [save.players[0], save.cpu >= 0 ? { name: ['CPU (EASY)', 'CPU', 'CPU (HARD)'][save.cpu], look: { col: save.players[1].look.col === save.players[0].look.col ? COLORS[5] : save.players[1].look.col, face: 'angry' } } : save.players[1]];
+  const players = net.role ? [{ name: myName(), look: save.players[0].look, own: OWN() }, net.guest || { name: 'Guest', look: { col: COLORS[1], face: 'happy' } }] : [Object.assign({}, save.players[0], { own: OWN() }), save.cpu >= 0 ? { name: ['CPU (EASY)', 'CPU (NORMAL)', 'CPU (HARD)'][save.cpu], look: { col: save.players[1].look.col === save.players[0].look.col ? COLORS[5] : save.players[1].look.col, face: 'angry' } } : save.players[1]];
   const pl = JSON.parse(JSON.stringify(players));
   if (net.role) { // online: both players may still have the default look, so make sure they differ
     if (pl[1].look.col === pl[0].look.col) pl[1].look.col = COLORS.find(c => c !== pl[0].look.col && c !== COLORS[0]);
@@ -186,7 +190,8 @@ function topBar() {
     const p = S.players[i], L = i === 0;
     drawBlob(L ? 46 : W - 46, 40, 26, p.look, { ang: L ? 0 : Math.PI, shadow: false });
     txt(p.name, L ? 86 : W - 86, 12, 26, p.look.col, L ? 'left' : 'right');
-    if (net.role && i === (net.role === 'client' ? 1 : 0)) { const nw = (ctx.font = `700 26px ${FONT}`, ctx.measureText(p.name).width); rr(L ? 96 + nw : W - 96 - nw - 54, 14, 54, 24, 8); ctx.fillStyle = '#ffffff'; ctx.fill(); txt('YOU', L ? 123 + nw : W - 123 - nw, 16, 16, '#14102a', 'center', { stroke: 0 }); }
+    let tw = 0; if (isOwner(p)) { const nw = ctx.measureText(p.name).width; tw = ownTag(L ? 96 + nw : W - 96 - nw, 14, 24, L ? 'left' : 'right') + 8; }
+    if (net.role && i === (net.role === 'client' ? 1 : 0)) { const nw = (ctx.font = `700 26px ${FONT}`, ctx.measureText(p.name).width + tw); rr(L ? 96 + nw : W - 96 - nw - 54, 14, 54, 24, 8); ctx.fillStyle = '#ffffff'; ctx.fill(); txt('YOU', L ? 123 + nw : W - 123 - nw, 16, 16, '#14102a', 'center', { stroke: 0 }); }
     if (S.mode === 'party') for (let k = 0; k < S.target; k++) { const x = L ? 96 + k * 26 : W - 96 - k * 26; crown(x, 58, 0.5, k < S.crowns[i]); }
   }
   txt(GAMES[S.game].name, W / 2, 10, 30, GAMES[S.game].col, 'center');
@@ -279,6 +284,7 @@ function drawFinal(R) {
   ctx.save(); ctx.translate(W / 2, 300); const b = 1 + Math.sin(t * 5) * 0.04; ctx.scale(b, 1 / b);
   drawBlob(0, 0, 110, p.look, { mouth: 'o' }); ctx.restore(); crown(W / 2, 170 + Math.sin(t * 4) * 6, 2.2, true);
   txt(p.name, W / 2, 440, 60, p.look.col, 'center', { stroke: 10 });
+  if (isOwner(p)) ownTag(W / 2, 404, 32, 'center');
   if (R.mode === 'party') txt(`${R.crowns[0]}  -  ${R.crowns[1]}`, W / 2, 514, 36, '#ffffff', 'center');
   if (net.role === 'client') { txt('Waiting for the host...', W / 2, 600, 24, '#c8c0ff', 'center'); if (button('fleave', W / 2 - 110, 640, 220, 56, 'LEAVE', { color: '#8a2a3a', size: 22, sfx: 'back' })) leaveOnline(); return; }
   if (R.timer < 1) return;
@@ -323,16 +329,20 @@ function drawTitle() {
   if (button('looks', bx, 552, 205, 56, 'PLAYERS', { color: '#b06aff', size: 24 })) go('looks');
   if (button('sett', bx + 215, 552, 205, 56, 'SETTINGS', { color: '#5a4ab0', size: 24 })) go('settings');
   // opponent
-  const opts = ['2 PLAYERS', 'VS CPU: EASY', 'VS CPU: NORMAL', 'VS CPU: HARD'];
-  if (button('opp', bx, 622, bw, 50, opts[save.cpu + 1], { color: save.cpu >= 0 ? '#ff8a2a' : '#2ac85a', size: 22, sfx: 'tab' })) { save.cpu = save.cpu >= 2 ? -1 : save.cpu + 1; store(); }
+  // opponent: a friend on the same keyboard, or the computer at 3 difficulties
+  txt('PLAY AGAINST', W / 2, 618, 15, '#ffe680', 'center', { stroke: 3 });
+  [['FRIEND', -1, '#2ac85a'], ['EASY CPU', 0, '#5ab8ff'], ['NORMAL CPU', 1, '#ff9a2a'], ['HARD CPU', 2, '#ff3a5a']].forEach(([lab, v, col], i) => {
+    const on = save.cpu === v, x = W / 2 - 290 + i * 146;
+    if (button('opp' + i, x, 640, 138, 44, lab, { color: on ? col : '#3a2a6a', size: 17, selected: on, sfx: 'tab' })) { save.cpu = v; store(); }
+  });
   // player previews
   for (let i = 0; i < 2; i++) {
     const p = save.players[i], x = i === 0 ? 170 : W - 170, cpu = i === 1 && save.cpu >= 0;
     drawBlob(x, 470 + Math.sin(t * 3 + i * 2) * 8, 70, cpu ? { col: p.look.col, face: 'angry' } : p.look, { ang: i === 0 ? 0 : Math.PI });
     txt(cpu ? 'COMPUTER' : p.name, x, 570, 28, p.look.col, 'center');
-    txt(cpu ? '' : controlsLine(i), x, 610, 17, '#ffffff', 'center', { stroke: 3 });
+    txt(cpu ? ['EASY', 'NORMAL', 'HARD'][save.cpu] : controlsLine(i), x, 610, 17, cpu ? ['#5ab8ff', '#ff9a2a', '#ff3a5a'][save.cpu] : '#ffffff', 'center', { stroke: 3 });
   }
-  txt(`Matches ${save.stats.matches}   ${save.players[0].name} ${save.stats.wins[0]} - ${save.stats.wins[1]} ${save.players[1].name}${save.stats.react ? `   Fastest draw ${save.stats.react} ms` : ''}`, W / 2, 690, 16, '#c8c0ff', 'center', { stroke: 0 });
+  txt(`Matches ${save.stats.matches}   ${save.players[0].name} ${save.stats.wins[0]} - ${save.stats.wins[1]} ${save.players[1].name}${save.stats.react ? `   Fastest draw ${save.stats.react} ms` : ''}`, W / 2, 700, 14, '#c8c0ff', 'center', { stroke: 0 });
 }
 function drawSelect() {
   txt('FREE PLAY', W / 2, 30, 56, '#ffffff', 'center');
@@ -408,7 +418,7 @@ function joinRoom(code) {
   net.tr = NetTransport.join(net.code, {
     ready: id => {
       net.myId = id; net.joinedAt = performance.now();
-      const hello = () => netSend('host', { t: 'hello', name: myName(), look: save.players[0].look });
+      const hello = () => netSend('host', { t: 'hello', name: myName(), look: save.players[0].look, own: OWN() });
       hello(); let n = 0; const tr = net.tr;
       const iv = setInterval(() => { if (net.tr !== tr || net.screen === 'lobby' || ++n > 10) { clearInterval(iv); if (net.tr === tr && net.screen !== 'lobby') netLost('The room did not answer. Try again.'); return; } hello(); }, 1500);
     },
@@ -427,7 +437,7 @@ function joinRoom(code) {
 function netReset(keepErr) { if (net.tr) try { net.tr.close(); } catch (e) {} net.tr = null; net.role = null; net.guest = null; net.guestId = null; net.prev = net.cur = null; if (!keepErr) net.error = ''; }
 function netLost(why) { netReset(); net.error = why; net.screen = 'menu'; S = null; go('online'); }
 function leaveOnline() { if (net.role === 'client') netSend('host', { t: 'bye' }); netReset(); net.screen = 'menu'; S = null; go('title'); }
-function lobbySync() { netBroadcast({ t: 'lobby', cfg: net.cfg, host: { name: myName(), look: save.players[0].look }, guest: net.guest }); }
+function lobbySync() { netBroadcast({ t: 'lobby', cfg: net.cfg, host: { name: myName(), look: save.players[0].look, own: OWN() }, guest: net.guest }); }
 function hostStartMatch() { if (!net.guest) return; startMatch(net.cfg.mode, net.cfg.mode === 'free' ? net.cfg.game : null); }
 function myPress() { // guest presses ACTION: remember the reaction time for Quick Draw (measured on this computer)
   net.myAN++;
@@ -448,7 +458,7 @@ function drawOnline() {
     panel(W / 2 - 330, 100, 660, 540);
     txt('YOUR PLAYER', W / 2 - 290, 124, 18, '#c8c0ff', 'left', { stroke: 0 });
     drawBlob(W / 2 - 230, 200, 44, save.players[0].look, { ang: 0 });
-    txt(myName(), W / 2 - 160, 180, 32, save.players[0].look.col, 'left');
+    txt(myName(), W / 2 - 160, 180, 32, save.players[0].look.col, 'left'); if (OWN()) ownTag(W / 2 - 150 + ctx.measureText(myName()).width, 186, 26);
     if (button('edl', W / 2 + 140, 170, 150, 46, 'CHANGE', { color: '#b06aff', size: 20 })) go('looks');
     if (button('host', W / 2 - 290, 270, 580, 76, 'HOST A ROOM', { color: '#1ab8a8', size: 34 })) hostRoom();
     txt('OR JOIN A FRIEND\'S ROOM', W / 2 - 290, 370, 18, '#c8c0ff', 'left', { stroke: 0 });
@@ -467,14 +477,14 @@ function drawOnline() {
     if (button('cc', W / 2 - 100, 380, 200, 56, 'CANCEL', { color: '#8a2a3a', size: 22, sfx: 'back' })) { netReset(); net.screen = 'menu'; }
     return;
   }
-  const isHost = net.role === 'host', hostP = isHost ? save.players[0] : net.hostP, guest = isHost ? net.guest : (net.guest || { name: save.players[0].name, look: save.players[0].look });
+  const isHost = net.role === 'host', hostP = isHost ? { name: myName(), look: save.players[0].look, own: OWN() } : net.hostP, guest = isHost ? net.guest : (net.guest || { name: save.players[0].name, look: save.players[0].look });
   panel(70, 100, 1140, 540);
   txt('ROOM CODE', 110, 124, 20, '#c8c0ff', 'left', { stroke: 0 });
   txt(net.code, 110, 150, 72, '#5affe8', 'left', { stroke: 10 });
   if (NetTransport.local) txt('(same-computer test mode)', 110, 236, 14, '#9a92d0', 'left', { stroke: 0 });
   [[hostP, 'HOST'], [guest, isHost ? 'GUEST' : 'YOU']].forEach(([p, tag], i) => {
     const x = 520 + i * 340;
-    if (p) { drawBlob(x, 200, 56, p.look, { ang: i ? Math.PI : 0 }); txt(p.name, x, 270, 28, p.look.col, 'center'); }
+    if (p) { drawBlob(x, 200, 56, p.look, { ang: i ? Math.PI : 0 }); txt(p.name, x, 270, 28, p.look.col, 'center'); if (p.own && window.Account && Account.ownerOK(p.name, p.own)) ownTag(x, 122, 26, 'center'); }
     else { ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.setLineDash([8, 8]); ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(x, 200, 56, 0, 6.3); ctx.stroke(); ctx.setLineDash([]); txt('waiting...', x, 270, 24, '#9a92d0', 'center', { stroke: 0 }); }
     txt(tag, x, 306, 16, '#ffe680', 'center', { stroke: 0 });
   });
@@ -549,14 +559,23 @@ fontReady.then(() => { applyAudio(); go('title'); requestAnimationFrame(n => { l
 
 window.__pc = {
   get S() { return S; }, get ui() { return ui; }, startMatch, go, save: () => save, net, hostRoom, joinRoom, hostStartMatch,
-  sim(dt, n) { // run the match quickly with both players on autopilot (tests)
+  sim(dt, n, lv = [2, 2]) { // run the match quickly with both players on autopilot (tests)
     for (let k = 0; k < n; k++) {
       if (!S || ui !== 'game') return 'menu';
-      const inp = [0, 1].map(i => { const c = S.scr === 'play' ? GAMES[S.game].ai(S.gs, i, 2) : { x: 0, y: 0, a: false }; if (c.a && (!cpuPrevA[i] || S.game === 'tug')) cpuIn[i].aN++; cpuPrevA[i] = c.a; return Object.assign(cpuIn[i], { x: c.x, y: c.y, a: c.a }); });
+      const inp = [0, 1].map(i => { const c = S.scr === 'play' ? GAMES[S.game].ai(S.gs, i, lv[i]) : { x: 0, y: 0, a: false }; if (c.a && (!cpuPrevA[i] || S.game === 'tug')) cpuIn[i].aN++; cpuPrevA[i] = c.a; return Object.assign(cpuIn[i], { x: c.x, y: c.y, a: c.a }); });
       stepMatch(dt, inp); handleEvents();
       if (S.scr === 'final') return 'final';
     }
     return S.scr;
   },
 };
+
+// ------------------------------------------------------------ owner cheats (only shown for the site admin, see account/cheats.js)
+const me = () => net.role === 'client' ? 1 : 0;
+const inGame = () => net.role === 'client' ? 'Only works when you are the host' : ui === 'game' && S && S.scr === 'play' && S.gs && S.gs.phase === 'play' ? '' : 'Wait until a round is being played';
+window.__cheats = [
+  { name: 'Win this round', icon: '🏅', need: inGame, run() { givePoint(S.gs, S, me(), 'OWNER POWER!'); } },
+  { name: 'Win this mini-game', icon: '👑', need: inGame, run() { S.gs.score[me()] = Math.max(S.gs.score[me()], (S.gs.target || 3) - 1); givePoint(S.gs, S, me(), 'OWNER POWER!'); } },
+];
+
 })();

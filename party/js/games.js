@@ -143,20 +143,32 @@ const cycles = {
   ai(gs, i, lvl) {
     const p = gs.p[i], occ = gs._occ; if (!occ || gs.phase !== 'play') return { x: 0, y: 0, a: false };
     const free = (x, y) => x >= 0 && y >= 0 && x < LC.COLS && y < LC.ROWS && !occ[y * LC.COLS + x];
+    const cap = [60, 300, 900][lvl];
+    // easy reacts slowly: often keeps going straight unless the wall is right there
+    if (lvl === 0 && Math.random() < 0.85 && free(p.x + DIRS[p.d][0] * 2, p.y + DIRS[p.d][1] * 2)) return { x: 0, y: 0, a: false };
     const space = (x, y) => { // flood fill size (capped)
-      if (!free(x, y)) return -1; const seen = new Set([y * 1000 + x]), q = [[x, y]]; let n = 0;
-      while (q.length && n < 260) { const [cx, cy] = q.shift(); n++; for (const [dx, dy] of DIRS) { const ax = cx + dx, ay = cy + dy, k = ay * 1000 + ax; if (!seen.has(k) && free(ax, ay)) { seen.add(k); q.push([ax, ay]); } } }
+      if (!free(x, y)) return -1; const seen = new Uint8Array(LC.COLS * LC.ROWS), q = [x, y]; seen[y * LC.COLS + x] = 1; let n = 0, h = 0;
+      while (h < q.length && n < cap) { const cx = q[h++], cy = q[h++]; n++; for (const [dx, dy] of DIRS) { const ax = cx + dx, ay = cy + dy; if (free(ax, ay) && !seen[ay * LC.COLS + ax]) { seen[ay * LC.COLS + ax] = 1; q.push(ax, ay); } } }
       return n;
     };
+    // hard: count the cells I can reach before the opponent can (territory)
+    const dist = (sx, sy) => { const D = new Int16Array(LC.COLS * LC.ROWS).fill(-1); if (!free(sx, sy)) return D; const q = [sx, sy]; let h = 0; D[sy * LC.COLS + sx] = 0;
+      while (h < q.length) { const cx = q[h++], cy = q[h++], dd = D[cy * LC.COLS + cx]; for (const [dx, dy] of DIRS) { const ax = cx + dx, ay = cy + dy; if (free(ax, ay) && D[ay * LC.COLS + ax] < 0) { D[ay * LC.COLS + ax] = dd + 1; q.push(ax, ay); } } }
+      return D; };
     const o = gs.p[1 - i];
+    let oD = null; if (lvl >= 2) oD = dist(o.x + DIRS[o.d][0], o.y + DIRS[o.d][1]);
     let best = p.d, bs = -1e9;
     for (const d of [p.d, (p.d + 1) % 4, (p.d + 3) % 4]) {
       const nx = p.x + DIRS[d][0], ny = p.y + DIRS[d][1];
       let s = space(nx, ny); if (s < 0) continue;
       let run = 0; for (let k = 1; k < 8 && free(p.x + DIRS[d][0] * k, p.y + DIRS[d][1] * k); k++) run++;
-      s += run * 3 + (d === p.d ? 4 : 0);
-      if (lvl >= 2) s -= Math.hypot(nx - (o.x + DIRS[o.d][0] * 6), ny - (o.y + DIRS[o.d][1] * 6)) * 0.4;   // cut them off
-      s += Math.random() * (lvl === 0 ? 30 : 6);
+      if (lvl >= 2) {
+        const mD = dist(nx, ny); let mine = 0;
+        for (let k = 0; k < mD.length; k++) if (mD[k] >= 0 && (oD[k] < 0 || mD[k] < oD[k])) mine++;
+        s = Math.min(s, 900) * 0.3 + mine + run * 0.5;
+        if (run < 2 && s > 40) s -= 20;   // don't hug walls when there's room
+      } else s += run * 3 + (d === p.d ? 4 : 0);
+      s += Math.random() * (lvl === 0 ? 30 : lvl === 1 ? 6 : 1);
       if (s > bs) { bs = s; best = d; }
     }
     const c = { x: 0, y: 0, a: false };
@@ -333,7 +345,7 @@ const hockey = {
     if (gs.phase !== 'play') return { x: 0, y: 0, a: false };
     const p = gs.p[i], k = gs.k, home = i === 0 ? AH.x0 + 90 : AH.x1 - 90, myHalf = i === 0 ? k.x < 640 : k.x > 640, dir = i === 0 ? 1 : -1;
     let tx, ty;
-    const react = [0.5, 0.7, 0.85][lvl];
+    const react = [0.45, 0.7, 0.97][lvl];
     if (!gs._aim) gs._aim = [0, 0];
     if (!myHalf) gs._aim[i] = rand(-30, 30) * [0.5, 1, 1.2][lvl];     // pick a new angle for the next shot
     if (myHalf && (k.x - p.x) * dir > -10) { tx = k.x - dir * 30; ty = k.y + gs._aim[i]; }        // strike it (off-centre to angle the shot)
@@ -595,7 +607,7 @@ const tanks = {
     const da = wrapA(target - p.a);
     c.x = Math.abs(da) > 0.08 ? Math.sign(da) : 0;
     c.y = Math.abs(da) < 0.9 && (!sees || dist(p, o) > 260) ? -1 : 0;
-    if (sees && Math.abs(da) < [0.3, 0.15, 0.08][lvl] && Math.random() < [0.03, 0.08, 0.15][lvl]) c.a = true;
+    if (sees && Math.abs(da) < [0.3, 0.15, 0.08][lvl] && Math.random() < [0.03, 0.08, 0.22][lvl]) c.a = true;
     return c;
   },
   draw(gs, S, t) {
