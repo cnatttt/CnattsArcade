@@ -559,11 +559,26 @@ function populate(rm, fromDir) {
     if (r) pickups.push(relicPickup(r, 8.5 * TS, 5.2 * TS, { pedestal: true, altar: true }));
   }
 }
+function reachableTiles() {
+  // every floor tile you can walk to from any door / the middle of the room
+  const seen = new Set(), q = [];
+  [[8, 1], [8, 9], [1, 5], [15, 5], [8, 5]].forEach(([c, r]) => { if (!solidFor(tileAt(c, r), false)) { seen.add(c + ',' + r); q.push([c, r]); } });
+  while (q.length) {
+    const [c, r] = q.shift();
+    for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nc = c + a, nr = r + b;
+      if (nc < 1 || nr < 1 || nc > RW - 2 || nr > RH - 2 || seen.has(nc + ',' + nr) || solidFor(tileAt(nc, nr), false)) continue;
+      seen.add(nc + ',' + nr); q.push([nc, nr]);
+    }
+  }
+  return seen;
+}
 function freeSpot(fromDir, fly) {
   const ent = fromDir ? { n: [8, 1], s: [8, 9], w: [1, 5], e: [15, 5] }[fromDir] : [8, 5];
-  for (let k = 0; k < 80; k++) {
+  const ok = reachableTiles();
+  for (let k = 0; k < 120; k++) {
     const c = 1 + Math.floor(rng() * 15), r = 1 + Math.floor(rng() * 9);
-    if (solidFor(tileAt(c, r), fly)) continue;
+    if (solidFor(tileAt(c, r), fly) || !ok.has(c + ',' + r)) continue;
     if (Math.abs(c - ent[0]) + Math.abs(r - ent[1]) < 6) continue;
     return { x: c * TS + 8, y: r * TS + 8 };
   }
@@ -583,7 +598,18 @@ function rollRelic(not, forceTier) {
 function relicPickup(r, x, y, o = {}) { return Object.assign({ kind: 'relic', relic: r, x, y, vx: 0, vy: 0, t: rand(0, 6) }, o); }
 
 // ------------------------------------------------------------ entities
+function nearestOpen(x, y, fly) {
+  const c0 = Math.floor(x / TS), r0 = Math.floor(y / TS);
+  if (!blocked(x, y, 5, fly) && c0 > 0 && r0 > 0 && c0 < RW - 1 && r0 < RH - 1) return { x, y };
+  for (let d = 1; d < 12; d++) for (let dr = -d; dr <= d; dr++) for (let dc = -d; dc <= d; dc++) {
+    const c = c0 + dc, r = r0 + dr;
+    if (c < 1 || r < 1 || c > RW - 2 || r > RH - 2 || solidFor(tileAt(c, r), fly)) continue;
+    return { x: c * TS + 8, y: r * TS + 8 };
+  }
+  return { x: 8.5 * TS, y: 5.5 * TS };
+}
 function spawnEnemy(type, x, y, elite) {
+  ({ x, y } = nearestOpen(x, y, ENEMIES[type].fly));
   const d = ENEMIES[type], scale = 1 + 0.2 * run.fi + 0.7 * run.loop;
   const e = { type, d, x, y, vx: 0, vy: 0, hp: d.hp * scale * (elite ? 2.2 : 1), r: d.r * (elite ? 1.25 : 1) * (d.scale || 1), t: rand(0, 3), cd: rand(0.8, 2), state: 'idle', st: 0,
     flash: 0, burn: 0, poison: 0, slow: 0, elite, spawn: 0.5, ang: 0, hitBy: {}, face: 1 };
@@ -685,9 +711,10 @@ function bossDefeated(b) {
     if (r) pickups.push(relicPickup(r, 8.5 * TS, 4.2 * TS, { pedestal: true }));
     pickups.push({ kind: 'heart', val: 2, x: 6.5 * TS, y: 6 * TS, vx: 0, vy: 0, t: 0 }, { kind: 'heart', val: 2, x: 10.5 * TS, y: 6 * TS, vx: 0, vy: 0, t: 0 });
     room.stairs = { x: 8.5 * TS, y: 7.2 * TS };
-    toast(run.fi === 4 && !run.loop ? 'THE NIGHTFALL IS BROKEN!' : 'The way down is open...', run.theme.accent, 4);
+    toast(run.fi === 4 && !run.loop ? 'THE NIGHTFALL IS BROKEN! Take the stairs.' : 'STAIRS OPENED - walk onto them to go down!', run.theme.accent, 5);
+    burst(room.stairs.x, room.stairs.y, 40, run.theme.accent, 90);
     Sound.playSong(SONGS.victory);
-  }, 1500);
+  }, 900);
 }
 
 // ------------------------------------------------------------ player
@@ -865,6 +892,19 @@ function enemyUpdate(e, dt) {
   e.slow -= dt;
   if (e.isBoss) return bossUpdate(e, dt * slowF);
   const d = e.d, toP = { x: P.x - e.x, y: P.y - e.y }, dp = Math.hypot(toP.x, toP.y) || 1;
+  if (d.ai !== 'phase' && blocked(e.x, e.y, 2, d.fly)) { e.wedged = (e.wedged || 0) + dt; if (e.wedged > 0.4) { const o = nearestOpen(e.x, e.y, d.fly); e.x = o.x; e.y = o.y; e.wedged = 0; } } else e.wedged = 0;
+  if (!d.fly && d.ai !== 'phase' && flow) {
+    const ec = Math.floor(e.x / TS), er = Math.floor(e.y / TS);
+    const pc = Math.floor(P.x / TS), pr = Math.floor(P.y / TS);
+    const playerOk = flow[pr] && flow[pr][pc] === 0;
+    if (playerOk && flow[er] && flow[er][ec] >= 1e9) e.stuck = (e.stuck || 0) + dt; else e.stuck = 0;
+    if (e.stuck > 2) {
+      let best = null, bd = 1e9;
+      for (let r = 1; r < RH - 1; r++) for (let c = 1; c < RW - 1; c++) if (flow[r][c] < 1e9) { const dd = Math.hypot(c - ec, r - er); if (dd < bd) { bd = dd; best = [c, r]; } }
+      if (best) { burst(e.x, e.y, 10, '#8a7aa0', 40); e.x = best[0] * TS + 8; e.y = best[1] * TS + 8; burst(e.x, e.y, 10, '#8a7aa0', 40); }
+      e.stuck = 0;
+    }
+  }
   const sp = d.speed * slowF * (e.elite ? 1.15 : 1);
   let mvx = 0, mvy = 0;
   const go = (vx, vy, s) => { const m = Math.hypot(vx, vy) || 1; mvx = vx / m * s; mvy = vy / m * s; };
@@ -1031,6 +1071,7 @@ function bossUpdate(b, dt) {
 let shakeX = 0, shakeY = 0;
 function update(dt) {
   run.time += dt;
+  room.activeT = room.cleared ? 0 : (room.activeT || 0) + dt;
   if (transition) { transition.t += dt / 0.35; if (transition.t >= 1) transition = null; return; }
   if (bossIntro) { bossIntro.t += dt; if (bossIntro.t > 2.2) bossIntro = null; }
   flowT -= dt; if (flowT <= 0) { buildFlow(); flowT = 0.25; }
@@ -1250,7 +1291,11 @@ function drawRoomAt(rm, ox, oy, live) {
   if (rm.stairs) {
     const s = sprite('stairs');
     lx.drawImage(s, ox + rm.stairs.x - 8, oy + rm.stairs.y - 6);
-    lx.globalAlpha = 0.25 + 0.15 * Math.sin(t * 3); px(ox + rm.stairs.x - 10, oy + rm.stairs.y - 8, run.theme.accent, 20, 16); lx.globalAlpha = 1;
+    lx.globalAlpha = 0.25 + 0.15 * Math.sin(t * 3); px(ox + rm.stairs.x - 10, oy + rm.stairs.y - 8, run.theme.accent, 20, 16);
+    for (let k = 0; k < 4; k++) { const ph = (t * 0.8 + k / 4) % 1; lx.globalAlpha = (1 - ph) * 0.7; px(ox + rm.stairs.x - 6 + k * 4, oy + rm.stairs.y - 6 - ph * 30, run.theme.accent, 1, 4); }
+    lx.globalAlpha = 1;
+    const ay = oy + rm.stairs.y - 20 + Math.sin(t * 5) * 3;
+    px(ox + rm.stairs.x - 3, ay, '#ffffff', 7, 1); px(ox + rm.stairs.x - 2, ay + 1, '#ffffff', 5, 1); px(ox + rm.stairs.x - 1, ay + 2, '#ffffff', 3, 1); px(ox + rm.stairs.x, ay + 3, '#ffffff');
   }
 }
 function drawShots() {
@@ -1384,6 +1429,10 @@ function drawEnemy(e) {
   if (e.slow > 0) { px(e.x - 4, e.y - 2, 'rgba(168,240,255,0.6)', 8, 2); }
   if (e.state === 'wind') { px(e.x - 1, e.y - img.height * sc - 6, '#ff3a3a', 2, 3); }
   lx.globalAlpha = 1;
+  if (!room.cleared && room.activeT > 6 && enemies.filter(x => !x.dead).length <= 3) {
+    const bob = Math.sin(t * 6) * 2, my = e.y - (e.d.scale || 1) * 16 - 6 + bob;
+    px(e.x - 2, my, '#ff3a4a', 5, 1); px(e.x - 1, my + 1, '#ff3a4a', 3, 1); px(e.x, my + 2, '#ff3a4a');
+  }
   if (e.hp < e.maxhp && !e.isBoss) { px(e.x - 6, e.y + 3, '#1a0a14', 12, 2); px(e.x - 6, e.y + 3, '#e83a4a', 12 * Math.max(0, e.hp / e.maxhp), 2); }
 }
 function drawBoss(b) {
@@ -1621,6 +1670,8 @@ function drawHUD() {
     }
   });
   ctx.restore();
+  if (room.stairs && screen === 'play') text('STAIRS DOWN', (room.stairs.x + RX) * S, (room.stairs.y + RY) * S - 110, 12, run.theme.accent, 'center');
+  if (!room.cleared && room.activeT > 6) { const left = enemies.filter(x => !x.dead).length; if (left && left <= 3) text(`${left} LEFT`, W / 2, 46, 8, '#ff6a6a', 'center'); }
   // damage numbers
   nums.forEach(n => { ctx.globalAlpha = 1 - n.t / 0.8; text(typeof n.v === 'number' ? String(Math.round(n.v)) : n.v, (n.x + RX) * S, (n.y + RY) * S - 10, n.crit ? 16 : 12, n.col, 'center'); ctx.globalAlpha = 1; });
   if (touch.on) drawTouch();
@@ -1904,6 +1955,6 @@ window.__dg = {
   goBoss() { const b = run.map.list.find(r => r.type === 'boss'); leaveRoom(); enterRoom(b, 's'); P.x = 8.5 * TS; P.y = 8.5 * TS; },
   goRoom(type) { const r = run.map.list.find(x => x.type === type); leaveRoom(); enterRoom(r, 's'); P.x = 8.5 * TS; P.y = 8.5 * TS; },
   giveRelic(id) { run.relics.push(RELICS.find(r => r.id === id)); recalc(); }, startFloor, save: () => save, setScreen(s) { screen = s; },
-  hurtBoss(f) { if (boss) { boss.hp = boss.maxhp * f; } }, godmode() { P.hp = 999; P.maxhp = 999; },
+  reachableTiles, blocked, enterRoomTest(r) { leaveRoom(); enterRoom(r, 's'); }, hurtBoss(f) { if (boss) { boss.hp = boss.maxhp * f; } }, godmode() { P.hp = 999; P.maxhp = 999; },
 };
 })();
