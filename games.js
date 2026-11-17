@@ -15,6 +15,15 @@ const SITE = {
 
 const GAMES = [
   {
+    id: "kart",
+    title: "Turbo Karts",
+    folder: "kart",
+    thumbnail: "assets/thumb_kart.png",
+    tag: "3D Racing",
+    description: "3D kart racing with drifting, items, 4 tracks, a Grand Prix and 2-player split screen.",
+    accent: "#ffb01a"
+  },
+  {
     id: "horde",
     title: "Nightfall Horde",
     folder: "zombies",
