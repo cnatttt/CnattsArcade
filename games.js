@@ -16,7 +16,7 @@ const SITE = {
 const GAMES = [
   {
     id: "chess",                         // used in links: yoursite.com/#chess
-    title: "Dark Fantasy Chess",
+    title: "Nightfall Chess",
     folder: "chess",                     // folder that holds the game's index.html
     thumbnail: "assets/thumb_chess.png",
     tag: "2 Player",
