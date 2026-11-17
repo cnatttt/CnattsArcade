@@ -15,6 +15,15 @@ const SITE = {
 
 const GAMES = [
   {
+    id: "siege",
+    title: "Nightfall Siege",
+    folder: "siege",
+    thumbnail: "assets/thumb_siege.png",
+    tag: "Tower Defense",
+    description: "Build 7 towers, hold 5 maps against monster waves and giant bosses.",
+    accent: "#ff8a3a"
+  },
+  {
     id: "dungeon",
     title: "Nightfall Depths",
     folder: "dungeon",
