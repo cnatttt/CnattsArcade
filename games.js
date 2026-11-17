@@ -15,6 +15,15 @@ const SITE = {
 
 const GAMES = [
   {
+    id: "dungeon",
+    title: "Nightfall Depths",
+    folder: "dungeon",
+    thumbnail: "assets/thumb_dungeon.png",
+    tag: "Roguelike",
+    description: "Fight down 5 cursed floors, collect 32 relics and slay the Void Lord. Every run is different.",
+    accent: "#e8c060"
+  },
+  {
     id: "chess",                         // used in links: yoursite.com/#chess
     title: "Nightfall Chess",
     folder: "chess",                     // folder that holds the game's index.html

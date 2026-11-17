@@ -7,6 +7,7 @@ A menu page for all my games. Each game lives in its own folder:
 | `chess/`   | Dark Fantasy Chess |
 | `mush/`    | MUSH               |
 | `fishing/` | Fishing Simulator  |
+| `dungeon/` | Nightfall Depths (data in `dungeon/js/data.js`) |
 | `tag/`     | 2 Player Tag (arenas in `tag/js/arenas.js`) |
 
 ## Updating a game
@@ -37,4 +38,4 @@ The title, subtitle and footer are at the top of `games.js`.
 `assets/audio.js` plays the menu music and the click sounds. The ♪ MUSIC / SFX buttons mute them, and that setting is shared with the fishing game.
 
 ## Links
-Every game has a direct link: `https://2playertag.com/#fishing`, `#mush`, `#chess`, `#tag`.
+Every game has a direct link: `https://2playertag.com/#fishing`, `#mush`, `#chess`, `#tag`, `#dungeon`.
