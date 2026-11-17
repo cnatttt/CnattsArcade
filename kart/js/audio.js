@@ -11,7 +11,7 @@ const Sound = (() => {
     sfxOn = localStorage.getItem('cnatt_sfx') !== 'off';
   } catch (e) {}
 
-  const MUSIC_VOL = 0.55, SFX_VOL = 0.8;
+  let MUSIC_VOL = 0.55, SFX_VOL = 0.8;
 
   function init() {
     if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
@@ -286,6 +286,11 @@ const Sound = (() => {
     timer = null; current = null;
   }
 
+  function setVolumes(m, f) {
+    MUSIC_VOL = 0.55 * m; SFX_VOL = 0.8 * f;
+    if (musicBus && ctx) musicBus.gain.setTargetAtTime(musicOn ? Math.max(0.0001, MUSIC_VOL) : 0, ctx.currentTime, 0.05);
+    if (sfxBus && ctx) sfxBus.gain.setTargetAtTime(sfxOn ? SFX_VOL : 0, ctx.currentTime, 0.05);
+  }
   function setMusic(on) {
     musicOn = on; try { localStorage.setItem('cnatt_music', on ? 'on' : 'off'); } catch (e) {}
     if (musicBus) musicBus.gain.setTargetAtTime(on ? MUSIC_VOL : 0, ctx.currentTime, 0.1);
@@ -306,7 +311,7 @@ const Sound = (() => {
   function blip(freq, dur, o = {}) { if (!ctx || !sfxOn) return; tone(now() + (o.delay || 0), freq, dur, o); }
   function hiss(dur, o = {}) { if (!ctx || !sfxOn) return; noise(now() + (o.delay || 0), dur, o); }
   return {
-    init, play, level, blip, hiss, playSong, stopSong, setMusic, setSfx, compose,
+    init, play, level, blip, hiss, playSong, stopSong, setMusic, setSfx, setVolumes, compose,
     get musicOn() { return musicOn; }, get sfxOn() { return sfxOn; },
     get ready() { return !!ctx && ctx.state === 'running'; },
     get ctx() { return ctx; }, get sfxBus() { return sfxBus; },

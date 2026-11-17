@@ -20,7 +20,7 @@ const GAMES = [
     folder: "kart",
     thumbnail: "assets/thumb_kart.png",
     tag: "3D Racing",
-    description: "3D kart racing with drifting, items, 4 tracks, a Grand Prix and 2-player split screen.",
+    description: "3D kart racing with online multiplayer, split screen, drifting, items and a Grand Prix.",
     accent: "#ffb01a"
   },
   {

@@ -22,8 +22,17 @@ if (!R) { ctx.fillStyle = '#111'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#ff
 
 // ------------------------------------------------------------ save
 const SAVE_KEY = 'cnatt_kart';
-let save = { cls: 1, p1: 'blaze', p2: 'sky', trophies: {}, bestLap: {}, bestRace: {}, races: 0, wins: 0, autoGas: false, gp: null };
+const DEFAULT_BINDS = {
+  p1: { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', drift: 'Space', item: 'KeyE', back: 'KeyQ' },
+  p2: { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', drift: 'ShiftRight', item: 'Enter', back: 'Slash' },
+};
+const DEFAULT_SET = { laps: 3, mirror: false, items: true, ai: 7, units: 'kmh', minimap: true, shadows: true, res: 1, particles: 'high', cam: 1, fov: 1, fps: false, music: 0.8, sfx: 0.9, engine: 1, name: '' };
+let save = { cls: 1, p1: 'blaze', p2: 'sky', trophies: {}, bestLap: {}, bestRace: {}, races: 0, wins: 0, autoGas: false, gp: null, set: {}, binds: {} };
 try { const d = JSON.parse(localStorage.getItem(SAVE_KEY)); if (d) save = Object.assign(save, d); } catch (e) {}
+save.set = Object.assign({}, DEFAULT_SET, save.set || {});
+save.binds = { p1: Object.assign({}, DEFAULT_BINDS.p1, (save.binds || {}).p1), p2: Object.assign({}, DEFAULT_BINDS.p2, (save.binds || {}).p2) };
+if (!save.set.name) save.set.name = 'Racer' + Math.floor(100 + Math.random() * 900);
+const SET = () => save.set;
 const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {} };
 
 // ------------------------------------------------------------ input
@@ -38,40 +47,72 @@ ui.addEventListener('pointerup', e => { const [x, y] = toCanvas(e); UI.down = fa
 ui.addEventListener('pointercancel', e => touchPts.delete(e.pointerId));
 const touchPts = new Map();
 window.addEventListener('keydown', e => {
-  if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Slash', 'Quote'].includes(e.code)) e.preventDefault();
+  if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Slash', 'Quote', 'Tab', 'Backspace'].includes(e.code)) e.preventDefault();
+  // rebinding a key in Settings
+  if (state === 'settings' && capture) {
+    e.preventDefault();
+    if (e.code !== 'Escape') {
+      const B = save.binds, old = B[capture.p][capture.a];
+      for (const p of ['p1', 'p2']) for (const a of ACTIONS) if (B[p][a] === e.code && !(p === capture.p && a === capture.a)) B[p][a] = old;   // swap with whatever used it
+      B[capture.p][capture.a] = e.code; store(); Sound.play('click');
+    }
+    capture = null; return;
+  }
+  // typing a name / room code
+  if (state === 'online' && !net.role && net.field) {
+    if (e.key === 'Backspace') { if (net.field === 'name') SET().name = SET().name.slice(0, -1); else net.codeInput = net.codeInput.slice(0, -1); e.preventDefault(); return; }
+    if (e.key === 'Enter') { if (net.field === 'code' && net.codeInput.length === 5) joinRoom(net.codeInput); store(); return; }
+    if (e.key === 'Tab') { net.field = net.field === 'name' ? 'code' : 'name'; return; }
+    if (e.key.length === 1) {
+      if (net.field === 'name' && /[\w \-!]/.test(e.key) && SET().name.length < 12) { SET().name += e.key; store(); }
+      if (net.field === 'code' && /[a-z0-9]/i.test(e.key) && net.codeInput.length < 5) net.codeInput += e.key.toUpperCase();
+      return;
+    }
+  }
   if (!keys[e.code]) pressed[e.code] = true;
   keys[e.code] = true;
-  if ((e.code === 'Escape' || e.code === 'KeyP') && state === 'race') pause();
+  if ((e.code === 'Escape' || e.code === 'KeyP') && state === 'race') { if (race.online) race.menu = !race.menu; else pause(); }
   else if ((e.code === 'Escape' || e.code === 'KeyP') && state === 'pause') resume();
-  if (e.code === 'KeyM') Sound.setMusic(!Sound.musicOn);
+  else if (e.code === 'Escape' && state === 'settings') { store(); state = setFrom; }
+  if (e.code === 'KeyM' && state !== 'online') Sound.setMusic(!Sound.musicOn);
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
-window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; if (state === 'race') pause(); });
+window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; if (state === 'race' && !race.online) pause(); });
 // control sets
-const CTRL = {
-  solo: { up: ['KeyW', 'ArrowUp'], down: ['KeyS', 'ArrowDown'], left: ['KeyA', 'ArrowLeft'], right: ['KeyD', 'ArrowRight'], drift: ['Space', 'ShiftLeft', 'ShiftRight'], item: ['KeyE', 'KeyX', 'Enter', 'KeyQ'] },
-  p1: { up: ['KeyW'], down: ['KeyS'], left: ['KeyA'], right: ['KeyD'], drift: ['Space', 'ShiftLeft'], item: ['KeyE', 'KeyQ'] },
-  p2: { up: ['ArrowUp'], down: ['ArrowDown'], left: ['ArrowLeft'], right: ['ArrowRight'], drift: ['Slash', 'ShiftRight', 'Period'], item: ['Enter', 'Quote', 'Comma'] },
-};
+// controls come from the key bindings in Settings. Solo play accepts both players' keys.
+const ACTIONS = ['up', 'down', 'left', 'right', 'drift', 'item', 'back'];
+function ctrlSet(which) {
+  const o = {};
+  ACTIONS.forEach(a => { o[a] = which === 'solo' ? [save.binds.p1[a], save.binds.p2[a]] : [save.binds[which][a]]; });
+  if (which === 'solo') o.drift.push('ShiftLeft');
+  return o;
+}
 const any = (list, map) => list.some(k => map[k]);
 
 // ------------------------------------------------------------ meshes
 const MESH = {};
 function staticMeshes() {
   if (MESH.wheel) return;
-  MESH.wheel = R.mesh(buildWheel()); MESH.box = R.mesh(buildItemBox()); MESH.coin = R.mesh(buildCoin());
+  MESH.wheel = R.mesh(buildWheel()); MESH.box = R.mesh(buildItemBox()); MESH.boxCore = R.mesh(buildItemCore()); MESH.coin = R.mesh(buildCoin());
   MESH.oil = R.mesh(buildOil()); MESH.orb = R.mesh(buildOrb([0.25, 0.95, 0.35, 0.35])); MESH.rocket = R.mesh(buildRocket()); MESH.bomb = R.mesh(buildBomb());
   MESH.blades = R.mesh(prefab('blades')); MESH.balloon = R.mesh(prefab('balloon'));
-  RACERS.forEach(r => { MESH['kart_' + r.id] = R.mesh(buildKart(r)); });
+  RACERS.forEach((r, i) => { const kb = buildKart(r, i + 1); MESH['kart_' + r.id] = R.mesh(kb.mb); KART_WHEELS[r.id] = kb.wheels; });
   // podium
   const pb = new MB(); [[0, 3.2, '#ffcc33'], [-4.2, 2.2, '#c8c8d8'], [4.2, 1.4, '#c87a3a']].forEach(([x, h, c]) => { pb.box(M4.compose(x, h / 2, 0, 0, 4, h, 4), c); });
   MESH.podium = R.mesh(pb);
 }
+const KART_WHEELS = {};
 let world = null, worldMesh = null;
-function loadTrack(ti) {
-  if (world && world.def === TRACKS[ti]) return;
+// mirror mode flips the track left-to-right
+function trackDef(ti, mirror) {
+  const T = TRACKS[ti]; if (!mirror) return T;
+  return Object.assign({}, T, { id: T.id + '_m', name: T.name + ' (Mirror)', pts: T.pts.map(([x, z, y]) => [x, -z, y]), boosts: T.boosts.map(([f, l]) => [f, -l]) });
+}
+function loadTrack(ti, mirror) {
+  mirror = !!mirror;
+  if (world && world.ti === ti && world.mirror === mirror) return;
   if (worldMesh) { R.free(worldMesh.st); R.free(worldMesh.bm); R.free(worldMesh.sky); }
-  world = buildWorld(TRACKS[ti]);
+  world = buildWorld(trackDef(ti, mirror)); world.mirror = mirror;
   worldMesh = { st: R.mesh(world.st), bm: R.mesh(world.bm), sky: R.mesh(world.sky) }; world.verts = worldMesh.st.n;
   world.st = world.bm = world.sky = null;   // free the CPU copies
   const th = world.th, L = Math.hypot(...th.sun);
@@ -89,7 +130,7 @@ function makeKart(racer, human, slot) {
     offroad: false, onIce: false, bumpT: 0, wrongT: 0, hitFlash: 0, lastPads: -99, startBoost: 0, gasHeld: 0, scale: 1, landT: 0,
     ai: { lane: rand(-0.25, 0.25), laneT: rand(2, 5), skill: 1, itemT: rand(1, 4), driftT: 0 } };
 }
-const CLS = () => CLASSES[save.cls];
+const CLS = () => CLASSES[race && race.cls !== undefined ? race.cls : save.cls];
 function stat(k, s) { return s - 3; }   // -2..+2
 function topSpeed(k) {
   const r = k.racer; let v = CLS().speed * (1 + stat(0, r.speed) * 0.025) * (1 + k.coins * 0.009);
@@ -100,29 +141,41 @@ function topSpeed(k) {
 }
 function startRace(mode, ti, opts = {}) {
   staticMeshes();
-  loadTrack(ti);
+  const on = opts.online || null;
+  const mirror = on ? on.mirror : (mode === 'gp' ? false : SET().mirror);
+  loadTrack(ti, mirror);
   const humans = mode === 'vs' ? 2 : 1;
   karts = []; objs = []; parts = []; skids = []; toasts = [];
-  const picks = [RACERS.find(r => r.id === save.p1)];
-  if (humans === 2) picks.push(RACERS.find(r => r.id === save.p2) || RACERS[1]);
-  const others = RACERS.filter(r => !picks.includes(r));
-  const order = mode === 'tt' ? [picks[0]] : (opts.gridOrder || [...others.sort(() => Math.random() - 0.5), ...picks]);
-  // grid: humans start near the back
+  // build the grid: a list of { racer, human, owner, name }
+  let grid;
+  if (on) grid = on.grid.map(gq => ({ racer: RACERS.find(r => r.id === gq.racer), human: gq.owner === net.myId ? 0 : -1, owner: gq.owner, name: gq.name }));
+  else {
+    const picks = [RACERS.find(r => r.id === save.p1)];
+    if (humans === 2) picks.push(RACERS.find(r => r.id === save.p2) || RACERS[1]);
+    let others = RACERS.filter(r => !picks.includes(r)).sort(() => Math.random() - 0.5);
+    if (mode === 'quick' || mode === 'vs') others = others.slice(0, Math.max(0, Math.min(others.length, SET().ai)));
+    const order = mode === 'tt' ? [picks[0]] : (opts.gridOrder || [...others, ...picks]);
+    grid = order.map(r => ({ racer: r, human: picks.indexOf(r), owner: picks.includes(r) ? 'me' : 'ai', name: r.name }));
+  }
   const P = world.P, N = world.N;
-  order.forEach((r, slot) => {
-    const human = picks.indexOf(r);
-    const k = makeKart(r, human, slot);
+  grid.forEach((gq, slot) => {
+    const k = makeKart(gq.racer, gq.human, slot);
+    k.owner = gq.owner; k.name = gq.name || gq.racer.name;
+    if (on && gq.owner !== 'ai' && gq.owner !== net.myId) k.remote = true;        // another player's kart
+    if (on && net.role === 'client' && gq.owner === 'ai') k.remote = true;          // the host drives the AI
     const row = Math.floor(slot / 2), side = slot % 2 ? 1 : -1, back = 4 + row * 3.5;
     const i = (N - Math.round(back)) % N, p = P[i];
-    k.x = p.x + p.rx * side * world.W * 0.22; k.z = p.z + p.rz * side * world.W * 0.22 - 0; k.y = p.y;
+    k.x = p.x + p.rx * side * world.W * 0.22; k.z = p.z + p.rz * side * world.W * 0.22; k.y = p.y;
     k.x -= p.tx * (slot % 2) * 2.5; k.z -= p.tz * (slot % 2) * 2.5;
     k.h = k.vh = Math.atan2(p.tx, p.tz); k.i = i; k.prog = -(N - i);
     const aiSkill = [1.0, 0.985, 0.97, 0.955, 0.94, 0.925, 0.91, 0.9];
-    k.ai.skill = CLS().ai * (aiSkill[(slot * 3) % 8] || 0.93);
+    k.ai.skill = CLASSES[on ? on.cls : save.cls].ai * (aiSkill[(slot * 3) % 8] || 0.93);
     if (mode === 'tt') { k.item = 'turbo3'; k.itemN = 3; }
+    k.net = null; k.slotIdx = slot;
     karts.push(k);
   });
-  race = { mode, ti, t: 0, phase: 'intro', phaseT: 0, laps: LAPS, humans, done: false, finishOrder: [], finalLap: [false, false], endT: 0, gp: opts.gp || null };
+  race = { mode, ti, t: 0, phase: 'intro', phaseT: 0, laps: on ? on.laps : mode === 'gp' ? LAPS : SET().laps, humans, done: false, finishOrder: [], endT: 0, gp: opts.gp || null,
+    items: on ? on.items : (mode === 'gp' ? true : SET().items), cls: on ? on.cls : save.cls, mirror, online: !!on };
   CAMS.length = 0; karts.filter(k => k.human >= 0).sort((a, b) => a.human - b.human).forEach(k => CAMS.push({ k, eye: [k.x, k.y + 30, k.z], at: [k.x, k.y, k.z], fov: 1.1, shake: 0 }));
   state = 'race';
   Sound.stopSong && Sound.stopSong();
@@ -149,9 +202,10 @@ function trackInfo(x, z, i) {
 // ------------------------------------------------------------ kart physics
 function controlsFor(k) {
   if (k.human < 0 || k.finished || window.__ktAI) return aiControls(k);
-  const set = race.humans === 2 ? (k.human === 0 ? CTRL.p1 : CTRL.p2) : CTRL.solo;
+  const set = ctrlSet(race.humans === 2 ? (k.human === 0 ? 'p1' : 'p2') : 'solo');
+  k.lookBack = any(set.back, keys);
   let steer = (any(set.right, keys) ? 1 : 0) - (any(set.left, keys) ? 1 : 0);
-  let gas = any(set.up, keys) || save.autoGas ? 1 : 0; if (any(set.down, keys)) gas = -1;
+  let gas = any(set.up, keys) || save.autoGas || (race.mode === 'online' && SET().autoGasOnline) ? 1 : 0; if (any(set.down, keys)) gas = -1;
   let drift = any(set.drift, keys), item = set.item.some(c => pressed[c]);
   if (touch.used && race.humans === 1) { // simple touch: left/right thirds steer, buttons at the bottom right
     let tl = false, tr = false, td = false, ti = false;
@@ -283,7 +337,11 @@ function updateKart(k, dt, ctl) {
       else if (k.human >= 0) { if (lap === race.laps) { toast(k, 'FINAL LAP!', '#ff5a5a', 2.5); SND.finalLap(); } else toast(k, `LAP ${lap}/${race.laps}`, '#ffffff', 1.5); SND.lap(); }
     }
   }
-  // particles
+  kartFx(k);
+}
+// sparks, flames, dust and skid marks (also used for other players' karts online)
+function kartFx(k) {
+  const low = SET().particles === 'low';
   if (k.drift && !k.air) {
     const lvl = k.charge > 3.2 ? 3 : k.charge > 2.0 ? 2 : k.charge > 1.0 ? 1 : 0;
     const col = ['#c8c8c8', '#4ab8ff', '#ff9a2a', '#d86aff'][lvl];
@@ -301,15 +359,17 @@ function finishKart(k) {
   if (k.human >= 0) {
     toast(k, k.place === 1 ? 'YOU WIN!' : `FINISHED ${ORD(k.place).toUpperCase()}`, k.place <= 3 ? '#ffe03a' : '#ffffff', 4);
     SND.finish(k.place);
-    const id = TRACKS[race.ti].id, best = Math.min(...k.lapTimes);
+    const id = world.def.id, best = Math.min(...k.lapTimes);
     if (!save.bestLap[id] || best < save.bestLap[id]) { save.bestLap[id] = best; toast(k, 'NEW BEST LAP!', '#8aff6a', 3); }
     if (race.mode === 'tt' && (!save.bestRace[id] || k.finishT < save.bestRace[id])) save.bestRace[id] = k.finishT;
     if (k.place === 1 && race.mode !== 'tt') save.wins++;
     store();
   }
 }
-function hitKart(k, by) {
+function hitKart(k, by, shrink) {
   if (k.starT > 0 || k.spinT > 0) return false;
+  if (k.remote) { if (race.online && net.role === 'host') netSend(k.owner, { t: 'hit', shrink: shrink || 0 }); k.spinT = 1.1; return true; }
+  if (shrink) k.shrinkT = shrink;
   k.spinT = 1.1; k.drift = 0; k.charge = 0; k.hitFlash = 0.3;
   if (k.coins > 0) { k.coins = Math.max(0, k.coins - 2); }
   for (let n = 0; n < 14; n++) spark(k.x, k.y + 1, k.z, pick(['#ffffff', '#ffe03a', '#ff8a3a']), 1.2);
@@ -329,17 +389,23 @@ function useItem(k) {
   const it = k.item; if (!it || k.rouletteT > 0 || k.spinT > 0) return;
   const P = world.P, N = world.N, fx = Math.sin(k.h), fz = Math.cos(k.h);
   if (it === 'turbo' || it === 'turbo3') { k.boostT = Math.max(k.boostT, 1.15); k.speed = Math.max(k.speed, topSpeed(k) * 1.15); SND.turbo(k); }
-  else if (it === 'oil') { objs.push({ kind: 'oil', x: k.x - fx * 2.6, y: k.y, z: k.z - fz * 2.6, i: k.i, t: 0, owner: k }); SND.drop(k); }
+  else if (it === 'shield') { k.starT = 7; k.boostT = Math.max(k.boostT, 1); SND.star(k); }
+  else if (race.online && net.role === 'client') { netSend('host', { t: 'use', item: it }); if (it === 'zap') { flash = 0.6; SND.zap(); } else if (it === 'oil' || it === 'bomb') SND.drop(k); else SND.shoot(k); }
+  else spawnItem(k, it);
+  if (it === 'turbo3' && --k.itemN > 0) return;
+  k.item = null; k.itemN = 0;
+}
+// puts a thrown/dropped item into the world (host or offline only)
+function spawnItem(k, it) {
+  const P = world.P, N = world.N, fx = Math.sin(k.h), fz = Math.cos(k.h);
+  if (it === 'oil') { objs.push({ kind: 'oil', x: k.x - fx * 2.6, y: k.y, z: k.z - fz * 2.6, i: k.i, t: 0, owner: k }); SND.drop(k); }
   else if (it === 'bouncer') { objs.push({ kind: 'orb', x: k.x + fx * 2.4, y: k.y + 0.7, z: k.z + fz * 2.4, vx: fx * 52, vz: fz * 52, i: k.i, t: 0, life: 7, owner: k }); SND.shoot(k); }
   else if (it === 'homing') {
     const ahead = karts.filter(o => o !== k && !o.finished && o.prog > k.prog).sort((a, b) => a.prog - b.prog)[0];
     objs.push({ kind: 'rocket', x: k.x + fx * 2.4, y: k.y + 0.9, z: k.z + fz * 2.4, h: k.h, i: k.i, t: 0, life: 9, owner: k, target: ahead || null }); SND.rocket(k);
   }
   else if (it === 'bomb') { const ti = (k.i + 16) % N, info = trackInfo(k.x, k.z, k.i), p = P[ti]; objs.push({ kind: 'bomb', sx: k.x, sy: k.y + 1, sz: k.z, x: k.x, y: k.y + 1, z: k.z, tx: p.x + p.rx * info.lat * 0.7, ty: p.y + 0.9, tz: p.z + p.rz * info.lat * 0.7, i: ti, t: 0, fly: 0.7, fuse: 1.3, owner: k }); SND.drop(k); }
-  else if (it === 'shield') { k.starT = 7; k.boostT = Math.max(k.boostT, 1); SND.star(k); }
-  else if (it === 'zap') { karts.forEach(o => { if (o !== k && o.prog > k.prog && o.starT <= 0) { hitKart(o, k); o.shrinkT = 4; } }); flash = 0.6; SND.zap(); }
-  if (it === 'turbo3' && --k.itemN > 0) return;
-  k.item = null; k.itemN = 0;
+  else if (it === 'zap') { karts.forEach(o => { if (o !== k && o.prog > k.prog && o.starT <= 0) hitKart(o, k, 4); }); flash = 0.6; SND.zap(); }
 }
 function updateObjs(dt) {
   const P = world.P, N = world.N;
@@ -370,17 +436,18 @@ function updateObjs(dt) {
   objs = objs.filter(o => !o.dead);
   // item boxes + coins
   for (const b of world.boxes) {
+    if (!race.items) break;
     if (b.gone > 0) { b.gone -= dt; continue; }
     for (const k of karts) if (Math.hypot(k.x - b.x, k.z - b.z) < 2.3 && Math.abs(k.y + 1 - b.y) < 2.5) {
       b.gone = 3;
       for (let n = 0; n < 16; n++) spark(b.x, b.y, b.z, pick(['#ff5a5a', '#5ad8ff', '#ffe03a', '#6aff6a', '#d86aff']), 1.2);
-      if (!k.item && race.mode !== 'tt') { k.item = rollItem(k); k.itemN = k.item === 'turbo3' ? 3 : 1; k.rouletteT = k.human >= 0 ? 1.4 : 0.8; if (k.human >= 0) SND.box(); }
+      if (!k.item && race.mode !== 'tt') { k.item = rollItem(k); k.itemN = k.item === 'turbo3' ? 3 : 1; k.rouletteT = k.human >= 0 ? 1.4 : 0.8; if (k.human >= 0) SND.box(); if (k.remote) netSend(k.owner, { t: 'give', item: k.item, n: k.itemN }); }
       break;
     }
   }
   for (const c of world.coins) {
     if (c.gone > 0) { c.gone -= dt; continue; }
-    for (const k of karts) if (Math.hypot(k.x - c.x, k.z - c.z) < 1.9 && Math.abs(k.y + 1 - c.y) < 2.5) { c.gone = 10; if (k.coins < 10) k.coins++; if (k.human >= 0) SND.coin(); for (let n = 0; n < 6; n++) spark(c.x, c.y, c.z, '#ffd84a', 0.8); break; }
+    for (const k of karts) if (Math.hypot(k.x - c.x, k.z - c.z) < 1.9 && Math.abs(k.y + 1 - c.y) < 2.5) { c.gone = 10; if (k.coins < 10) k.coins++; if (k.remote) netSend(k.owner, { t: 'coin' }); if (k.human >= 0) SND.coin(); for (let n = 0; n < 6; n++) spark(c.x, c.y, c.z, '#ffd84a', 0.8); break; }
   }
 }
 function boom(x, y, z, big) {
@@ -388,7 +455,7 @@ function boom(x, y, z, big) {
   for (let n = 0; n < (big ? 20 : 6); n++) parts.push({ x, y, z, vx: rand(-3, 3), vy: rand(2, 6), vz: rand(-3, 3), t: 0, life: rand(0.8, 1.4), col: '#5a5a64', size: 3, g: -1 });
   SND.boom(big, x, z);
 }
-function spark(x, y, z, col, s = 1) { parts.push({ x, y, z, vx: rand(-4, 4), vy: rand(2, 6), vz: rand(-4, 4), t: 0, life: rand(0.2, 0.45), col, size: 0.5 * s + 0.3, add: true, g: 18 }); }
+function spark(x, y, z, col, s = 1) { if (SET().particles === 'low' && Math.random() < 0.6) return; parts.push({ x, y, z, vx: rand(-4, 4), vy: rand(2, 6), vz: rand(-4, 4), t: 0, life: rand(0.2, 0.45), col, size: 0.5 * s + 0.3, add: true, g: 18 }); }
 function dust(k) { const col = { meadow: '#8a7a5a', desert: '#e8c08a', snow: '#ffffff', city: '#5a5a6a' }[world.def.theme]; parts.push({ x: k.x - Math.sin(k.h) * 1.2 + rand(-0.6, 0.6), y: k.y + 0.3, z: k.z - Math.cos(k.h) * 1.2 + rand(-0.6, 0.6), vx: rand(-1, 1), vy: rand(1, 2.5), vz: rand(-1, 1), t: 0, life: 0.7, col, size: 1.8, g: -0.5 }); }
 function addSkid(k) {
   const pts = [];
@@ -400,54 +467,64 @@ function addSkid(k) {
 
 // ------------------------------------------------------------ race flow
 let flash = 0;
+const authority = () => !race.online || net.role === 'host';
+function onGo() {
+  race.phase = 'race'; race.phaseT = 0; SND.beep(true);
+  Sound.playSong(SONGS[TRACKS[race.ti].song]);
+  karts.forEach(k => { if (k.remote) return; if (k.gasHeld > 0.05 && k.gasHeld < 0.75) { k.boostT = 1.2; k.speed = topSpeed(k) * 0.8; if (k.human >= 0) toast(k, 'ROCKET START!', '#ffe03a', 1.5); } else if (k.gasHeld > 1.6) { k.spinT = 0.6; if (k.human >= 0) toast(k, 'STALLED!', '#ff8a8a', 1.2); } k.lapStart = 0; });
+}
 function updateRace(dt) {
+  const auth = authority();
   race.t += race.phase === 'race' ? dt : 0;
   race.phaseT += dt;
-  if (race.phase === 'intro' && race.phaseT > 3.2) { race.phase = 'count'; race.phaseT = 0; }
-  if (race.phase === 'count') {
-    const n = Math.floor(race.phaseT);
-    if (n !== race.lastBeep && n < 3) { race.lastBeep = n; SND.beep(false); }
-    if (race.phaseT >= 3) {
-      race.phase = 'race'; race.phaseT = 0; SND.beep(true);
-      Sound.playSong(SONGS[TRACKS[race.ti].song]);
-      karts.forEach(k => { if (k.gasHeld > 0.05 && k.gasHeld < 0.75) { k.boostT = 1.2; k.speed = topSpeed(k) * 0.8; if (k.human >= 0) toast(k, 'ROCKET START!', '#ffe03a', 1.5); } else if (k.gasHeld > 1.6) { k.spinT = 0.6; if (k.human >= 0) toast(k, 'STALLED!', '#ff8a8a', 1.2); } k.lapStart = 0; });
-    }
+  if (auth) {
+    if (race.phase === 'intro' && race.phaseT > 3.2) { race.phase = 'count'; race.phaseT = 0; }
+    if (race.phase === 'count' && race.phaseT >= 3) onGo();
   }
-  // items + kart updates
+  if (race.phase === 'count') { const n = Math.floor(race.phaseT); if (n !== race.lastBeep && n < 3) { race.lastBeep = n; SND.beep(false); } }
+  // karts
   for (const k of karts) {
+    if (k.remote) { followNet(k, dt); kartFx(k); continue; }
     const c = controlsFor(k);
-    if (race.phase === 'race' && c.item && k.item) useItem(k);
+    if (race.phase === 'race' && c.item && k.item && !race.menu) useItem(k);
+    if (race.menu && k.human >= 0) { c.steer = 0; c.drift = false; }
     updateKart(k, dt, c);
   }
   for (const k in pressed) delete pressed[k];
-  // kart-kart bumps
+  // kart-kart bumps (each machine only moves the karts it drives)
   for (let a = 0; a < karts.length; a++) for (let b = a + 1; b < karts.length; b++) {
     const A = karts[a], B = karts[b], dx = B.x - A.x, dz = B.z - A.z, d = Math.hypot(dx, dz);
     if (d < 2.1 && d > 0.01 && Math.abs(A.y - B.y) < 1.5) {
-      if (A.starT > 0 && B.starT <= 0) { hitKart(B, A); continue; } if (B.starT > 0 && A.starT <= 0) { hitKart(A, B); continue; }
+      if (auth) { if (A.starT > 0 && B.starT <= 0) { hitKart(B, A); continue; } if (B.starT > 0 && A.starT <= 0) { hitKart(A, B); continue; } }
       const ma = 0.8 + A.racer.weight * 0.1 * A.scale, mb = 0.8 + B.racer.weight * 0.1 * B.scale, push = (2.1 - d), nx = dx / d, nz = dz / d;
-      A.x -= nx * push * mb / (ma + mb); A.z -= nz * push * mb / (ma + mb); B.x += nx * push * ma / (ma + mb); B.z += nz * push * ma / (ma + mb);
-      if (A.bumpT <= 0 && B.bumpT <= 0 && Math.abs(A.speed - B.speed) > 3) { A.bumpT = B.bumpT = 0.4; SND.bump(A.human >= 0 ? A : B); A.speed *= 0.95; B.speed *= 0.95; }
+      const fa = B.remote && !A.remote ? 1 : mb / (ma + mb), fb = A.remote && !B.remote ? 1 : ma / (ma + mb);
+      if (!A.remote) { A.x -= nx * push * fa; A.z -= nz * push * fa; }
+      if (!B.remote) { B.x += nx * push * fb; B.z += nz * push * fb; }
+      if (A.bumpT <= 0 && B.bumpT <= 0 && Math.abs(A.speed - B.speed) > 3) { A.bumpT = B.bumpT = 0.4; SND.bump(A.human >= 0 ? A : B); if (!A.remote) A.speed *= 0.95; if (!B.remote) B.speed *= 0.95; }
     }
   }
-  updateObjs(dt);
+  if (auth) updateObjs(dt);
+  else { for (const o of objs) o.t += dt; updateNetObjs(dt); }
   // positions
-  const order = karts.filter(k => !k.finished).sort((a, b) => b.prog - a.prog);
-  order.forEach((k, j) => k.place = race.finishOrder.length + j + 1);
+  if (auth) { const order = karts.filter(k => !k.finished).sort((a, b) => b.prog - a.prog); order.forEach((k, j) => k.place = race.finishOrder.length + j + 1); }
   // particles
   for (const p of parts) { p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; p.vy -= (p.g || 0) * dt; p.vx *= 0.96; p.vz *= 0.96; }
   parts = parts.filter(p => p.t < p.life); if (parts.length > 2500) parts.splice(0, parts.length - 2500);
   toasts.forEach(m => m.t += dt); toasts = toasts.filter(m => m.t < m.dur);
   flash = Math.max(0, flash - dt);
+  // network
+  if (race.online) netRaceTick(dt);
   // end of race
-  const humans = karts.filter(k => k.human >= 0);
-  if (!race.done && humans.every(k => k.finished)) { race.done = true; race.endT = 0; }
-  if (race.done) {
-    race.endT += dt;
-    if (race.endT > 4 || karts.every(k => k.finished)) {
-      // everyone not yet finished gets placed by progress
-      karts.filter(k => !k.finished).sort((a, b) => b.prog - a.prog).forEach(k => { k.finished = true; k.finishT = race.t + (race.laps * world.N - k.prog) / Math.max(5, topSpeed(k)) * STEP; race.finishOrder.push(k); k.place = race.finishOrder.length; });
-      endRace();
+  if (auth) {
+    const humans = karts.filter(k => k.human >= 0 || (race.online && k.owner !== 'ai'));
+    if (!race.done && humans.every(k => k.finished)) { race.done = true; race.endT = 0; }
+    if (race.done) {
+      race.endT += dt;
+      if (race.endT > 4 || karts.every(k => k.finished)) {
+        karts.filter(k => !k.finished).sort((a, b) => b.prog - a.prog).forEach(k => { k.finished = true; k.finishT = race.t + (race.laps * world.N - k.prog) / Math.max(5, topSpeed(k)) * STEP; race.finishOrder.push(k); k.place = race.finishOrder.length; });
+        if (race.online) netBroadcast({ t: 'end', order: race.finishOrder.map(k => [k.slotIdx, +k.finishT.toFixed(2)]) });
+        endRace();
+      }
     }
   }
   if (race.phase === 'race' && Sound.ready) engines.update();
@@ -460,6 +537,136 @@ function endRace() {
   const best = karts.filter(k => k.human >= 0).map(k => k.place).sort((a, b) => a - b)[0];
   Sound.playSong(best <= 3 ? SONGS.kwin : SONGS.klose);
 }
+
+// ------------------------------------------------------------ online multiplayer
+const net = { role: null, code: '', myId: null, tr: null, players: [], cfg: { ti: 0, mirror: false, laps: 3, items: true, cls: 1, ai: true }, screen: 'menu', error: '', field: 'code', codeInput: '', sendT: 0, inRace: false, objId: 0 };
+function netSend(to, m) { if (net.tr) net.tr.send(to, m); }
+function netBroadcast(m) { if (net.tr) net.tr.broadcast(m); }
+const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+function hostRoom() {
+  netReset();
+  net.role = 'host'; net.myId = 'host'; net.screen = 'connecting'; net.error = '';
+  net.code = Array.from({ length: 5 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
+  net.tr = NetTransport.host(net.code, {
+    ready: () => { net.screen = 'lobby'; net.players = [{ id: 'host', name: SET().name, racer: save.p1 }]; netLobby(); },
+    join: () => {},
+    leave: id => netPlayerLeft(id),
+    msg: (from, d) => hostMsg(from, d),
+    error: e => { if (e === 'taken') { hostRoom(); return; } net.error = 'Online error: ' + e; net.screen = 'menu'; netReset(true); },
+  });
+}
+function joinRoom(code) {
+  netReset();
+  net.role = 'client'; net.code = code.toUpperCase(); net.screen = 'connecting'; net.error = '';
+  net.tr = NetTransport.join(net.code, {
+    ready: id => { net.myId = id; netSend('host', { t: 'hello', name: SET().name, racer: save.p1 }); },
+    join: () => {},
+    leave: () => netLost('The host left the room'),
+    msg: (from, d) => clientMsg(d),
+    error: e => { net.error = e === 'Room not found' ? `Room ${net.code} was not found` : 'Online error: ' + e; net.screen = 'menu'; netReset(true); },
+  });
+}
+function netReset(keepError) { if (net.tr) try { net.tr.close(); } catch (e) {} net.tr = null; net.role = null; net.players = []; net.inRace = false; if (!keepError) net.error = ''; }
+function netLost(why) {
+  const wasRacing = state === 'race' || state === 'results' || state === 'pause';
+  netReset(); net.error = why; net.screen = 'menu';
+  if (wasRacing) engines.stop();
+  go('online');
+}
+function leaveOnline() { if (net.role === 'client') netSend('host', { t: 'bye' }); netReset(); net.screen = 'menu'; engines.stop(); go('title'); }
+function netLobby() { netBroadcast({ t: 'lobby', players: net.players, cfg: net.cfg, inRace: net.inRace }); }
+function netPlayerLeft(id) {
+  const p = net.players.find(q => q.id === id); net.players = net.players.filter(q => q.id !== id);
+  if (net.inRace && race && race.online) { const k = karts.find(q => q.owner === id); if (k) { k.remote = false; k.owner = 'ai'; k.human = -1; toast(CAMS[0] && CAMS[0].k, `${p ? p.name : 'A player'} left`, '#ff8a8a', 2); } }
+  netLobby();
+}
+function freeRacer(want, id) {
+  const taken = new Set(net.players.filter(p => p.id !== id).map(p => p.racer));
+  if (!taken.has(want)) return want;
+  return RACERS.map(r => r.id).find(r => !taken.has(r));
+}
+function hostMsg(from, d) {
+  if (d.t === 'hello') {
+    if (net.players.length >= 8) { netSend(from, { t: 'full' }); return; }
+    if (!net.players.some(p => p.id === from)) net.players.push({ id: from, name: String(d.name || 'Racer').slice(0, 12), racer: freeRacer(d.racer, from) });
+    netLobby();
+  } else if (d.t === 'pick') { const p = net.players.find(q => q.id === from); if (p) { p.racer = freeRacer(d.racer, from); netLobby(); } }
+  else if (d.t === 'bye') netPlayerLeft(from);
+  else if (!race || !race.online) return;
+  else if (d.t === 'st') { const k = karts.find(q => q.owner === from); if (k) { k.net = d; k.netT = t; } }
+  else if (d.t === 'use') { const k = karts.find(q => q.owner === from); if (k) spawnItem(k, d.item); }
+}
+function clientMsg(d) {
+  if (d.t === 'lobby') { net.players = d.players; net.cfg = d.cfg; net.inRace = d.inRace; if (net.screen !== 'lobby') { net.screen = 'lobby'; if (state !== 'race') go('online'); } const me = d.players.find(p => p.id === net.myId); if (me && me.racer !== save.p1) { save.p1 = me.racer; store(); } }
+  else if (d.t === 'full') { netLost('That room is full (8 players)'); }
+  else if (d.t === 'closed') netLost('The host closed the room');
+  else if (d.t === 'start') { net.inRace = true; startRace('online', d.ti, { online: d }); }
+  else if (d.t === 'lobbyback') { net.inRace = false; engines.stop(); go('online'); net.screen = 'lobby'; }
+  else if (!race || !race.online) return;
+  else if (d.t === 'snap') applySnap(d);
+  else if (d.t === 'give') { const k = myKart(); if (k) { k.item = d.item; k.itemN = d.n; k.rouletteT = 1.4; SND.box(); } }
+  else if (d.t === 'coin') { const k = myKart(); if (k && k.coins < 10) { k.coins++; SND.coin(); } }
+  else if (d.t === 'hit') { const k = myKart(); if (k) hitKart(k, null, d.shrink); }
+  else if (d.t === 'end') {
+    race.finishOrder = d.order.map(([slot, ft]) => { const k = karts[slot]; k.finished = true; k.finishT = ft; return k; });
+    race.finishOrder.forEach((k, i) => k.place = i + 1);
+    endRace();
+  }
+}
+const myKart = () => karts.find(k => k.human === 0);
+function hostStart() {
+  const c = net.cfg, humans = net.players.slice(0, 8);
+  const used = new Set(humans.map(p => p.racer));
+  const ai = c.ai ? RACERS.filter(r => !used.has(r.id)).slice(0, 8 - humans.length).map(r => ({ racer: r.id, owner: 'ai', name: r.name })) : [];
+  const grid = [...ai.sort(() => Math.random() - 0.5), ...humans.map(p => ({ racer: p.racer, owner: p.id, name: p.name }))];
+  const msg = { t: 'start', grid, ti: c.ti, mirror: c.mirror, laps: c.laps, items: c.items, cls: c.cls };
+  net.inRace = true; netBroadcast(msg); netLobby();
+  startRace('online', c.ti, { online: msg });
+}
+const R2 = v => Math.round(v * 100) / 100;
+function netRaceTick(dt) {
+  net.sendT += dt; if (net.sendT < 0.05) return; net.sendT = 0;
+  if (net.role === 'host') {
+    netBroadcast({ t: 'snap', ph: race.phase, pt: R2(race.phaseT), rt: R2(race.t),
+      k: karts.map(k => [k.slotIdx, R2(k.x), R2(k.y), R2(k.z), R2(k.h), R2(k.speed), k.drift, R2(k.charge), R2(k.boostT), R2(k.spinT), R2(k.spinA), R2(k.starT), R2(k.shrinkT), k.air ? 1 : 0, R2(k.steerVis), R2(k.prog), k.lap, k.place, k.finished ? 1 : 0, R2(k.finishT), k.coins, k.item || '']),
+      o: objs.map(o => { if (!o.id) o.id = ++net.objId; return [o.id, o.kind, R2(o.x), R2(o.y), R2(o.z), R2(o.h || 0), R2(o.t), o.fly || 0, R2(o.vx || 0), R2(o.vz || 0)]; }),
+      bx: world.boxes.map(b => b.gone > 0 ? 1 : 0).join(''), cn: world.coins.map(c => c.gone > 0 ? 1 : 0).join('') });
+  } else {
+    const k = myKart(); if (!k) return;
+    netSend('host', { t: 'st', x: R2(k.x), y: R2(k.y), z: R2(k.z), h: R2(k.h), speed: R2(k.speed), drift: k.drift, charge: R2(k.charge), boostT: R2(k.boostT), spinT: R2(k.spinT), spinA: R2(k.spinA), starT: R2(k.starT), shrinkT: R2(k.shrinkT), air: k.air ? 1 : 0, steerVis: R2(k.steerVis), prog: R2(k.prog), lap: k.lap, fin: k.finished ? 1 : 0, finT: R2(k.finishT), coins: k.coins, item: k.item || '' });
+  }
+}
+function applySnap(s) {
+  if (s.ph !== race.phase) { if (s.ph === 'race' && race.phase !== 'race') onGo(); race.phase = s.ph; race.phaseT = s.pt; }
+  if (Math.abs(race.phaseT - s.pt) > 0.25) race.phaseT = s.pt;
+  if (Math.abs(race.t - s.rt) > 0.25) race.t = s.rt;
+  for (const a of s.k) {
+    const k = karts[a[0]]; if (!k) continue;
+    k.place = a[17];
+    if (!k.remote) continue;
+    k.net = { x: a[1], y: a[2], z: a[3], h: a[4], speed: a[5], drift: a[6], charge: a[7], boostT: a[8], spinT: a[9], spinA: a[10], starT: a[11], shrinkT: a[12], air: a[13], steerVis: a[14], prog: a[15], lap: a[16], fin: a[18], finT: a[19], coins: a[20], item: a[21] };
+    k.netT = t;
+  }
+  const old = new Map(objs.map(o => [o.id, o]));
+  objs = s.o.map(([id, kind, x, y, z, h, ot, fly, vx, vz]) => { const o = old.get(id) || { id, kind, x, y, z }; Object.assign(o, { kind, h, t: ot, fly, vx, vz, tx: x, ty: y, tz: z }); if (!old.has(id)) { o.x = x; o.y = y; o.z = z; } return o; });
+  world.boxes.forEach((b, i) => { b.gone = s.bx[i] === '1' ? 1 : 0; });
+  world.coins.forEach((c, i) => { c.gone = s.cn[i] === '1' ? 1 : 0; });
+}
+function followNet(k, dt) {
+  const n = k.net; if (!n) return;
+  const age = Math.min(0.25, t - k.netT), f = 1 - Math.exp(-dt * 14);
+  const tx = n.x + Math.sin(n.h) * n.speed * age, tz = n.z + Math.cos(n.h) * n.speed * age;
+  if (Math.hypot(tx - k.x, tz - k.z) > 25) { k.x = tx; k.z = tz; k.y = n.y; } else { k.x += (tx - k.x) * f; k.z += (tz - k.z) * f; k.y += (n.y - k.y) * f; }
+  k.h += wrapA(n.h - k.h) * f; k.vh = k.h;
+  k.speed = n.speed; k.drift = n.drift; k.charge = n.charge; k.boostT = n.boostT; k.spinT = n.spinT; k.spinA = n.spinA; k.starT = n.starT; k.shrinkT = n.shrinkT; k.air = !!n.air; k.steerVis = n.steerVis; k.coins = n.coins; k.item = n.item || null;
+  k.prog = n.prog; k.lap = n.lap;
+  k.scale = lerp(k.scale, k.shrinkT > 0 ? 0.6 : 1, dt * 6);
+  k.i = findIndex(k); k.wheelRot += k.speed * dt / 0.36;
+  k.offroad = Math.abs(trackInfo(k.x, k.z, k.i).lat) > world.half + 0.6;
+  if (net.role === 'host' && n.fin && !k.finished) { k.finished = true; k.finishT = n.finT; race.finishOrder.push(k); k.place = race.finishOrder.length; }
+  if (net.role === 'client') { k.finished = !!n.fin; k.finishT = n.finT; }
+}
+function updateNetObjs(dt) { for (const o of objs) { if (o.tx === undefined) continue; if (o.vx || o.vz) { o.tx += o.vx * dt; o.tz += o.vz * dt; } const f = 1 - Math.exp(-dt * 15); o.x += (o.tx - o.x) * f; o.y += (o.ty - o.y) * f; o.z += (o.tz - o.z) * f; } }
 
 // ------------------------------------------------------------ grand prix
 function startGP() { save.gp = { cls: save.cls, p1: save.p1, race: 0, points: {}, results: [] }; store(); startRace('gp', 0, { gp: save.gp }); }
@@ -487,8 +694,10 @@ function finishGP() {
 // ------------------------------------------------------------ cameras + drawing
 function camShake(k, a) { const c = CAMS.find(c => c.k === k); if (c) c.shake = Math.max(c.shake, a); }
 function updateCam(c, dt, snap) {
-  const k = c.k, back = 6.4 + Math.min(1.5, k.speed * 0.03), up = 2.7 + Math.min(1, k.speed * 0.02);
+  const cd = [0.78, 1, 1.28][SET().cam], k = c.k, back = (6.4 + Math.min(1.5, k.speed * 0.03)) * cd, up = (2.7 + Math.min(1, k.speed * 0.02)) * (0.85 + cd * 0.15);
   let h = k.h + (k.drift ? -k.drift * 0.18 : 0);
+  if (k.lookBack && state === 'race' && race.phase !== 'intro') { h += Math.PI; const e = [k.x - Math.sin(h) * back, k.y + up, k.z - Math.cos(h) * back]; c.eye = e; c.at = [k.x + Math.sin(h) * 3, k.y + 1.3, k.z + Math.cos(h) * 3]; c.wasBack = true; return; }
+  if (c.wasBack) { c.wasBack = false; snap = true; }
   if (state === 'race' && race.phase === 'intro') {
     const a = race.phaseT * 0.5 + 1.2, r = 26 - race.phaseT * 5;
     c.eye = [k.x + Math.sin(k.h + a) * r, k.y + 8 - race.phaseT * 1.6, k.z + Math.cos(k.h + a) * r]; c.at = [k.x, k.y + 1, k.z]; c.fov = 1.05; return;
@@ -500,7 +709,7 @@ function updateCam(c, dt, snap) {
   for (let i = 0; i < 3; i++) c.at[i] = lerp(c.at[i], at[i], snap ? 1 : 1 - Math.exp(-dt * 12));
   // keep the camera above the ground
   const n = world.nearestAny(c.eye[0], c.eye[2], 30); if (n) c.eye[1] = Math.max(c.eye[1], world.P[n.i].y + 1.2);
-  c.fov = lerp(c.fov, 1.08 + (k.boostT > 0 ? 0.2 : 0) + Math.max(0, k.speed - 20) * 0.006, dt * 4);
+  c.fov = lerp(c.fov, (1.08 + (k.boostT > 0 ? 0.2 : 0) + Math.max(0, k.speed - 20) * 0.006) * [0.88, 1, 1.14][SET().fov], dt * 4);
   c.shake = Math.max(0, c.shake - dt * 2);
 }
 function kartMatrix(k) {
@@ -512,9 +721,30 @@ function kartMatrix(k) {
   m = M4.mul(m, M4.rotX(pitch)); m = M4.mul(m, M4.rotZ(roll)); m = M4.mul(m, M4.scale(k.scale, k.scale * squash, k.scale));
   return m;
 }
+const KSPEC = { spec: 0.75 };
+function drawKart(k, m, tint, emi, depth) {
+  const wl = KART_WHEELS[k.racer.id] || [];
+  if (depth) R.shadowDraw(MESH[k.mesh], m); else R.draw(MESH[k.mesh], m, tint, emi, false, KSPEC);
+  for (const [wx, wy, wz, r, w, front] of wl) {
+    let wm = M4.mul(m, M4.trans(wx, wy, wz));
+    if (front) wm = M4.mul(wm, M4.rotY(k.steerVis * 0.45));
+    wm = M4.mul(wm, M4.rotX(k.wheelRot * 0.36 / r)); wm = M4.mul(wm, M4.rotZ(Math.PI / 2)); wm = M4.mul(wm, M4.scale(r * 2, w, r * 2));
+    if (depth) R.shadowDraw(MESH.wheel, wm); else R.draw(MESH.wheel, wm, tint, 0, false, { spec: 0.35 });
+  }
+}
 function drawWorld(view, cam) {
   const e = world.env;
   const shk = cam.shake ? [rand(-1, 1) * cam.shake * 0.3, rand(-1, 1) * cam.shake * 0.3, 0] : [0, 0, 0];
+  // shadow map around what the camera looks at
+  const mats = karts.map(k => kartMatrix(k));
+  if (SET().shadows) {
+    const fdir = [cam.at[0] - cam.eye[0], 0, cam.at[2] - cam.eye[2]], fl = Math.hypot(fdir[0], fdir[2]) || 1;
+    const focus = [cam.at[0] + fdir[0] / fl * 30, cam.at[1], cam.at[2] + fdir[2] / fl * 30];
+    R.shadowBegin(focus, e.sun, 62);
+    R.shadowDraw(worldMesh.st);
+    karts.forEach((k, i) => drawKart(k, mats[i], null, 0, true));
+    R.shadowEnd();
+  } else R.shadowsOff();
   R.begin(view, { eye: [cam.eye[0] + shk[0], cam.eye[1] + shk[1], cam.eye[2]], at: cam.at, fov: cam.fov }, e);
   R.sky(worldMesh.sky);
   R.draw(worldMesh.st);
@@ -523,11 +753,16 @@ function drawWorld(view, cam) {
   // animated scenery
   for (const d of world.dyn) {
     if (d.mesh === 'blades') R.draw(MESH.blades, M4.mul(M4.compose(d.x, d.y, d.z, d.ry), M4.mul(M4.rotZ(t * d.spin), M4.scale(d.s, d.s, d.s))));
-    else R.draw(MESH.balloon, M4.compose(d.x + Math.sin(t * 0.1 + d.float) * 20, d.y + Math.sin(t * 0.5 + d.float) * 3, d.z + Math.cos(t * 0.08 + d.float) * 20, t * 0.1, d.s, d.s, d.s), d.tint);
+    else R.draw(MESH.balloon, M4.compose(d.x + Math.sin(t * 0.1 + d.float) * 20, d.y + Math.sin(t * 0.5 + d.float) * 3, d.z + Math.cos(t * 0.08 + d.float) * 20, t * 0.1, d.s, d.s, d.s), d.tint, 0, false, { spec: 0.3 });
   }
   // item boxes + coins
-  for (const b of world.boxes) { if (b.gone > 0) { if (b.gone < 0.4) R.draw(MESH.box, M4.compose(b.x, b.y, b.z, t * 1.5, (0.4 - b.gone) * 2.5, (0.4 - b.gone) * 2.5, (0.4 - b.gone) * 2.5)); continue; } R.draw(MESH.box, M4.mul(M4.compose(b.x, b.y + Math.sin(t * 2 + b.ph) * 0.25, b.z, t * 1.4 + b.ph), M4.rotX(0.5))); }
-  for (const c of world.coins) { if (c.gone > 0) continue; R.draw(MESH.coin, M4.compose(c.x, c.y + Math.sin(t * 3 + c.i) * 0.15, c.z, t * 3 + c.i)); }
+  const boxList = race && race.items === false ? [] : world.boxes;
+  for (const b of boxList) {
+    if (b.gone > 0 && b.gone >= 0.4) continue;
+    const sc = b.gone > 0 ? (0.4 - b.gone) * 2.5 : 1, y = b.y + Math.sin(t * 2 + b.ph) * 0.25;
+    R.draw(MESH.boxCore, M4.compose(b.x, y, b.z, -t * 2 + b.ph, sc, sc, sc), [1, 1, 1], 1);
+  }
+  for (const c of world.coins) { if (c.gone > 0) continue; R.draw(MESH.coin, M4.compose(c.x, c.y + Math.sin(t * 3 + c.i) * 0.15, c.z, t * 3 + c.i), null, 0, false, { spec: 1 }); }
   // items in the world
   for (const o of objs) {
     if (o.kind === 'oil') R.draw(MESH.oil, M4.trans(o.x, o.y + 0.1, o.z));
@@ -536,22 +771,20 @@ function drawWorld(view, cam) {
     else if (o.kind === 'bomb') { const blink = o.t > o.fly && Math.sin(o.t * (10 + o.t * 12)) > 0; R.draw(MESH.bomb, M4.trans(o.x, o.y, o.z), blink ? [3, 0.6, 0.6] : null, blink ? 0.3 : 0); }
   }
   // karts
-  for (const k of karts) {
-    const m = kartMatrix(k);
+  karts.forEach((k, i) => {
     const star = k.starT > 0, tint = star ? [1 + 0.8 * Math.sin(t * 20), 1 + 0.8 * Math.sin(t * 20 + 2), 1 + 0.8 * Math.sin(t * 20 + 4)] : k.hitFlash > 0 ? [2, 2, 2] : null;
-    R.draw(MESH[k.mesh], m, tint, star ? 0.25 : 0);
-    const wheels = [[-0.78, 0.36, 0.82, 0.36, true], [0.78, 0.36, 0.82, 0.36, true], [-0.8, 0.42, -0.85, 0.42, false], [0.8, 0.42, -0.85, 0.42, false]];
-    for (const [wx, wy, wz, r, front] of wheels) {
-      let wm = M4.mul(m, M4.trans(wx, wy, wz));
-      if (front) wm = M4.mul(wm, M4.rotY(k.steerVis * 0.45));
-      wm = M4.mul(wm, M4.rotX(k.wheelRot)); wm = M4.mul(wm, M4.rotZ(Math.PI / 2)); wm = M4.mul(wm, M4.scale(r * 2, 0.36, r * 2));
-      R.draw(MESH.wheel, wm, tint);
-    }
+    drawKart(k, mats[i], tint, star ? 0.25 : 0);
+  });
+  // glass item boxes (see-through, drawn after solid things)
+  for (const b of boxList) {
+    if (b.gone > 0 && b.gone >= 0.4) continue;
+    const sc = b.gone > 0 ? (0.4 - b.gone) * 2.5 : 1;
+    R.draw(MESH.box, M4.mul(M4.compose(b.x, b.y + Math.sin(t * 2 + b.ph) * 0.25, b.z, t * 1.4 + b.ph, sc, sc, sc), M4.rotX(0.5)), null, 0, false, { spec: 0.9, alpha: 0.55 });
   }
   // flat transparent stuff: shadows + skid marks
   const f = [];
   const push = (p, c) => f.push(p[0], p[1], p[2], c[0], c[1], c[2], c[3]);
-  for (const k of karts) {
+  if (!SET().shadows) for (const k of karts) {
     const info = trackInfo(k.x, k.z, k.i), gy = info.y + 0.1 + (world.rampIdx.some(r => ((k.i - r + world.N) % world.N) < 5) ? 1.5 : 0);
     const sh = Math.max(0.15, 0.45 - (k.y - info.y) * 0.05);
     for (let s = 0; s < 12; s++) { const a0 = s / 12 * 6.283, a1 = (s + 1) / 12 * 6.283, rx = 1.1 * k.scale, rz = 1.6 * k.scale; const cs = Math.cos(k.h), sn = Math.sin(k.h);
@@ -648,8 +881,8 @@ function drawHUD(view, k) {
     txt(ORD(k.place).slice(-2).toUpperCase(), px + 4 * s, Y + view.h - 112 * s, 38 * s, pc, 'left', { stroke: 7 * s, italic: true });
   }
   // speed + drift charge
-  const spd = Math.round(Math.max(0, k.speed) * 3.6);
-  if (race.humans === 1) txt(`${spd} km/h`, X + Wv - 26 * s, Y + 22 * s, 22 * s, '#ffffff', 'right', { stroke: 5 * s, italic: true });
+  const mph = SET().units === 'mph', spd = Math.round(Math.max(0, k.speed) * 3.6 * (mph ? 0.621 : 1));
+  if (race.humans === 1) txt(`${spd} ${mph ? 'mph' : 'km/h'}`, X + Wv - 26 * s, Y + 22 * s, 22 * s, '#ffffff', 'right', { stroke: 5 * s, italic: true });
   if (k.drift) { const lvl = k.charge > 3.2 ? 3 : k.charge > 2.0 ? 2 : k.charge > 1.0 ? 1 : 0; const cols = ['#9aa0b0', '#4ab8ff', '#ff9a2a', '#d86aff']; const w = 180 * s, x0 = X + Wv / 2 - w / 2, y0 = Y + view.h - 50 * s;
     rr(x0, y0, w, 14 * s, 7 * s); ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fill(); rr(x0, y0, w * Math.min(1, k.charge / 3.2), 14 * s, 7 * s); ctx.fillStyle = cols[lvl]; ctx.fill();
     txt(['DRIFT', 'MINI TURBO', 'SUPER TURBO', 'ULTRA TURBO'][lvl], X + Wv / 2, y0 - 26 * s, 18 * s, cols[lvl], 'center', { stroke: 4 * s }); }
@@ -705,7 +938,7 @@ function drawDemo(dt) {
   else { const p = world.P[(k.i + 30) % world.N]; c.eye = [p.x + p.rx * (world.WALL + 3), p.y + 4, p.z + p.rz * (world.WALL + 3)]; c.at = [k.x, k.y + 1, k.z]; c.fov = 0.8; }
   drawWorld({ x: 0, y: 0, w: W, h: H }, c);
 }
-function showroom(dt, racer) {
+function showroom(dt, racer, right) {
   // the chosen kart spinning on the start line
   if (!menuDemo) return;
   const P = world.P, p = P[Math.floor(world.N * 0.02)];
@@ -729,25 +962,183 @@ function logo(y) {
 let screenT = 0, sel = { mode: 'quick', pickFor: 1 };
 function drawTitle() {
   logo(118);
-  const bx = 70, bw = 380;
+  const bx = 70, bw = 380, y0 = 226;
   const gp = save.gp;
-  if (gp) { if (button('cont', bx, 236, bw, 70, `CONTINUE CUP (RACE ${gp.race + 2})`, { color: '#2ac85a', size: 22 })) { save.cls = gp.cls; save.p1 = gp.p1; nextGPRace(); } }
-  const y0 = gp ? 320 : 250;
-  if (button('gp', bx, y0, bw, 70, 'GRAND PRIX', { color: '#ff7a1a', size: 30 })) { sel.mode = 'gp'; sel.pickFor = 1; go('chars'); }
-  if (button('quick', bx, y0 + 84, bw, 62, 'QUICK RACE', { color: '#3a8ae8', size: 26 })) { sel.mode = 'quick'; sel.pickFor = 1; go('chars'); }
-  if (button('vs', bx, y0 + 160, bw, 62, '2 PLAYER', { color: '#e83a8a', size: 26 })) { sel.mode = 'vs'; sel.pickFor = 1; go('chars'); }
-  if (button('tt', bx, y0 + 236, bw, 62, 'TIME TRIAL', { color: '#8a4ae8', size: 26 })) { sel.mode = 'tt'; sel.pickFor = 1; go('chars'); }
-  // class + options
-  CLASSES.forEach((c, i) => { if (button('cls' + i, bx + i * 130, y0 + 316, 120, 48, c.name, { color: save.cls === i ? '#2ac85a' : '#3a3f58', size: 18, selected: save.cls === i, sfx: 'tab' })) { save.cls = i; store(); } });
-  if (button('mus', bx, y0 + 378, 120, 40, Sound.musicOn ? 'MUSIC' : 'MUTED', { color: '#3a3f58', size: 15, sfx: 'tab' })) Sound.setMusic(!Sound.musicOn);
-  if (button('sfx', bx + 130, y0 + 378, 120, 40, Sound.sfxOn ? 'SOUND' : 'NO SFX', { color: '#3a3f58', size: 15, sfx: 'tab' })) Sound.setSfx(!Sound.sfxOn);
-  if (button('ag', bx + 260, y0 + 378, 120, 40, save.autoGas ? 'AUTO GAS' : 'HOLD GAS', { color: save.autoGas ? '#2a8a5a' : '#3a3f58', size: 15, sfx: 'tab' })) { save.autoGas = !save.autoGas; store(); }
-  // trophies + tips
+  if (gp) { if (button('cont', W - 420, 376, 380, 70, `CONTINUE CUP (RACE ${gp.race + 2})`, { color: '#2ac85a', size: 22 })) { save.cls = gp.cls; save.p1 = gp.p1; nextGPRace(); } }
+  if (button('gp', bx, y0, bw, 62, 'GRAND PRIX', { color: '#ff7a1a', size: 28 })) { sel.mode = 'gp'; sel.pickFor = 1; go('chars'); }
+  if (button('quick', bx, y0 + 70, bw, 56, 'QUICK RACE', { color: '#3a8ae8', size: 24 })) { sel.mode = 'quick'; sel.pickFor = 1; go('chars'); }
+  if (button('vs', bx, y0 + 134, bw, 56, '2 PLAYER', { color: '#e83a8a', size: 24 })) { sel.mode = 'vs'; sel.pickFor = 1; go('chars'); }
+  if (button('online', bx, y0 + 198, bw, 56, 'ONLINE', { color: '#1ab8a8', size: 24 })) { net.screen = net.role ? net.screen : 'menu'; go('online'); }
+  if (button('tt', bx, y0 + 262, bw, 56, 'TIME TRIAL', { color: '#8a4ae8', size: 24 })) { sel.mode = 'tt'; sel.pickFor = 1; go('chars'); }
+  CLASSES.forEach((c, i) => { if (button('cls' + i, bx + i * 130, y0 + 334, 120, 44, c.name, { color: save.cls === i ? '#2ac85a' : '#3a3f58', size: 18, selected: save.cls === i, sfx: 'tab' })) { save.cls = i; store(); } });
+  if (button('set', bx, y0 + 392, bw, 46, 'SETTINGS', { color: '#4a5070', size: 20 })) openSettings('title');
+  // trophies
   panel(W - 420, 470, 380, 210);
   txt('TROPHIES', W - 230, 488, 22, '#ffe680', 'center');
   CLASSES.forEach((c, i) => { const tr = save.trophies[c.id], x = W - 360 + i * 120; trophyIcon(x, 560, 0.55, tr); txt(c.name, x, 612, 16, '#c8d0e8', 'center'); });
   txt(`Races ${save.races}   Wins ${save.wins}`, W - 230, 642, 15, '#a8b0c8', 'center');
-  txt('Drive: WASD/arrows   Drift: SPACE (hold while turning)   Item: E', W / 2, H - 28, 15, '#ffffff', 'center', { stroke: 4 });
+  const B = save.binds.p1;
+  txt(`Drive: ${keyName(B.up)}${keyName(B.left)}${keyName(B.down)}${keyName(B.right)} / arrows   Drift: ${keyName(B.drift)}   Item: ${keyName(B.item)}   Look back: ${keyName(B.back)}`, W / 2, H - 28, 15, '#ffffff', 'center', { stroke: 4 });
+}
+const KEYNAMES = { Space: 'SPACE', Enter: 'ENTER', ShiftLeft: 'L-SHIFT', ShiftRight: 'R-SHIFT', ControlLeft: 'L-CTRL', ControlRight: 'R-CTRL', AltLeft: 'L-ALT', AltRight: 'R-ALT', ArrowUp: 'UP', ArrowDown: 'DOWN', ArrowLeft: 'LEFT', ArrowRight: 'RIGHT', Slash: '/', Period: '.', Comma: ',', Semicolon: ';', Quote: "'", BracketLeft: '[', BracketRight: ']', Backslash: '\\', Minus: '-', Equal: '=', Backquote: '`', Tab: 'TAB', Backspace: 'BKSP', CapsLock: 'CAPS' };
+function keyName(c) { if (!c) return '-'; if (KEYNAMES[c]) return KEYNAMES[c]; if (c.startsWith('Key')) return c.slice(3); if (c.startsWith('Digit')) return c.slice(5); if (c.startsWith('Numpad')) return 'NUM' + c.slice(6); return c.toUpperCase().slice(0, 6); }
+
+// ------------------------------------------------------------ settings screen
+let setTab = 0, setFrom = 'title', capture = null, confirmReset = 0;
+function openSettings(from) { setFrom = from; capture = null; confirmReset = 0; state = 'settings'; }
+function applySettings() { R.setScale(SET().res); Sound.setVolumes(SET().music, SET().sfx); store(); }
+function drawSettings() {
+  ctx.fillStyle = 'rgba(8,10,26,0.72)'; ctx.fillRect(0, 0, W, H);
+  txt('SETTINGS', W / 2, 22, 44, '#ffffff', 'center', { stroke: 8, italic: true });
+  ['CONTROLS', 'GAME', 'GRAPHICS', 'AUDIO'].forEach((n, i) => { if (button('tab' + i, 150 + i * 250, 86, 230, 50, n, { color: setTab === i ? '#ff7a1a' : '#3a3f58', size: 20, selected: setTab === i, sfx: 'tab' })) { setTab = i; capture = null; } });
+  panel(110, 152, 1060, 470);
+  const S = SET(); let y = 176;
+  const row = (label, value, onPrev, onNext, desc) => {
+    txt(label, 150, y + 10, 22, '#ffffff');
+    if (desc) txt(desc, 150, y + 38, 13, '#9aa2c0');
+    if (button('p' + label, 640, y, 56, 48, '<', { color: '#3a3f58', size: 24, sfx: 'tab' })) { onPrev(); applySettings(); }
+    txt(value, 840, y + 10, 22, '#ffe680', 'center');
+    if (button('n' + label, 984, y, 56, 48, '>', { color: '#3a3f58', size: 24, sfx: 'tab' })) { onNext(); applySettings(); }
+    y += 62;
+  };
+  const toggle = (label, key, desc) => row(label, S[key] ? 'ON' : 'OFF', () => S[key] = !S[key], () => S[key] = !S[key], desc);
+  const cycle = (label, key, list, names, desc) => { const i = Math.max(0, list.indexOf(S[key])); row(label, names[i], () => S[key] = list[(i - 1 + list.length) % list.length], () => S[key] = list[(i + 1) % list.length], desc); };
+  const slider = (label, key) => {
+    txt(label, 150, y + 10, 22, '#ffffff');
+    const x0 = 520, w = 420; rr(x0, y + 16, w, 14, 7); ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fill(); rr(x0, y + 16, w * S[key], 14, 7); ctx.fillStyle = '#ff9a2a'; ctx.fill();
+    ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x0 + w * S[key], y + 23, 14, 0, 6.3); ctx.fill();
+    txt(Math.round(S[key] * 100) + '%', 1000, y + 10, 22, '#ffe680');
+    if (UI.down && mouse.y > y && mouse.y < y + 48 && mouse.x > x0 - 20 && mouse.x < x0 + w + 20) { S[key] = clamp((mouse.x - x0) / w, 0, 1); applySettings(); }
+    y += 62;
+  };
+  if (setTab === 0) {
+    txt('ACTION', 150, y, 18, '#9aa2c0'); txt('PLAYER 1', 620, y, 18, '#5ad8ff', 'center'); txt('PLAYER 2', 900, y, 18, '#ff6ab0', 'center'); y += 34;
+    const NAMES = { up: 'Gas', down: 'Brake / reverse', left: 'Steer left', right: 'Steer right', drift: 'Drift / hop', item: 'Use item', back: 'Look behind' };
+    ACTIONS.forEach(a => {
+      txt(NAMES[a], 150, y + 8, 20, '#ffffff');
+      ['p1', 'p2'].forEach((p, j) => {
+        const on = capture && capture.p === p && capture.a === a;
+        if (button(`kb${p}${a}`, 500 + j * 280, y, 240, 42, on ? 'PRESS A KEY...' : keyName(save.binds[p][a]), { color: on ? '#ff7a1a' : '#2a3048', size: on ? 16 : 20, sfx: 'tab' })) capture = { p, a };
+      });
+      y += 50;
+    });
+    txt('Click a key, then press the new key (ESC cancels). In single player both columns work.', W / 2, 568, 15, '#9aa2c0', 'center');
+    if (button('kbreset', 150, 590, 260, 26, 'RESET CONTROLS', { color: '#5a3a3a', size: 14 })) { save.binds = JSON.parse(JSON.stringify(DEFAULT_BINDS)); store(); }
+  } else if (setTab === 1) {
+    cycle('Laps', 'laps', [1, 2, 3, 4, 5, 7, 10], ['1', '2', '3', '4', '5', '7', '10'], 'Quick race, 2 player and time trial');
+    toggle('Mirror mode', 'mirror', 'Tracks are flipped left to right');
+    toggle('Items', 'items', 'Turn off for a pure racing skill test');
+    cycle('Computer racers', 'ai', [0, 1, 2, 3, 4, 5, 6, 7], ['0', '1', '2', '3', '4', '5', '6', '7'], 'In quick race and 2 player');
+    row('Auto gas', save.autoGas ? 'ON' : 'OFF', () => save.autoGas = !save.autoGas, () => save.autoGas = !save.autoGas, 'Accelerate without holding a key');
+    cycle('Speed units', 'units', ['kmh', 'mph'], ['KM/H', 'MPH']);
+    toggle('Minimap', 'minimap');
+  } else if (setTab === 2) {
+    toggle('Shadows', 'shadows', 'Real-time shadows (turn off if the game is slow)');
+    cycle('Resolution', 'res', [0.5, 0.75, 1, 1.5], ['50%', '75%', '100%', '150%'], 'Lower is faster, higher is sharper');
+    cycle('Particles', 'particles', ['low', 'high'], ['LOW', 'HIGH']);
+    cycle('Camera distance', 'cam', [0, 1, 2], ['CLOSE', 'NORMAL', 'FAR']);
+    cycle('Field of view', 'fov', [0, 1, 2], ['NARROW', 'NORMAL', 'WIDE']);
+    toggle('Show FPS', 'fps');
+  } else {
+    slider('Music volume', 'music');
+    slider('Sound effects', 'sfx');
+    slider('Engine sound', 'engine');
+    row('Music', Sound.musicOn ? 'ON' : 'OFF', () => Sound.setMusic(!Sound.musicOn), () => Sound.setMusic(!Sound.musicOn));
+    row('Sound effects', Sound.sfxOn ? 'ON' : 'OFF', () => Sound.setSfx(!Sound.sfxOn), () => Sound.setSfx(!Sound.sfxOn));
+    y += 10;
+    if (button('wipe', 150, y, 360, 48, confirmReset ? 'CLICK AGAIN TO ERASE' : 'ERASE ALL SAVED DATA', { color: confirmReset ? '#c82a2a' : '#5a3a3a', size: 17 })) {
+      if (confirmReset) { localStorage.removeItem(SAVE_KEY); location.reload(); } else confirmReset = 1;
+    }
+  }
+  if (button('sback', W / 2 - 150, 640, 300, 58, 'DONE', { color: '#2ac85a', size: 26, sfx: 'back' })) { capture = null; store(); state = setFrom; }
+}
+
+// ------------------------------------------------------------ online screens
+function drawOnline() {
+  txt('ONLINE', W / 2, 22, 44, '#ffffff', 'center', { stroke: 8, italic: true });
+  if (net.screen === 'menu' || !net.role && net.screen !== 'connecting') {
+    panel(70, 100, 560, 520);
+    txt('YOUR NAME', 100, 124, 18, '#9aa2c0');
+    if (button('fname', 100, 150, 500, 56, SET().name + (net.field === 'name' && Math.sin(t * 8) > 0 ? '_' : ''), { color: net.field === 'name' ? '#3a4a78' : '#2a3048', size: 24, sfx: 'tab' })) net.field = 'name';
+    if (button('host', 100, 236, 500, 72, 'HOST A ROOM', { color: '#1ab8a8', size: 28 })) hostRoom();
+    txt('OR JOIN WITH A ROOM CODE', 100, 330, 18, '#9aa2c0');
+    if (button('fcode', 100, 356, 300, 64, (net.codeInput || (net.field === 'code' ? '' : 'CODE')) + (net.field === 'code' && Math.sin(t * 8) > 0 ? '_' : ''), { color: net.field === 'code' ? '#3a4a78' : '#2a3048', size: 32, sfx: 'tab' })) net.field = 'code';
+    if (button('join', 410, 356, 190, 64, 'JOIN', { color: net.codeInput.length === 5 ? '#2ac85a' : '#3a3f58', size: 28, disabled: net.codeInput.length !== 5 })) joinRoom(net.codeInput);
+    if (net.error) txt(net.error, 100, 440, 18, '#ff8a8a');
+    txt('Click a box and type. Share your room code with friends', 100, 490, 15, '#c8d0e8');
+    txt('so they can race you from their own computer.', 100, 512, 15, '#c8d0e8');
+    txt('Up to 8 players. Empty spots can be filled by the computer.', 100, 540, 15, '#c8d0e8');
+    if (button('oback', 100, 560, 200, 46, 'BACK', { color: '#3a3f58', size: 20, sfx: 'back' })) { net.field = 'code'; go('title'); }
+    return;
+  }
+  if (net.screen === 'connecting') {
+    panel(W / 2 - 300, 260, 600, 200);
+    txt(net.role === 'host' ? 'Creating room...' : `Joining room ${net.code}...`, W / 2, 300, 28, '#ffffff', 'center');
+    txt('Connecting to the online service', W / 2, 346, 16, '#9aa2c0', 'center');
+    if (button('ccancel', W / 2 - 100, 390, 200, 50, 'CANCEL', { color: '#3a3f58', size: 20, sfx: 'back' })) { netReset(); net.screen = 'menu'; }
+    return;
+  }
+  // lobby
+  const isHost = net.role === 'host', c = net.cfg;
+  panel(40, 96, 560, 590);
+  txt('ROOM CODE', 70, 116, 18, '#9aa2c0');
+  txt(net.code, 70, 140, 64, '#5affe8', 'left', { stroke: 8 });
+  if (NetTransport.local) txt('(same-computer test mode)', 330, 170, 13, '#9aa2c0');
+  txt(`PLAYERS ${net.players.length}/8`, 70, 230, 18, '#9aa2c0');
+  net.players.forEach((p, i) => {
+    const r = RACERS.find(q => q.id === p.racer) || RACERS[0], y = 258 + i * 46;
+    rr(64, y - 4, 512, 40, 10); ctx.fillStyle = p.id === net.myId ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.06)'; ctx.fill();
+    ctx.fillStyle = r.body; ctx.beginPath(); ctx.arc(88, y + 16, 12, 0, 6.3); ctx.fill();
+    txt(p.name, 110, y + 4, 22, '#ffffff'); txt(r.name, 400, y + 6, 18, r.body);
+    if (p.id === 'host') txt('HOST', 560, y + 8, 15, '#ffe680', 'right'); else if (p.id === net.myId) txt('YOU', 560, y + 8, 15, '#8aff6a', 'right');
+    else if (isHost && button('kick' + p.id, 506, y + 2, 54, 30, 'KICK', { color: '#6a2a2a', size: 12 })) { netSend(p.id, { t: 'closed' }); if (net.tr.kick) net.tr.kick(p.id); netPlayerLeft(p.id); }
+  });
+  if (net.inRace) txt('A race is in progress...', 70, 640, 18, '#ffe680');
+  // right side
+  panel(640, 96, 600, 590);
+  const me = net.players.find(p => p.id === net.myId), myR = me ? me.racer : save.p1, ri = RACERS.findIndex(r => r.id === myR);
+  txt('YOUR RACER', 670, 116, 18, '#9aa2c0');
+  const pickR = d => { let i = ri; for (let n = 0; n < 8; n++) { i = (i + d + 8) % 8; if (!net.players.some(p => p.id !== net.myId && p.racer === RACERS[i].id)) break; } save.p1 = RACERS[i].id; store(); if (isHost) { me.racer = save.p1; netLobby(); } else netSend('host', { t: 'pick', racer: save.p1 }); };
+  if (button('rp', 670, 142, 56, 50, '<', { color: '#3a3f58', size: 24, sfx: 'tab' })) pickR(-1);
+  txt(RACERS[ri] ? RACERS[ri].name : '', 900, 150, 30, RACERS[ri] ? RACERS[ri].body : '#fff', 'center', { stroke: 6, italic: true });
+  if (button('rn', 1074, 142, 56, 50, '>', { color: '#3a3f58', size: 24, sfx: 'tab' })) pickR(1);
+  let y = 214;
+  const opt = (label, value, prev, next) => {
+    txt(label, 670, y + 12, 20, '#ffffff');
+    if (isHost && button('op' + label, 860, y, 46, 42, '<', { color: '#3a3f58', size: 20, sfx: 'tab' })) { prev(); netLobby(); }
+    txt(value, 1010, y + 12, 20, '#ffe680', 'center');
+    if (isHost && button('on' + label, 1114, y, 46, 42, '>', { color: '#3a3f58', size: 20, sfx: 'tab' })) { next(); netLobby(); }
+    y += 52;
+  };
+  opt('Track', TRACKS[c.ti].name, () => c.ti = (c.ti + TRACKS.length - 1) % TRACKS.length, () => c.ti = (c.ti + 1) % TRACKS.length);
+  opt('Laps', String(c.laps), () => c.laps = Math.max(1, c.laps - 1), () => c.laps = Math.min(10, c.laps + 1));
+  opt('Class', CLASSES[c.cls].name, () => c.cls = (c.cls + 2) % 3, () => c.cls = (c.cls + 1) % 3);
+  opt('Items', c.items ? 'ON' : 'OFF', () => c.items = !c.items, () => c.items = !c.items);
+  opt('Mirror', c.mirror ? 'ON' : 'OFF', () => c.mirror = !c.mirror, () => c.mirror = !c.mirror);
+  opt('Computer racers', c.ai ? 'FILL' : 'NONE', () => c.ai = !c.ai, () => c.ai = !c.ai);
+  rr(670, y + 4, 230, 150, 12); ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fill(); miniTrack(TRACKS[c.ti], 680, y + 12, 210, 134);
+  if (isHost) { if (button('ostart', 930, y + 40, 280, 76, 'START RACE', { color: '#2ac85a', size: 28, disabled: net.inRace })) hostStart(); }
+  else txt('Waiting for the host to start...', 1060, y + 66, 17, '#c8d0e8', 'center');
+  if (button('oleave', 70, 620, 200, 50, 'LEAVE', { color: '#6a2a2a', size: 20, sfx: 'back' })) { if (isHost) netBroadcast({ t: 'closed' }); leaveOnline(); }
+}
+function drawOnlineMenu() {
+  ctx.fillStyle = 'rgba(8,10,24,0.55)'; ctx.fillRect(0, 0, W, H);
+  panel(W / 2 - 200, 220, 400, 260);
+  txt('ONLINE RACE', W / 2, 244, 32, '#ffffff', 'center', { stroke: 6, italic: true });
+  txt('The race keeps going while this is open', W / 2, 290, 14, '#9aa2c0', 'center');
+  if (button('omres', W / 2 - 150, 320, 300, 56, 'BACK TO RACE', { color: '#2ac85a', size: 22 })) race.menu = false;
+  if (button('omleave', W / 2 - 150, 392, 300, 56, 'LEAVE ROOM', { color: '#6a2a2a', size: 22, sfx: 'back' })) { if (net.role === 'host') netBroadcast({ t: 'closed' }); leaveOnline(); }
+}
+function drawNames(view, cam) {
+  // name tags over other players' karts
+  if (!cam) return;
+  for (const k of karts) {
+    if (k.owner === 'ai' || k.human === 0) continue;
+    const p = R.project([k.x, k.y + 2.8, k.z], view); if (!p) continue;
+    const d = Math.hypot(k.x - cam.eye[0], k.z - cam.eye[2]); if (d > 120) continue;
+    const s = clamp(30 / d, 0.5, 1.2);
+    txt(k.name, p[0], p[1] - 20 * s, 18 * s, k.racer.body, 'center', { stroke: 4 * s });
+  }
 }
 function trophyIcon(x, y, s, kind) {
   const col = { gold: '#ffcc33', silver: '#d8dde8', bronze: '#d8844a' }[kind] || '#3a3f58';
@@ -839,6 +1230,10 @@ function drawResults(dt) {
   const by = Math.min(H - 76, 160 + list.length * 52);
   if (resT < 0.6) return;
   if (gp) { if (button('nxt', W / 2 - 150, by, 300, 62, gp.race + 1 >= TRACKS.length ? 'SEE RESULTS' : 'NEXT RACE', { color: '#2ac85a', size: 26 })) nextGPRace(); if (button('q', W / 2 + 170, by + 8, 160, 48, 'MENU', { color: '#3a3f58', size: 18, sfx: 'back' })) go('title'); }
+  else if (race.online) {
+    if (net.role === 'host') { if (button('lob', W / 2 - 150, by, 300, 62, 'BACK TO LOBBY', { color: '#1ab8a8', size: 24 })) { net.inRace = false; netBroadcast({ t: 'lobbyback' }); engines.stop(); go('online'); net.screen = 'lobby'; netLobby(); } }
+    else txt('Waiting for the host...', W / 2, by + 18, 20, '#c8d0e8', 'center');
+  }
   else {
     if (button('again', W / 2 - 330, by, 300, 62, 'RACE AGAIN', { color: '#2ac85a', size: 26 })) startRace(race.mode, race.ti);
     if (button('tr', W / 2 + 30, by, 300, 62, 'MENU', { color: '#3a3f58', size: 24, sfx: 'back' })) go('title');
@@ -854,9 +1249,9 @@ function drawTrophy(dt) {
   if (Math.random() < 0.6) parts.push({ x: p.x + rand(-8, 8), y: p.y + 12, z: p.z + rand(-3, 3), vx: rand(-1, 1), vy: -3, vz: rand(-1, 1), t: 0, life: 4, col: pick(['#ff5a5a', '#ffe03a', '#5ad8ff', '#6aff6a', '#ff6ab0']), size: 0.6, add: true });
   for (const q of parts) { q.t += dt; q.x += q.vx * dt; q.y += q.vy * dt; q.z += q.vz * dt; }
   parts = parts.filter(q => q.t < q.life);
-  R.begin({ x: 0, y: 0, w: W, h: H }, c, world.env); R.sky(worldMesh.sky); R.draw(worldMesh.st);
+  R.shadowsOff(); R.begin({ x: 0, y: 0, w: W, h: H }, c, world.env); R.sky(worldMesh.sky); R.draw(worldMesh.st);
   R.draw(MESH.podium, M4.compose(p.x, p.y, p.z, Math.atan2(-p.tx, -p.tz)));
-  for (const k of karts) { const m = kartMatrix(k); R.draw(MESH[k.mesh], m); for (const [wx, wy, wz, r] of [[-0.78, 0.36, 0.82, 0.36], [0.78, 0.36, 0.82, 0.36], [-0.8, 0.42, -0.85, 0.42], [0.8, 0.42, -0.85, 0.42]]) R.draw(MESH.wheel, M4.mul(M4.mul(M4.mul(m, M4.trans(wx, wy, wz)), M4.rotZ(Math.PI / 2)), M4.scale(r * 2, 0.36, r * 2))); }
+  for (const k of karts) drawKart(k, kartMatrix(k));
   const pa = []; for (const q of parts) { const cc = hexRGB(q.col); pa.push(q.x, q.y, q.z, cc[0], cc[1], cc[2], 1, q.size); } R.points(pa, true); R.end();
   // overlay
   const pl = trophy.place;
@@ -869,18 +1264,19 @@ function drawTrophy(dt) {
 }
 function drawPause() {
   ctx.fillStyle = 'rgba(8,10,24,0.6)'; ctx.fillRect(0, 0, W, H);
-  panel(W / 2 - 220, 170, 440, 380);
+  panel(W / 2 - 220, 170, 440, 420);
   txt('PAUSED', W / 2, 196, 52, '#ffffff', 'center', { stroke: 9, italic: true });
   if (button('res', W / 2 - 160, 280, 320, 62, 'RESUME', { color: '#2ac85a', size: 26 })) resume();
   if (button('rst', W / 2 - 160, 356, 320, 54, 'RESTART RACE', { color: '#ff7a1a', size: 22 })) startRace(race.mode, race.ti, race.gp ? { gp: race.gp } : {});
   if (button('quit', W / 2 - 160, 424, 320, 54, race.gp ? 'SAVE & QUIT CUP' : 'QUIT', { color: '#3a3f58', size: 22, sfx: 'back' })) { engines.stop(); if (race.gp) { save.gp.race = race.ti - 1; store(); } go('title'); }
-  txt(race.gp ? 'Your cup is saved between races' : 'ESC to resume', W / 2, 500, 15, '#a8b0c8', 'center');
+  if (button('pset', W / 2 - 160, 490, 320, 44, 'SETTINGS', { color: '#4a5070', size: 18 })) openSettings('pause');
+  txt(race.gp ? 'Your cup is saved between races' : 'ESC to resume', W / 2, 560, 15, '#a8b0c8', 'center');
 }
 function pause() { state = 'pause'; engines.stop(); Sound.play('back'); }
 function resume() { state = 'race'; engines.start(race.humans); Sound.play('click'); }
 function go(s) {
   state = s; screenT = 0;
-  if (s === 'title' || s === 'chars' || s === 'tracks') {
+  if (s === 'title' || s === 'chars' || s === 'tracks' || s === 'online') {
     if (!race || race.mode !== 'demo') { startDemo(Math.floor(Math.random() * TRACKS.length)); }
     if (s === 'title') Sound.playSong(SONGS.kmenu);
   }
@@ -911,8 +1307,8 @@ const engines = (() => {
         const sp = Math.abs(k.speed), gear = sp % 9 / 9, base = 55 + sp * 3.2 + gear * 28 + (k.boostT > 0 ? 30 : 0);
         e.o1.frequency.setTargetAtTime(base, now, 0.05); e.o2.frequency.setTargetAtTime(base * 0.502, now, 0.05);
         e.f.frequency.setTargetAtTime(500 + sp * 40, now, 0.1);
-        e.g.gain.setTargetAtTime(k.finished ? 0.02 : 0.05 + Math.min(0.05, sp * 0.002), now, 0.1);
-        e.ng.gain.setTargetAtTime(k.drift && !k.air ? 0.05 : 0, now, 0.05);
+        e.g.gain.setTargetAtTime((k.finished ? 0.02 : 0.05 + Math.min(0.05, sp * 0.002)) * SET().engine, now, 0.1);
+        e.ng.gain.setTargetAtTime(k.drift && !k.air ? 0.05 * SET().engine : 0, now, 0.05);
       });
     },
   };
@@ -943,7 +1339,7 @@ const SND = {
 };
 
 // ------------------------------------------------------------ main loop
-let last = 0;
+let last = 0, fpsN = 0, fpsT = 0, fpsV = 0;
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000 || 0); last = now; t += dt;
   UI.hover = null;
@@ -954,10 +1350,16 @@ function frame(now) {
     const views = race.humans === 2 ? [{ x: 0, y: 0, w: W, h: H / 2 }, { x: 0, y: H / 2, w: W, h: H / 2 }] : [{ x: 0, y: 0, w: W, h: H }];
     views.forEach((v, i) => drawWorld(v, CAMS[i]));
     views.forEach((v, i) => drawHUD(v, CAMS[i].k));
-    if (race.humans === 2) { ctx.fillStyle = '#0a0a14'; ctx.fillRect(0, H / 2 - 3, W, 6); drawMinimap(W - 170, H / 2 - 80, 160); }
-    else drawMinimap(30, H - 270, 200);
+    if (race.humans === 2) { ctx.fillStyle = '#0a0a14'; ctx.fillRect(0, H / 2 - 3, W, 6); if (SET().minimap) drawMinimap(W - 170, H / 2 - 80, 160); }
+    else if (SET().minimap) drawMinimap(30, H - 270, 200);
+    if (race.online) drawNames(views[0], CAMS[0]);
+    if (race.online && race.menu) drawOnlineMenu();
     if (flash > 0) { ctx.fillStyle = `rgba(200,230,255,${flash * 0.5})`; ctx.fillRect(0, 0, W, H); }
     if (touch.used && race.humans === 1) { ctx.globalAlpha = 0.35; rr(W - 290, H - 160, 130, 130, 20); ctx.fillStyle = '#ffffff'; ctx.fill(); rr(W - 145, H - 160, 130, 130, 20); ctx.fill(); ctx.globalAlpha = 1; txt('DRIFT', W - 225, H - 106, 20, '#000', 'center', { shadow: false }); txt('ITEM', W - 80, H - 106, 20, '#000', 'center', { shadow: false }); }
+  } else if (state === 'settings' && setFrom === 'pause') {
+    const views = race.humans === 2 ? [{ x: 0, y: 0, w: W, h: H / 2 }, { x: 0, y: H / 2, w: W, h: H / 2 }] : [{ x: 0, y: 0, w: W, h: H }];
+    views.forEach((v, i) => drawWorld(v, CAMS[i]));
+    drawSettings();
   } else if (state === 'pause') {
     const views = race.humans === 2 ? [{ x: 0, y: 0, w: W, h: H / 2 }, { x: 0, y: H / 2, w: W, h: H / 2 }] : [{ x: 0, y: 0, w: W, h: H }];
     views.forEach((v, i) => drawWorld(v, CAMS[i]));
@@ -972,25 +1374,27 @@ function frame(now) {
     drawResults(dt);
   } else if (state === 'trophy') {
     drawTrophy(dt);
-  } else if (state === 'title' || state === 'chars' || state === 'tracks') {
+  } else if (state === 'title' || state === 'chars' || state === 'tracks' || state === 'online' || (state === 'settings' && setFrom === 'title')) {
     screenT += dt;
-    if (state === 'chars') { if (karts.length > 1 || !karts[0] || !karts[0].showroom) karts = []; showroom(dt, hoverRacer || RACERS.find(r => r.id === (sel.pickFor === 2 ? save.p2 : save.p1)) || RACERS[0]); }
+    if (state === 'online') { if (karts.length > 1 || !karts[0] || !karts[0].showroom) karts = []; const me = net.players.find(p => p.id === net.myId); showroom(dt, RACERS.find(r => r.id === (me ? me.racer : save.p1)) || RACERS[0], true); }
+    else if (state === 'chars') { if (karts.length > 1 || !karts[0] || !karts[0].showroom) karts = []; showroom(dt, hoverRacer || RACERS.find(r => r.id === (sel.pickFor === 2 ? save.p2 : save.p1)) || RACERS[0]); }
     else { if (karts.some(k => k.showroom)) startDemo(world.ti); demoTick(dt); drawDemo(dt); }
     const vg = ctx.createLinearGradient(0, 0, W * 0.6, 0); vg.addColorStop(0, 'rgba(8,10,30,0.55)'); vg.addColorStop(1, 'rgba(8,10,30,0)');
     if (state !== 'tracks') { ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H); } else { ctx.fillStyle = 'rgba(8,10,30,0.45)'; ctx.fillRect(0, 0, W, H); }
-    if (state === 'title') drawTitle(); else if (state === 'chars') drawChars(); else drawTracks();
+    if (state === 'title') drawTitle(); else if (state === 'chars') drawChars(); else if (state === 'online') drawOnline(); else if (state === 'settings') drawSettings(); else drawTracks();
   }
+  if (SET().fps) { fpsN++; fpsT += dt; if (fpsT >= 0.5) { fpsV = Math.round(fpsN / fpsT); fpsN = 0; fpsT = 0; } txt(fpsV + ' FPS', W - 12, H - 24, 14, '#8aff6a', 'right', { stroke: 3 }); }
   if (UI.hover && UI.hover !== UI.lastHover) Sound.play('hover');
   UI.lastHover = UI.hover; UI.click = null;
   for (const k in pressed) delete pressed[k];
   requestAnimationFrame(frame);
 }
 const fontReady = document.fonts ? Promise.race([document.fonts.load(`24px ${FONT}`), new Promise(r => setTimeout(r, 2500))]) : Promise.resolve();
-fontReady.then(() => { go('title'); requestAnimationFrame(n => { last = n; frame(n); }); });
+fontReady.then(() => { applySettings(); go('title'); requestAnimationFrame(n => { last = n; frame(n); }); });
 
 window.__kt = {
   get state() { return state; }, get race() { return race; }, get karts() { return karts; }, get world() { return world; }, save: () => save,
-  startRace, go, startGP, nextGPRace, standings,
+  startRace, go, startGP, nextGPRace, standings, useItem: k => useItem(k), get objs() { return objs; }, net, hostRoom, joinRoom, hostStart, openSettings, get SET() { return SET(); },
   sim(dt, n) { for (let i = 0; i < n; i++) { if (state !== 'race') return state; updateRace(dt); } CAMS.forEach(c => { for (let j = 0; j < 90; j++) updateCam(c, 1 / 60, false); }); return state; },
   setHumanAI(on) { this._ai = on; },
 };

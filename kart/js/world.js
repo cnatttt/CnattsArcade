@@ -296,45 +296,110 @@ function buildWorld(def) {
 function shadeArr(c, f) { return [Math.min(1, c[0] * f), Math.min(1, c[1] * f), Math.min(1, c[2] * f), c[3]]; }
 
 // ------------------------------------------------------------ karts
-function buildKart(r) {
-  const b = new MB(), C = M4.compose;
-  const body = r.body, trim = r.trim, dark = '#1e1e26';
-  // floor pan + body
-  b.box(C(0, 0.32, 0, 0, 1.5, 0.22, 2.5), dark);
-  b.taper(C(0, 0.4, 0.15, 0, 1.25, 0.42, 2.0), 0.8, 0.85, body, 0, 0);
-  b.taper(C(0, 0.38, 1.25, 0, 1.0, 0.32, 0.7), 0.7, 0.5, body, 0, -0.12);   // nose
-  b.box(C(0, 0.42, 1.62, 0, 1.6, 0.18, 0.22), trim);                         // front bumper
-  for (const s of [-1, 1]) { b.box(C(s * 0.72, 0.5, 0.0, 0, 0.32, 0.36, 1.25), body); b.box(C(s * 0.72, 0.72, 0.0, 0, 0.34, 0.06, 1.2), trim); }  // side pods
-  // seat + engine + exhaust
-  b.box(C(0, 0.8, -0.45, 0, 0.8, 0.7, 0.18), '#2a2a34'); b.box(C(0, 0.62, -0.25, 0, 0.8, 0.14, 0.5), '#2a2a34');
-  b.box(C(0, 0.68, -1.0, 0, 0.9, 0.55, 0.6), '#4a4a56'); b.box(C(0, 0.98, -1.0, 0, 0.6, 0.1, 0.4), trim);
-  for (const s of [-1, 1]) b.cyl(C(s * 0.28, 0.62, -1.38, 0, 0.18, 0.4, 0.18, Math.PI / 2), 6, '#9a9aa8', '#1a1a1a');
-  // spoiler
-  for (const s of [-1, 1]) b.box(C(s * 0.45, 1.05, -1.15, 0, 0.08, 0.5, 0.15), dark);
-  b.box(C(0, 1.32, -1.2, 0, 1.6, 0.08, 0.42), trim); for (const s of [-1, 1]) b.box(C(s * 0.82, 1.28, -1.2, 0, 0.06, 0.25, 0.5), body);
-  // steering column + wheel
-  b.box(C(0, 0.85, 0.55, 0, 0.08, 0.08, 0.5, -0.6), dark); b.cyl(C(0, 1.02, 0.36, 0, 0.5, 0.06, 0.5, -1.0), 8, dark);
-  // driver
-  b.box(C(0, 1.08, -0.2, 0, 0.62, 0.62, 0.42), r.suit);
-  for (const s of [-1, 1]) { b.box(C(s * 0.36, 1.1, 0.1, 0, 0.18, 0.18, 0.55, 0.5), r.suit); b.box(C(s * 0.3, 0.92, 0.42, 0, 0.18, 0.18, 0.12), '#f0c8a0'); }
-  b.sphere(C(0, 1.62, -0.15, 0, 0.66, 0.64, 0.7), 8, 6, r.helmet, 0.03);
-  b.box(C(0, 1.62, 0.13, 0, 0.5, 0.2, 0.2), [0.08, 0.1, 0.16, 0.15]);
-  b.box(C(0, 1.93, -0.15, 0, 0.12, 0.08, 0.6), body);
+// 7-segment digit made of little boxes (for the number on the nose)
+function digit(b, n, m, col) {
+  const seg = { 0: 'abcdef', 1: 'bc', 2: 'abged', 3: 'abgcd', 4: 'fgbc', 5: 'afgcd', 6: 'afgedc', 7: 'abc', 8: 'abcdefg', 9: 'abcdfg' }[n];
+  const S = { a: [0, 0.5, 0.6, 0.14], b: [0.3, 0.25, 0.14, 0.5], c: [0.3, -0.25, 0.14, 0.5], d: [0, -0.5, 0.6, 0.14], e: [-0.3, -0.25, 0.14, 0.5], f: [-0.3, 0.25, 0.14, 0.5], g: [0, 0, 0.6, 0.14] };
+  for (const k of seg) { const [x, y, w, h] = S[k]; b.box(M4.mul(m, M4.compose(x, y, 0, 0, w, h, 0.06)), col); }
+}
+const KART_STYLE = r => r.weight >= 5 ? 'bruiser' : r.speed >= 4 ? 'speedster' : r.accel >= 5 ? 'buggy' : 'classic';
+// returns { mb, wheels: [[x, y, z, radius, width, isFront]] }
+function buildKart(r, num) {
+  const b = new MB(), C = M4.compose, style = KART_STYLE(r);
+  const body = r.body, trim = r.trim, dark = '#1c1c24', metal = '#b8bcc8', seat = '#26262e';
+  const glossy = c => col4(c);
+  let wheels;
+  if (style === 'speedster') {
+    b.box(C(0, 0.28, -0.1, 0, 1.3, 0.16, 2.9), dark);
+    b.taper(C(0, 0.34, 0.1, 0, 1.1, 0.4, 2.6), 0.62, 0.9, body);                        // long hull
+    b.taper(C(0, 0.3, 1.45, 0, 0.62, 0.3, 0.9), 0.45, 0.4, body, 0, -0.18);              // pointy nose
+    b.box(C(0, 0.24, 1.9, 0, 2.0, 0.08, 0.42), trim); for (const s of [-1, 1]) b.box(C(s * 0.98, 0.34, 1.9, 0, 0.06, 0.3, 0.5), body); // front wing
+    for (const s of [-1, 1]) { b.taper(C(s * 0.66, 0.3, -0.1, 0, 0.36, 0.42, 1.4), 0.7, 0.8, body); b.box(C(s * 0.7, 0.62, 0.35, 0, 0.18, 0.12, 0.5), dark); b.box(C(s * 0.67, 0.73, -0.1, 0, 0.34, 0.05, 1.3), trim); } // pods + intakes
+    b.box(C(0, 0.75, -1.05, 0, 0.7, 0.45, 0.8), '#3a3a46'); b.box(C(0, 1.0, -1.05, 0, 0.5, 0.08, 0.6), trim);
+    for (const s of [-1, 1]) { b.box(C(s * 0.4, 1.05, -1.42, 0, 0.07, 0.75, 0.12), dark); b.tube(C(s * 0.22, 0.66, -1.55, 0, 0.16, 0.36, 0.16, Math.PI / 2), 8, metal, '#111'); }
+    b.box(C(0, 1.46, -1.45, 0, 1.9, 0.07, 0.5), trim); for (const s of [-1, 1]) b.box(C(s * 0.96, 1.36, -1.45, 0, 0.06, 0.34, 0.6), body);
+    wheels = [[-0.82, 0.33, 1.05, 0.33, 0.32, 1], [0.82, 0.33, 1.05, 0.33, 0.32, 1], [-0.86, 0.42, -0.95, 0.42, 0.46, 0], [0.86, 0.42, -0.95, 0.42, 0.46, 0]];
+  } else if (style === 'bruiser') {
+    b.box(C(0, 0.34, 0, 0, 1.7, 0.24, 2.5), dark);
+    b.box(C(0, 0.62, 0.15, 0, 1.5, 0.5, 2.1), body, 0, shadeArr(col4(body), 1.12));
+    b.taper(C(0, 0.4, 1.3, 0, 1.5, 0.55, 0.55), 0.8, 0.6, body, 0, -0.1);
+    b.box(C(0, 0.5, 1.65, 0, 1.9, 0.34, 0.3), trim); for (const s of [-1, 1]) b.box(C(s * 0.55, 0.62, 1.82, 0, 0.3, 0.16, 0.06), [1, 1, 0.8, 1]); // big bumper + headlights
+    for (const s of [-1, 1]) { b.box(C(s * 0.85, 0.72, 0.85, 0, 0.36, 0.14, 0.9), body); b.box(C(s * 0.88, 0.8, -0.8, 0, 0.4, 0.16, 1.0), body); }   // fenders
+    // roll cage
+    for (const s of [-1, 1]) { b.box(C(s * 0.55, 1.35, -0.55, 0, 0.1, 1.2, 0.1), metal); b.box(C(s * 0.55, 1.9, -0.25, 0, 0.1, 0.1, 0.7), metal); b.box(C(s * 0.55, 1.6, 0.12, 0, 0.1, 0.75, 0.1, -0.5), metal); }
+    b.box(C(0, 1.93, -0.55, 0, 1.2, 0.1, 0.1), metal);
+    b.box(C(0, 0.98, -1.0, 0, 1.0, 0.5, 0.7), '#3a3a46');
+    for (const s of [-1, 1]) { b.tube(C(s * 0.42, 1.45, -1.15, 0, 0.22, 0.9, 0.22), 8, metal, '#111'); }   // exhaust stacks
+    wheels = [[-0.92, 0.42, 0.95, 0.42, 0.46, 1], [0.92, 0.42, 0.95, 0.42, 0.46, 1], [-0.95, 0.5, -0.9, 0.5, 0.56, 0], [0.95, 0.5, -0.9, 0.5, 0.56, 0]];
+  } else if (style === 'buggy') {
+    b.box(C(0, 0.3, 0, 0, 1.3, 0.18, 2.1), dark);
+    b.ball(C(0, 0.52, 0.25, 0, 1.3, 0.62, 1.9), 14, 8, body);                            // bubbly body
+    b.ball(C(0, 0.5, 1.05, 0, 0.9, 0.46, 0.8), 12, 6, body);
+    b.box(C(0, 0.38, 1.4, 0, 1.3, 0.16, 0.18), trim); for (const s of [-1, 1]) b.ball(C(s * 0.42, 0.62, 1.32, 0, 0.22, 0.22, 0.12), 8, 5, [1, 1, 0.85, 1]);
+    for (const s of [-1, 1]) { b.ball(C(s * 0.78, 0.66, 0.85, 0, 0.5, 0.26, 0.85), 10, 5, trim); b.ball(C(s * 0.8, 0.72, -0.75, 0, 0.55, 0.3, 0.95), 10, 5, trim); } // round fenders
+    b.box(C(0, 0.75, -0.95, 0, 0.8, 0.45, 0.6), '#3a3a46');
+    b.tube(C(0, 1.25, -1.15, 0, 0.06, 1.1, 0.06), 6, metal); b.box(C(0.12, 1.75, -1.15, 0, 0.22, 0.16, 0.02), trim);  // antenna flag
+    b.tube(C(0, 0.68, -1.4, 0, 0.18, 0.3, 0.18, Math.PI / 2), 8, metal, '#111');
+    wheels = [[-0.8, 0.38, 0.85, 0.38, 0.36, 1], [0.8, 0.38, 0.85, 0.38, 0.36, 1], [-0.84, 0.44, -0.78, 0.44, 0.42, 0], [0.84, 0.44, -0.78, 0.44, 0.42, 0]];
+  } else {
+    b.box(C(0, 0.32, 0, 0, 1.5, 0.2, 2.5), dark);
+    b.taper(C(0, 0.4, 0.15, 0, 1.25, 0.42, 2.0), 0.8, 0.85, body);
+    b.taper(C(0, 0.38, 1.25, 0, 1.0, 0.32, 0.7), 0.7, 0.5, body, 0, -0.12);
+    b.box(C(0, 0.42, 1.62, 0, 1.7, 0.16, 0.24), trim);
+    for (const s of [-1, 1]) { b.taper(C(s * 0.74, 0.32, 0.0, 0, 0.36, 0.42, 1.3), 0.75, 0.85, body); b.box(C(s * 0.74, 0.75, 0.0, 0, 0.3, 0.05, 1.2), trim); }
+    b.box(C(0, 0.7, -1.0, 0, 0.9, 0.55, 0.6), '#3a3a46'); b.box(C(0, 1.0, -1.0, 0, 0.6, 0.08, 0.4), trim);
+    for (const s of [-1, 1]) b.tube(C(s * 0.28, 0.62, -1.38, 0, 0.18, 0.4, 0.18, Math.PI / 2), 8, metal, '#111');
+    for (const s of [-1, 1]) b.box(C(s * 0.45, 1.05, -1.15, 0, 0.08, 0.5, 0.15), dark);
+    b.box(C(0, 1.32, -1.2, 0, 1.6, 0.07, 0.42), trim); for (const s of [-1, 1]) b.box(C(s * 0.82, 1.27, -1.2, 0, 0.06, 0.25, 0.5), body);
+    wheels = [[-0.8, 0.36, 0.85, 0.36, 0.34, 1], [0.8, 0.36, 0.85, 0.36, 0.34, 1], [-0.82, 0.43, -0.85, 0.43, 0.44, 0], [0.82, 0.43, -0.85, 0.43, 0.44, 0]];
+  }
+  // number roundel on the nose (readable from the chase camera)
+  const [ry, rz] = { classic: [0.77, 0.95], speedster: [0.75, 0.75], bruiser: [0.88, 0.9], buggy: [0.84, 0.55] }[style];
+  b.tube(C(0, ry, rz, 0, 0.5, 0.04, 0.5), 16, '#ffffff', '#ffffff');
+  digit(b, num, M4.mul(C(0, ry + 0.03, rz, 0), M4.mul(M4.rotX(Math.PI / 2), M4.scale(-0.32, 0.32, 1))), '#111111');
+  // seat, steering
+  b.box(C(0, 0.85, -0.45, 0, 0.75, 0.75, 0.16), seat); b.box(C(0, 0.6, -0.25, 0, 0.75, 0.14, 0.5), seat);
+  b.box(C(0, 0.85, 0.52, 0, 0.07, 0.07, 0.5, -0.65), dark);
+  b.tube(C(0, 1.03, 0.33, 0, 0.46, 0.05, 0.46, -1.0), 12, '#2a2a30');
+  // driver: torso, shoulders, arms, gloves, helmet
+  b.taper(C(0, 0.72, -0.22, 0, 0.62, 0.62, 0.4), 1.15, 0.9, r.suit);
+  b.ball(C(0, 1.3, -0.22, 0, 0.78, 0.32, 0.42), 10, 5, r.suit);
+  for (const s of [-1, 1]) {
+    b.tube(C(s * 0.33, 1.18, 0.0, 0, 0.17, 0.5, 0.17, 1.05, s * -0.25), 8, r.suit);
+    b.ball(C(s * 0.2, 1.05, 0.3, 0, 0.17, 0.17, 0.17), 8, 5, '#1a1a1a');
+    b.box(C(s * 0.2, 0.62, 0.2, 0, 0.2, 0.2, 0.5), r.suit);
+  }
+  b.ball(C(0, 1.64, -0.17, 0, 0.66, 0.66, 0.72), 16, 10, r.helmet);
+  b.ball(C(0, 1.66, 0.09, 0, 0.5, 0.26, 0.3), 12, 6, [0.06, 0.08, 0.14, 0]);          // visor
+  b.box(C(0, 1.97, -0.17, 0, 0.12, 0.06, 0.62), body);                                   // stripe
+  return { mb: b, wheels, style };
+}
+function buildWheel() {
+  const b = new MB();
+  b.tube(M4.ident(), 16, '#1c1c20', '#26262c');                                            // tyre
+  for (let k = 0; k < 12; k++) { const a = k / 12 * Math.PI * 2; b.box(M4.mul(M4.rotY(a), M4.compose(0.5, 0, 0, 0, 0.05, 0.9, 0.1)), '#141418'); }   // tread blocks
+  b.tube(M4.compose(0, 0, 0, 0, 0.62, 1.04, 0.62), 12, '#c8ccd8', '#a8acb8');            // rim
+  for (let k = 0; k < 5; k++) b.box(M4.mul(M4.rotY(k / 5 * Math.PI * 2), M4.compose(0.15, 0, 0, 0, 0.3, 1.08, 0.08)), '#8a8e9a');   // spokes
+  b.tube(M4.compose(0, 0, 0, 0, 0.2, 1.1, 0.2), 8, '#ffcc33', '#ffcc33');
   return b;
 }
-function buildWheel() { const b = new MB(); b.cyl(M4.ident(), 10, '#1a1a1e', '#2a2a30'); b.cyl(M4.compose(0, 0, 0, 0, 0.55, 1.04, 0.55), 6, '#c8c8d4', '#9a9aa8'); return b; }
-function buildItemBox() {
+function buildItemBox() {   // the glass shell (drawn see-through)
   const b = new MB(), C = M4.compose;
-  const cols = [[1, 0.3, 0.3, 0.75], [0.3, 0.8, 1, 0.75], [1, 0.85, 0.2, 0.75], [0.4, 1, 0.4, 0.75], [0.9, 0.4, 1, 0.75], [1, 0.6, 0.2, 0.75]];
-  const p = [[-.5, -.5, -.5], [.5, -.5, -.5], [.5, .5, -.5], [-.5, .5, -.5], [-.5, -.5, .5], [.5, -.5, .5], [.5, .5, .5], [-.5, .5, .5]].map(v => M4.pt(C(0, 0, 0, 0, 1.7, 1.7, 1.7), ...v));
+  const cols = [[1, 0.3, 0.3, 0.5], [0.3, 0.8, 1, 0.5], [1, 0.85, 0.2, 0.5], [0.4, 1, 0.4, 0.5], [0.9, 0.4, 1, 0.5], [1, 0.6, 0.2, 0.5]];
+  const p = [[-.5, -.5, -.5], [.5, -.5, -.5], [.5, .5, -.5], [-.5, .5, -.5], [-.5, -.5, .5], [.5, -.5, .5], [.5, .5, .5], [-.5, .5, .5]].map(v => M4.pt(C(0, 0, 0, 0, 1.8, 1.8, 1.8), ...v));
   b.quad(p[3], p[7], p[6], p[2], cols[0]); b.quad(p[0], p[1], p[5], p[4], cols[1]); b.quad(p[4], p[5], p[6], p[7], cols[2]); b.quad(p[1], p[0], p[3], p[2], cols[3]); b.quad(p[5], p[1], p[2], p[6], cols[4]); b.quad(p[0], p[4], p[7], p[3], cols[5]);
-  // "?" on every side
-  const q = new MB(); [[0, 0.4, 0.45, 0.12], [0.18, 0.25, 0.12, 0.3], [0.06, 0.02, 0.24, 0.12], [0, -0.12, 0.12, 0.18], [0, -0.4, 0.12, 0.12], [-0.13, 0.32, 0.12, 0.12]].forEach(([x, y, w, h]) => q.box(C(x, y, 0.88, 0, w, h, 0.05), [1, 1, 1, 1]));
-  for (let k = 0; k < 4; k++) b.add(q, M4.rotY(k * Math.PI / 2));
+  // bright edges
+  for (const [x, y, z, w, h, d] of [[0, .9, .9, 1.86, .1, .1], [0, -.9, .9, 1.86, .1, .1], [0, .9, -.9, 1.86, .1, .1], [0, -.9, -.9, 1.86, .1, .1], [.9, 0, .9, .1, 1.86, .1], [-.9, 0, .9, .1, 1.86, .1], [.9, 0, -.9, .1, 1.86, .1], [-.9, 0, -.9, .1, 1.86, .1], [.9, .9, 0, .1, .1, 1.86], [-.9, .9, 0, .1, .1, 1.86], [.9, -.9, 0, .1, .1, 1.86], [-.9, -.9, 0, .1, .1, 1.86]]) b.box(C(x, y, z, 0, w, h, d), [1, 1, 1, 0.9]);
   return b;
 }
-function buildCoin() { const b = new MB(); b.cyl(M4.compose(0, 0, 0, 0, 1.3, 0.16, 1.3, Math.PI / 2), 12, [1, 0.8, 0.15, 0.35], [1, 0.9, 0.4, 0.45]); b.box(M4.compose(0, 0, 0, 0, 0.2, 0.7, 0.22), [1, 0.95, 0.6, 0.6]); return b; }
+function buildItemCore() {  // the glowing "?" inside
+  const b = new MB(), C = M4.compose, q = new MB();
+  [[0, 0.4, 0.45, 0.12], [0.18, 0.25, 0.12, 0.3], [0.06, 0.02, 0.24, 0.12], [0, -0.12, 0.12, 0.18], [0, -0.4, 0.12, 0.12], [-0.13, 0.32, 0.12, 0.12]].forEach(([x, y, w, h]) => q.box(C(x, y, 0, 0, w, h, 0.14), [1, 1, 1, 1]));
+  b.add(q, M4.ident()); b.add(q, M4.rotY(Math.PI / 2));
+  return b;
+}
+function buildCoin() { const b = new MB(); b.tube(M4.compose(0, 0, 0, 0, 1.3, 0.18, 1.3, Math.PI / 2), 18, [1, 0.78, 0.12, 0.15], [1, 0.88, 0.35, 0.2]); b.box(M4.compose(0, 0, 0, 0, 0.18, 0.7, 0.24), [1, 0.95, 0.6, 0.5]); return b; }
 function buildOil() { const b = new MB(); for (let k = 0; k < 9; k++) { const a = k / 9 * 6.283, r = 1.3 + (k % 3) * 0.3; b.cyl(M4.compose(Math.cos(a) * 0.5, 0.03, Math.sin(a) * 0.5, 0, r, 0.05, r), 8, [0.12, 0.08, 0.2, 0.1]); } b.cyl(M4.compose(0.3, 0.06, -0.2, 0, 0.6, 0.02, 0.4), 6, [0.5, 0.4, 0.9, 0.5]); return b; }
-function buildOrb(col) { const b = new MB(); b.sphere(M4.compose(0, 0, 0, 0, 1.3, 1.3, 1.3), 8, 6, col, 0.05); b.sphere(M4.compose(0.2, 0.25, 0.2, 0, 0.5, 0.5, 0.5), 6, 4, [1, 1, 1, 0.8], 0); return b; }
+function buildOrb(col) { const b = new MB(); b.ball(M4.compose(0, 0, 0, 0, 1.3, 1.3, 1.3), 14, 9, col); b.ball(M4.compose(0.22, 0.28, 0.22, 0, 0.4, 0.4, 0.4), 8, 5, [1, 1, 1, 0.8]); return b; }
 function buildRocket() { const b = new MB(), C = M4.compose; b.cyl(C(0, 0, 0, 0, 0.5, 1.6, 0.5, Math.PI / 2), 8, '#e83a3a', '#2a2a2a'); b.cone(C(0, 0, 0.8, 0, 0.5, 0.7, 0.5, Math.PI / 2), 8, '#f8f8f8', 0); for (let k = 0; k < 4; k++) b.box(M4.mul(M4.rotZ(k * Math.PI / 2), C(0, 0.4, -0.6, 0, 0.06, 0.5, 0.5)), '#ffcc33'); return b; }
-function buildBomb() { const b = new MB(), C = M4.compose; b.sphere(C(0, 0, 0, 0, 1.8, 1.8, 1.8), 9, 7, '#22222c', 0.04); b.cyl(C(0, 0.95, 0, 0, 0.5, 0.3, 0.5), 8, '#6a6a7a'); b.cyl(C(0.1, 1.3, 0, 0, 0.1, 0.5, 0.1, 0, 0.3), 4, '#c8a060'); b.box(C(-0.5, 0.3, 0.7, 0, 0.3, 0.3, 0.1), [1, 1, 1, 0.6]); return b; }
+function buildBomb() { const b = new MB(), C = M4.compose; b.ball(C(0, 0, 0, 0, 1.8, 1.8, 1.8), 14, 9, '#22222c'); b.cyl(C(0, 0.95, 0, 0, 0.5, 0.3, 0.5), 8, '#6a6a7a'); b.cyl(C(0.1, 1.3, 0, 0, 0.1, 0.5, 0.1, 0, 0.3), 4, '#c8a060'); b.box(C(-0.5, 0.3, 0.7, 0, 0.3, 0.3, 0.1), [1, 1, 1, 0.6]); return b; }
