@@ -18,22 +18,22 @@
   .av { border-radius: 50%; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; font-family: var(--pixel); font-weight: 700; font-size: 15px;
     color: #07061a; border: 2px solid #07061a; box-shadow: inset 0 -3px 0 #0004; flex: none; }
   .av.big { width: 64px; height: 64px; font-size: 26px; border-width: 3px; box-shadow: inset 0 -6px 0 #0004, 0 4px 0 #000a; }
-  #acct { position: fixed; inset: 0; z-index: 50; display: none; align-items: flex-start; justify-content: center; background: #07061add; padding: 60px 14px; overflow: auto; }
+  #acct { position: fixed; inset: 0; z-index: 50; display: none; align-items: flex-start; justify-content: center; background: #09090bcc; backdrop-filter: blur(6px); padding: 60px 14px; overflow: auto; }
   #acct.open { display: flex; }
-  #acct .box { width: 100%; max-width: 620px; background: var(--panel); border: 2px solid var(--line); border-radius: 22px; overflow: hidden; box-shadow: 0 8px 0 #000a, 0 0 50px #b07cff33; animation: pop .25s cubic-bezier(.2,1.5,.4,1); }
+  #acct .box { width: 100%; max-width: 620px; background: var(--panel); border: 2px solid var(--line); border-radius: 22px; overflow: hidden; box-shadow: 0 30px 80px #000c; animation: pop .25s cubic-bezier(.2,1.5,.4,1); }
   #acct .tabs { display: flex; border-bottom: 4px solid var(--line); }
   #acct .tabs button { flex: 1; font-family: var(--pixel); font-weight: 700; font-size: 14px; padding: 14px 6px; background: var(--panel2); color: var(--muted); border: 0; border-right: 3px solid var(--line); cursor: pointer; position: relative; }
-  #acct .tabs button.on { background: var(--panel); color: var(--gold); }
+  #acct .tabs button.on { background: var(--panel); color: var(--text); box-shadow: inset 0 -2px 0 var(--text); }
   #acct .tabs button .badge { background: #ff6a7a; color: #07061a; padding: 2px 5px; font-size: 8px; margin-left: 6px; }
   #acct .tabs .x { flex: none; width: 52px; border-right: 0; color: var(--text); font-size: 14px; }
   #acct .body { padding: 26px 28px 30px; min-height: 260px; }
-  #acct h3 { font-family: var(--pixel); font-weight: 700; font-size: 17px; color: var(--gold); margin: 0 0 16px; letter-spacing: 1px; }
+  #acct h3 { font-family: var(--pixel); font-weight: 800; font-size: 17px; color: var(--text); margin: 0 0 16px; letter-spacing: 1px; }
   #acct p { color: var(--muted); margin: 0 0 14px; line-height: 1.45; }
   #acct .row { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
   #acct label { font-family: var(--pixel); font-weight: 700; font-size: 13px; color: var(--muted); display: block; margin: 14px 0 6px; }
   #acct input, #acct select { width: 100%; font-family: var(--body); font-size: 17px; padding: 11px 14px; border-radius: 12px; background: #07061a; color: var(--text); border: 3px solid var(--line); outline: none; }
-  #acct input:focus, #acct select:focus { border-color: var(--gold); }
-  #acct .btn { border-radius: 999px; font-family: var(--pixel); font-weight: 700; font-size: 14px; padding: 12px 16px; background: var(--gold); color: #07061a; border: 0; cursor: pointer; box-shadow: inset 0 -4px 0 #0005, 0 3px 0 #000a; white-space: nowrap; }
+  #acct input:focus, #acct select:focus { border-color: var(--line2); }
+  #acct .btn { border-radius: 999px; font-family: var(--pixel); font-weight: 700; font-size: 14px; padding: 12px 16px; background: #fff; color: #09090b; border: 0; cursor: pointer; box-shadow: none; white-space: nowrap; }
   #acct .btn.alt { background: var(--panel2); color: var(--text); border: 3px solid var(--line); box-shadow: 0 3px 0 #000a; padding: 9px 12px; }
   #acct .btn.red { background: #ff6a7a; }
   #acct .btn.sm { font-size: 8px; padding: 8px 10px; }
@@ -43,7 +43,7 @@
   #acct .msg.ok { color: #8aff9a; }
   #acct .sub { display: flex; gap: 8px; margin-bottom: 18px; }
   #acct .sub button { border-radius: 999px; font-family: var(--pixel); font-weight: 700; font-size: 13px; padding: 9px 12px; background: transparent; color: var(--muted); border: 3px solid var(--line); cursor: pointer; }
-  #acct .sub button.on { color: var(--gold); border-color: var(--gold); }
+  #acct .sub button.on { color: var(--bg); background: var(--text); border-color: var(--text); }
   #acct .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
   #acct .sw { width: 34px; height: 34px; border-radius: 50%; border: 3px solid #07061a; cursor: pointer; box-shadow: 0 3px 0 #000a; }
   #acct .sw.on { outline: 3px solid var(--text); outline-offset: 2px; }
