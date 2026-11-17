@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin | Cnatt's Arcade</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/svg+xml" href="assets/icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bungee&family=Rubik:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root { --bg: #0b0820; --panel: #151033; --panel2: #1e1745; --line: #2e2563; --line2: #463a8a; --text: #f1eeff; --muted: #a49cd0;
+    --gold: #ffd23a; --pink: #ff4fd8; --cyan: #3ae0ff; --green: #5affc8; --red: #ff5a7a; --logo: 'Bungee', 'Rubik', sans-serif; --ui: 'Rubik', system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: radial-gradient(ellipse at 20% -10%, #3a1a6a55, transparent 60%), radial-gradient(ellipse at 90% 110%, #ff4fd822, transparent 60%), var(--bg);
+    background-attachment: fixed; color: var(--text); font: 15px/1.45 var(--ui); min-height: 100vh; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  header { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 14px; padding: 12px clamp(14px, 3vw, 32px); background: #0b0820dd; backdrop-filter: blur(10px); border-bottom: 1px solid #ffffff14; }
+  header img { width: 38px; height: 38px; }
+  header h1 { margin: 0; font: 400 20px var(--logo); letter-spacing: 1px; }
+  header h1 em { font-style: normal; color: var(--red); text-shadow: 0 0 18px #ff5a7a88; }
+  header .grow { flex: 1; }
+  .who { display: flex; align-items: center; gap: 8px; color: var(--muted); font-weight: 600; }
+  .av { width: 28px; height: 28px; border-radius: 50%; display: inline-grid; place-items: center; font-weight: 800; color: #0b0820; border: 2px solid #0b0820; flex: none; }
+  a.pill, .pill { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line2); background: #ffffff0d; color: var(--text); text-decoration: none; font-weight: 700; font-size: 13px; cursor: pointer; }
+  a.pill:hover, .pill:hover { border-color: var(--gold); color: var(--gold); }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 22px clamp(14px, 3vw, 32px) 60px; }
+  nav.tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 22px; }
+  nav.tabs button { padding: 10px 18px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); font-weight: 700; cursor: pointer; transition: all .15s; }
+  nav.tabs button:hover { color: var(--text); border-color: var(--line2); }
+  nav.tabs button.on { background: linear-gradient(135deg, #ff4fd8, #7a3aff); color: #fff; border-color: transparent; box-shadow: 0 6px 24px #ff4fd844; }
+  .card { background: linear-gradient(180deg, var(--panel2), var(--panel)); border: 1px solid var(--line); border-radius: 18px; padding: 20px 22px; margin-bottom: 18px; }
+  .card h2 { margin: 0 0 4px; font: 800 18px var(--ui); }
+  .card .sub { color: var(--muted); margin: 0 0 16px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 14px; margin-bottom: 18px; }
+  .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; position: relative; overflow: hidden; }
+  .tile::after { content: ''; position: absolute; right: -30px; top: -30px; width: 90px; height: 90px; border-radius: 50%; background: var(--c, #7a3aff); opacity: .16; filter: blur(4px); }
+  .tile b { display: block; font: 800 30px var(--ui); color: var(--c, #fff); }
+  .tile span { color: var(--muted); font-weight: 600; font-size: 13px; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .btn { padding: 10px 18px; border-radius: 999px; border: 0; cursor: pointer; font-weight: 800; background: var(--gold); color: #0b0820; box-shadow: inset 0 -3px 0 #0003; transition: transform .1s; }
+  .btn:hover { transform: translateY(-1px); } .btn:active { transform: translateY(1px); }
+  .btn.alt { background: #ffffff12; color: var(--text); border: 1px solid var(--line2); box-shadow: none; }
+  .btn.red { background: var(--red); } .btn.green { background: var(--green); } .btn.sm { padding: 6px 12px; font-size: 13px; }
+  .btn:disabled { opacity: .45; cursor: default; transform: none; }
+  input[type=text], input[type=search], textarea, select { background: #0b0820; border: 1px solid var(--line2); border-radius: 12px; padding: 10px 14px; outline: none; }
+  input:focus, textarea:focus, select:focus { border-color: var(--cyan); }
+  textarea { width: 100%; min-height: 90px; resize: vertical; }
+  label.lbl { display: block; font-weight: 700; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px; }
+  .switch { position: relative; display: inline-flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; font-weight: 600; }
+  .switch input { display: none; }
+  .switch i { width: 44px; height: 24px; border-radius: 99px; background: #ffffff1c; border: 1px solid var(--line2); position: relative; transition: background .2s; flex: none; }
+  .switch i::after { content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .2s; }
+  .switch input:checked + i { background: var(--green); border-color: transparent; }
+  .switch input:checked + i::after { transform: translateX(20px); }
+  .switch.warn input:checked + i { background: var(--red); }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  td { padding: 10px; border-bottom: 1px solid #ffffff0c; vertical-align: middle; }
+  tr:hover td { background: #ffffff05; }
+  .thumb { width: 96px; aspect-ratio: 16/9; border-radius: 8px; background: center / cover; }
+  .tag { display: inline-block; padding: 3px 9px; border-radius: 99px; font-size: 11px; font-weight: 800; letter-spacing: .5px; }
+  .tag.admin { background: #ff5a7a33; color: #ff9ab0; } .tag.banned { background: var(--red); color: #0b0820; } .tag.on { background: #5affc822; color: var(--green); }
+  .muted { color: var(--muted); }
+  .msg { min-height: 22px; margin-top: 10px; font-weight: 600; } .msg.ok { color: var(--green); } .msg.err { color: var(--red); }
+  .preview { margin-top: 16px; }
+  .ann { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 10px 16px; border-radius: 12px; font-weight: 700; text-align: center; }
+  .ann.info { background: linear-gradient(90deg, #7a3aff, #ff4fd8); color: #fff; } .ann.good { background: linear-gradient(90deg, #12b886, #3ae0ff); color: #062a26; }
+  .ann.warn { background: linear-gradient(90deg, #ffb01a, #ffd23a); color: #2a1800; } .ann.alert { background: linear-gradient(90deg, #ff3a5a, #ff7a3a); color: #fff; }
+  .gate { text-align: center; padding: 80px 20px; }
+  .gate h2 { font: 400 28px var(--logo); margin: 0 0 12px; }
+  .bars { display: flex; flex-direction: column; gap: 8px; }
+  .bar { display: grid; grid-template-columns: 160px 1fr 40px; gap: 10px; align-items: center; }
+  .bar div { height: 12px; border-radius: 99px; background: linear-gradient(90deg, var(--pink), var(--cyan)); }
+  @media (max-width: 700px) { .hide-sm { display: none; } td, th { padding: 8px 5px; } }
+</style>
+</head>
+<body>
+<header>
+  <img src="assets/icon.svg" alt="">
+  <h1>ARCADE <em>ADMIN</em></h1>
+  <div class="grow"></div>
+  <div class="who" id="who"></div>
+  <a class="pill" href="./">‹ Back to arcade</a>
+</header>
+<div class="wrap" id="app"><div class="gate"><h2>Loading...</h2></div></div>
+
+<script src="games.js"></script>
+<script>window.ACCOUNT_HUB = true;</script>
+<script src="account/config.js"></script>
+<script src="account/account.js"></script>
+<script>
+'use strict';
+const A = Account, app = document.getElementById('app');
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const av = p => `<span class="av" style="background:${esc(p.color || '#b07cff')}">${esc((p.username || '?')[0].toUpperCase())}</span>`;
+const ago = ts => { if (!ts) return 'never'; const s = (Date.now() - new Date(ts).getTime()) / 1000; if (s < 150) return 'online now'; if (s < 3600) return Math.floor(s / 60) + ' min ago'; if (s < 86400) return Math.floor(s / 3600) + ' h ago'; return Math.floor(s / 86400) + ' days ago'; };
+const day = ts => ts ? new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+let tab = location.hash.slice(1) || 'dash', site = {}, refresh = null;
+const TABS = [['dash', '📊 Dashboard'], ['ann', '📣 Announcement'], ['games', '🎮 Games'], ['players', '👥 Players'], ['boards', '🏆 Leaderboards'], ['site', '🛠 Site']];
+
+function gate(title, text) { app.innerHTML = `<div class="gate"><h2>${title}</h2><p class="muted">${text}</p><p><a class="pill" href="./">Go to the arcade</a></p></div>`; }
+
+A.init().then(async () => {
+  if (!A.configured) return gate('NOT SET UP', 'Accounts are not connected yet.');
+  if (!A.user) return gate('SIGN IN FIRST', 'Sign in on the arcade with your admin account, then come back here.');
+  document.getElementById('who').innerHTML = av(A.user) + `<span class="hide-sm">${esc(A.user.username)}</span>`;
+  if (!A.user.admin) return gate('NO ACCESS', 'This page is only for the site admin.');
+  site = await A.site();
+  render();
+});
+
+function render() {
+  clearInterval(refresh);
+  location.hash = tab;
+  app.innerHTML = `<nav class="tabs">${TABS.map(([id, n]) => `<button data-t="${id}" class="${id === tab ? 'on' : ''}">${n}</button>`).join('')}</nav><div id="view"></div>`;
+  app.querySelectorAll('nav.tabs button').forEach(b => b.onclick = () => { tab = b.dataset.t; render(); });
+  const v = document.getElementById('view');
+  ({ dash, ann, games, players, boards, site: siteTab })[tab](v);
+}
+const say = (el, t, ok = true) => { el.className = 'msg ' + (ok ? 'ok' : 'err'); el.textContent = t; };
+
+// ------------------------------------------------------------ dashboard
+async function dash(v) {
+  const load = async () => {
+    let s;
+    try { const r = await A.sb.rpc('admin_stats'); if (r.error) throw r.error; s = r.data; }
+    catch (e) { v.innerHTML = `<div class="card"><h2>Couldn't load stats</h2><p class="sub">${esc(e.message || e)}. Make sure you ran the latest account/setup.sql in Supabase.</p></div>`; return; }
+    const tiles = [['Players', s.players, '#3ae0ff'], ['Online now', s.online, '#5affc8'], ['New today', s.new_today, '#ffd23a'], ['New this week', s.new_week, '#ff9a4a'],
+      ['Active this week', s.active_week, '#b07cff'], ['Cloud saves', s.saves, '#6ad0ff'], ['Leaderboard scores', s.scores, '#ff4fd8'], ['Friendships', s.friendships, '#8aff6a'], ['Banned', s.banned, '#ff5a7a']];
+    const playing = Object.entries(s.playing || {}).sort((a, b) => b[1] - a[1]); const mx = Math.max(1, ...playing.map(p => p[1]));
+    v.innerHTML = `<div class="tiles">${tiles.map(([n, x, c]) => `<div class="tile" style="--c:${c}"><b>${Number(x || 0).toLocaleString()}</b><span>${n}</span></div>`).join('')}</div>
+      <div class="card"><h2>Playing right now</h2><p class="sub">Signed-in players online, by game. Updates every 30 seconds.</p>
+      ${playing.length ? `<div class="bars">${playing.map(([g, n]) => `<div class="bar"><span>${esc(g)}</span><div style="width:${n / mx * 100}%"></div><b>${n}</b></div>`).join('')}</div>` : '<p class="muted">Nobody is in a game right now.</p>'}</div>
+      <div class="card"><h2>Newest players</h2><div id="newest" class="muted">Loading...</div></div>`;
+    const r = await A.sb.from('profiles').select('username,color,created_at,last_seen,playing').order('created_at', { ascending: false }).limit(8);
+    document.getElementById('newest').innerHTML = (r.data || []).map(p => `<div class="row" style="padding:6px 0">${av(p)} <b>${esc(p.username)}</b> <span class="muted">joined ${day(p.created_at)} · ${ago(p.last_seen)}${p.playing && ago(p.last_seen) === 'online now' ? ' · ' + esc(p.playing) : ''}</span></div>`).join('') || 'No players yet.';
+  };
+  await load(); refresh = setInterval(load, 30000);
+}
+
+// ------------------------------------------------------------ announcement banner
+function ann(v) {
+  const a = Object.assign({ on: false, text: '', style: 'info' }, site.announcement || {});
+  v.innerHTML = `<div class="card"><h2>Announcement banner</h2><p class="sub">Shows across the top of the arcade for everyone.</p>
+    <label class="switch"><input type="checkbox" id="aOn" ${a.on ? 'checked' : ''}><i></i> Show the banner</label>
+    <label class="lbl">Message</label><textarea id="aText" maxlength="200" placeholder="e.g. New game out now: Turbo Karts! 🏁">${esc(a.text)}</textarea>
+    <label class="lbl">Style</label><select id="aStyle">${[['info', 'Purple (news)'], ['good', 'Green (good news)'], ['warn', 'Yellow (heads up)'], ['alert', 'Red (important)']].map(([k, n]) => `<option value="${k}" ${a.style === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
+    <label class="lbl">Link to a game (optional)</label><select id="aGame"><option value="">None</option>${GAMES.map(g => `<option value="${g.id}" ${a.game === g.id ? 'selected' : ''}>${esc(g.title)}</option>`).join('')}</select>
+    <div class="preview"><label class="lbl">Preview</label><div id="aPrev"></div></div>
+    <div class="row" style="margin-top:18px"><button class="btn" id="aSave">Save banner</button></div><div class="msg" id="aMsg"></div></div>`;
+  const prev = () => { const t = document.getElementById('aText').value.trim() || 'Your message here'; document.getElementById('aPrev').innerHTML = `<div class="ann ${document.getElementById('aStyle').value}">📣 ${esc(t)}${document.getElementById('aGame').value ? ' <u>Play now ›</u>' : ''}</div>`; };
+  ['aText', 'aStyle', 'aGame'].forEach(id => document.getElementById(id).oninput = prev); prev();
+  document.getElementById('aSave').onclick = async () => {
+    const val = { on: document.getElementById('aOn').checked, text: document.getElementById('aText').value.trim(), style: document.getElementById('aStyle').value, game: document.getElementById('aGame').value, id: Date.now() };
+    try { await A.setSite('announcement', val); site.announcement = val; say(document.getElementById('aMsg'), val.on ? 'Saved. The banner is live.' : 'Saved. The banner is hidden.'); }
+    catch (e) { say(document.getElementById('aMsg'), e.message || String(e), false); }
+  };
+}
+
+// ------------------------------------------------------------ games
+function games(v) {
+  const G = JSON.parse(JSON.stringify(site.games || {}));
+  const get = (id, k, d) => (G[id] && G[id][k] != null) ? G[id][k] : d;
+  const set = (id, k, val) => { G[id] = G[id] || {}; G[id][k] = val; };
+  v.innerHTML = `<div class="card"><h2>Games</h2><p class="sub">Hide games, put them in the big banner, mark them NEW, or switch on maintenance (the game can't be opened and players see your message).</p>
+    <table><thead><tr><th></th><th>Game</th><th>Visible</th><th>Banner</th><th>NEW</th><th>Maintenance</th></tr></thead><tbody>
+    ${GAMES.map(g => `<tr><td class="hide-sm"><div class="thumb" style="background-image:url('${g.thumbnail}')"></div></td><td><b>${esc(g.title)}</b><div class="muted">${esc(g.tag || '')}</div></td>
+      <td><label class="switch"><input type="checkbox" data-id="${g.id}" data-k="hidden" data-inv="1" ${get(g.id, 'hidden', false) ? '' : 'checked'}><i></i></label></td>
+      <td><label class="switch"><input type="checkbox" data-id="${g.id}" data-k="featured" ${get(g.id, 'featured', !!g.isNew) ? 'checked' : ''}><i></i></label></td>
+      <td><label class="switch"><input type="checkbox" data-id="${g.id}" data-k="isNew" ${get(g.id, 'isNew', !!g.isNew) ? 'checked' : ''}><i></i></label></td>
+      <td><label class="switch warn"><input type="checkbox" data-id="${g.id}" data-k="maintenance" ${get(g.id, 'maintenance', false) ? 'checked' : ''}><i></i></label>
+        <input type="text" data-id="${g.id}" data-k="note" placeholder="Message (optional)" value="${esc(get(g.id, 'note', ''))}" style="margin-top:6px;width:100%;max-width:220px"></td></tr>`).join('')}
+    </tbody></table><div class="row" style="margin-top:18px"><button class="btn" id="gSave">Save games</button><button class="btn alt" id="gReset">Reset to defaults</button></div><div class="msg" id="gMsg"></div></div>`;
+  v.querySelectorAll('input[data-id]').forEach(i => i.oninput = () => set(i.dataset.id, i.dataset.k, i.type === 'checkbox' ? (i.dataset.inv ? !i.checked : i.checked) : i.value));
+  document.getElementById('gSave').onclick = async () => { try { await A.setSite('games', G); site.games = G; say(document.getElementById('gMsg'), 'Saved. Changes show up on the arcade right away.'); } catch (e) { say(document.getElementById('gMsg'), e.message || String(e), false); } };
+  document.getElementById('gReset').onclick = async () => { if (!confirm('Reset every game back to the settings in games.js?')) return; try { await A.setSite('games', {}); site.games = {}; render(); } catch (e) { say(document.getElementById('gMsg'), e.message || String(e), false); } };
+}
+
+// ------------------------------------------------------------ players
+function players(v) {
+  v.innerHTML = `<div class="card"><h2>Players</h2><p class="sub">Search players, ban cheaters, and wipe their leaderboard scores. Banned players can still play, but they can't post scores or add friends.</p>
+    <div class="row"><input type="search" id="pq" placeholder="Search username" style="flex:1;min-width:200px"><label class="switch"><input type="checkbox" id="pb"><i></i> Banned only</label></div>
+    <div class="msg" id="pMsg"></div><div id="plist" class="muted">Loading...</div></div>`;
+  let t;
+  const load = async () => {
+    const q = document.getElementById('pq').value.trim().toLowerCase();
+    let req = A.sb.from('profiles').select('id,username,color,created_at,last_seen,playing,banned').order('created_at', { ascending: false }).limit(200);
+    if (q) req = req.ilike('username_lower', `%${q.replace(/[%_]/g, '')}%`);
+    if (document.getElementById('pb').checked) req = req.eq('banned', true);
+    const [r, ad] = await Promise.all([req, A.sb.from('admins').select('user_id')]);
+    const admins = new Set((ad.data || []).map(x => x.user_id)), el = document.getElementById('plist');
+    if (r.error) { el.textContent = r.error.message; return; }
+    if (!r.data.length) { el.textContent = 'No players found.'; return; }
+    el.className = '';
+    el.innerHTML = `<table><thead><tr><th>Player</th><th class="hide-sm">Joined</th><th>Last seen</th><th></th></tr></thead><tbody>${r.data.map(p => `<tr>
+      <td><div class="row">${av(p)}<b>${esc(p.username)}</b>${admins.has(p.id) ? '<span class="tag admin">ADMIN</span>' : ''}${p.banned ? '<span class="tag banned">BANNED</span>' : ''}</div></td>
+      <td class="hide-sm muted">${day(p.created_at)}</td>
+      <td>${ago(p.last_seen) === 'online now' ? `<span class="tag on">● ${esc(p.playing || 'online')}</span>` : `<span class="muted">${ago(p.last_seen)}</span>`}</td>
+      <td style="text-align:right;white-space:nowrap">${admins.has(p.id) ? '' : `<button class="btn sm ${p.banned ? 'green' : 'red'}" data-ban="${p.id}" data-v="${p.banned ? 0 : 1}" data-n="${esc(p.username)}">${p.banned ? 'Unban' : 'Ban'}</button>
+        <button class="btn sm alt" data-wipe="${p.id}" data-n="${esc(p.username)}">Wipe scores</button>`}</td></tr>`).join('')}</tbody></table>`;
+    el.querySelectorAll('[data-ban]').forEach(b => b.onclick = async () => {
+      const ban = b.dataset.v === '1';
+      if (!confirm(`${ban ? 'Ban' : 'Unban'} ${b.dataset.n}?`)) return;
+      const wipe = ban && confirm(`Also remove ${b.dataset.n}'s leaderboard scores?`);
+      const r = await A.sb.rpc('admin_set_ban', { p_user: b.dataset.ban, p_banned: ban, p_wipe: wipe });
+      say(document.getElementById('pMsg'), r.error ? r.error.message : `${b.dataset.n} ${ban ? 'banned' : 'unbanned'}${wipe ? ' and scores wiped' : ''}.`, !r.error); load();
+    });
+    el.querySelectorAll('[data-wipe]').forEach(b => b.onclick = async () => {
+      if (!confirm(`Remove all of ${b.dataset.n}'s leaderboard scores?`)) return;
+      const r = await A.sb.from('scores').delete().eq('user_id', b.dataset.wipe);
+      say(document.getElementById('pMsg'), r.error ? r.error.message : `${b.dataset.n}'s scores were removed.`, !r.error);
+    });
+  };
+  document.getElementById('pq').oninput = () => { clearTimeout(t); t = setTimeout(load, 300); };
+  document.getElementById('pb').onchange = load;
+  load();
+}
+
+// ------------------------------------------------------------ leaderboards
+let boardSel = A.BOARDS[0].id;
+function boards(v) {
+  const groups = [...new Set(A.BOARDS.map(b => b.game))];
+  v.innerHTML = `<div class="card"><h2>Leaderboards</h2><p class="sub">Remove fake or broken scores, or reset a whole board.</p>
+    <div class="row"><select id="bSel" style="flex:1;min-width:220px">${groups.map(g => `<optgroup label="${esc(g)}">${A.BOARDS.filter(b => b.game === g).map(b => `<option value="${b.id}" ${b.id === boardSel ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}</optgroup>`).join('')}</select>
+    <button class="btn red" id="bReset">Reset this board</button></div><div class="msg" id="bMsg"></div><div id="blist" class="muted">Loading...</div></div>`;
+  const load = async () => {
+    const el = document.getElementById('blist');
+    try {
+      const rows = await A.leaderboard(boardSel, 100);
+      el.className = rows.length ? '' : 'muted';
+      el.innerHTML = rows.length ? `<table><thead><tr><th>#</th><th>Player</th><th>Score</th><th></th></tr></thead><tbody>${rows.map((r, i) => `<tr><td class="muted">${i + 1}</td><td><div class="row">${av(r.profiles || {})}<b>${esc((r.profiles || {}).username)}</b></div></td><td><b>${A.fmtScore(boardSel, r.score)}</b></td><td style="text-align:right"><button class="btn sm alt" data-del="${r.user_id}" data-n="${esc((r.profiles || {}).username)}">Remove</button></td></tr>`).join('')}</tbody></table>` : 'No scores on this board yet.';
+      el.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+        if (!confirm(`Remove ${b.dataset.n}'s score from this board?`)) return;
+        const r = await A.sb.from('scores').delete().eq('user_id', b.dataset.del).eq('board', boardSel);
+        say(document.getElementById('bMsg'), r.error ? r.error.message : 'Score removed.', !r.error); load();
+      });
+    } catch (e) { el.textContent = e.message || String(e); }
+  };
+  document.getElementById('bSel').onchange = e => { boardSel = e.target.value; load(); };
+  document.getElementById('bReset').onclick = async () => {
+    const b = A.BOARDS.find(x => x.id === boardSel);
+    if (prompt(`This deletes EVERY score on "${b.game}: ${b.name}". Type RESET to confirm.`) !== 'RESET') return;
+    const r = await A.sb.from('scores').delete().eq('board', boardSel);
+    say(document.getElementById('bMsg'), r.error ? r.error.message : 'Board reset.', !r.error); load();
+  };
+  load();
+}
+
+// ------------------------------------------------------------ site-wide
+function siteTab(v) {
+  const m = Object.assign({ on: false, text: '' }, site.maintenance || {});
+  v.innerHTML = `<div class="card"><h2>Maintenance mode</h2><p class="sub">Closes the whole arcade for everyone except admins. Use it while you're updating things.</p>
+    <label class="switch warn"><input type="checkbox" id="mOn" ${m.on ? 'checked' : ''}><i></i> Arcade closed for maintenance</label>
+    <label class="lbl">Message players see</label><input type="text" id="mText" maxlength="160" style="width:100%" placeholder="Back soon! Adding something cool." value="${esc(m.text)}">
+    <div class="row" style="margin-top:18px"><button class="btn" id="mSave">Save</button></div><div class="msg" id="mMsg"></div></div>
+    <div class="card"><h2>Shortcuts</h2><p class="sub">Handy links for running the site.</p><div class="row">
+    <a class="pill" href="https://supabase.com/dashboard" target="_blank" rel="noopener">Supabase dashboard ↗</a>
+    <a class="pill" href="https://github.com/cnatttt/mush" target="_blank" rel="noopener">GitHub repo ↗</a>
+    <a class="pill" href="./">Open the arcade</a></div></div>`;
+  document.getElementById('mSave').onclick = async () => {
+    const val = { on: document.getElementById('mOn').checked, text: document.getElementById('mText').value.trim() };
+    try { await A.setSite('maintenance', val); site.maintenance = val; say(document.getElementById('mMsg'), val.on ? 'The arcade is now closed to players (you can still see it).' : 'The arcade is open.'); }
+    catch (e) { say(document.getElementById('mMsg'), e.message || String(e), false); }
+  };
+}
+</script>
+</body>
+</html>

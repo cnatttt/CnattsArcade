@@ -167,6 +167,84 @@
   #soundHint { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 20; padding: 8px 16px; border-radius: 999px; background: #0b0820cc; border: 1px solid var(--line2);
     font: 600 12px var(--ui); color: var(--muted); pointer-events: none; animation: blink 1.6s steps(2) infinite; }
 
+
+  /* ---------------- extra flair ---------------- */
+  .brand span { background: linear-gradient(90deg, #fff 0%, #ffd9f6 30%, #fff 45%, #9af4ff 60%, #fff 75%) 0 0 / 250% 100%; -webkit-background-clip: text; background-clip: text; animation: shimmer 6s linear infinite; }
+  @keyframes shimmer { to { background-position: -250% 0; } }
+  .brand img { animation: bob 3.5s ease-in-out infinite; }
+  @keyframes bob { 50% { transform: translateY(-3px) rotate(-4deg); } }
+  #hero::before { content: ''; position: absolute; inset: -2px; z-index: 4; border-radius: 27px; padding: 2px; pointer-events: none;
+    background: conic-gradient(from var(--ang, 0deg), #ff4fd8, #3ae0ff, #ffd23a, #7a3aff, #ff4fd8);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; animation: spin 8s linear infinite; opacity: .85; }
+  @property --ang { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
+  @keyframes spin { to { --ang: 360deg; } }
+  #hero { --px: 0; --py: 0; }
+  .slide .txt { transform: translate(calc(var(--px) * -10px), calc(var(--py) * -6px)); transition: transform .2s; }
+  .slide .shot { transform: perspective(900px) rotateY(calc(-8deg + var(--px) * 14deg)) rotateX(calc(2deg - var(--py) * 10deg)) translate(calc(var(--px) * 14px), calc(var(--py) * 10px)); }
+  .slide .shot .glare { position: absolute; inset: 0; border-radius: 16px; background: linear-gradient(115deg, transparent 30%, #ffffff30 45%, transparent 60%) calc(var(--px) * 200% + 50%) 0 / 250% 100% no-repeat; }
+  .slide.on h2 { animation: drop .7s cubic-bezier(.2,1.4,.4,1) both; }
+  .slide.on p, .slide.on .badges, .slide.on .bigplay, .slide.on .kicker { animation: fadeup .6s both; }
+  .slide.on .kicker { animation-delay: .05s; } .slide.on p { animation-delay: .15s; } .slide.on .badges { animation-delay: .22s; } .slide.on .bigplay { animation-delay: .3s; }
+  @keyframes drop { from { opacity: 0; transform: translateY(-20px) scale(.96); filter: blur(6px); } }
+  @keyframes fadeup { from { opacity: 0; transform: translateY(14px); } }
+  .bigplay { position: relative; overflow: hidden; }
+  .bigplay::after { content: ''; position: absolute; top: 0; left: -60%; width: 40%; height: 100%; background: linear-gradient(90deg, transparent, #ffffff88, transparent); transform: skewX(-20deg); animation: sweep 3s ease-in-out infinite; }
+  @keyframes sweep { 0%, 60% { left: -60%; } 100% { left: 130%; } }
+  #dots button.on { background: linear-gradient(90deg, #fff, #fff) 0 0 / 0% 100% no-repeat, #ffffff55; animation: fill 6.5s linear forwards; }
+  @keyframes fill { to { background-size: 100% 100%; } }
+  .sechead h3 { background: linear-gradient(90deg, #fff, #ffb6f0); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .card::before { content: ''; position: absolute; inset: -1px; border-radius: 20px; padding: 1px; z-index: 3; pointer-events: none; opacity: 0; transition: opacity .3s;
+    background: conic-gradient(from var(--ang, 0deg), var(--accent), transparent 30%, transparent 70%, var(--accent));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; animation: spin 4s linear infinite; }
+  .card:hover::before { opacity: 1; }
+  .card.maint .thumb i { filter: grayscale(.85) brightness(.6); }
+  .card.hiddenGame { opacity: .55; }
+  .badge.maintb { background: #ff5a7acc !important; color: #fff; }
+
+  #stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: -8px 0 34px; }
+  .stat { position: relative; padding: 16px 20px; border-radius: 18px; background: linear-gradient(135deg, #ffffff0e, #ffffff04); border: 1px solid #ffffff14; backdrop-filter: blur(6px); overflow: hidden; }
+  .stat b { display: block; font: 800 30px var(--ui); background: linear-gradient(90deg, #fff, #c9b8ff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .stat span { color: var(--muted); font-weight: 600; font-size: 13px; letter-spacing: .5px; text-transform: uppercase; }
+  .stat.online b { background: linear-gradient(90deg, #5affc8, #3ae0ff); -webkit-background-clip: text; background-clip: text; }
+  .stat.online span::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 7px; border-radius: 50%; background: #5affc8; box-shadow: 0 0 10px #5affc8; animation: pulse 1.6s infinite; }
+  .stat::after { content: ''; position: absolute; right: -20px; top: -30px; width: 90px; height: 90px; border-radius: 50%; background: radial-gradient(#ff4fd833, transparent 70%); }
+
+  #fameWrap { margin-top: 44px; }
+  #fame { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+  .fcard { padding: 16px 18px; border-radius: 18px; background: linear-gradient(160deg, #2a1d5a, var(--panel)); border: 1px solid var(--line); }
+  .fh { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
+  .fh .fi { font-size: 26px; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 12px; background: #ffffff10; }
+  .fh b { display: block; } .fh small { color: var(--muted); }
+  .fr { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 10px; }
+  .fr.r1 { background: linear-gradient(90deg, #ffd23a22, transparent); }
+  .fr .medal { font-size: 18px; } .fr .fn { flex: 1; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fr .fs { font-weight: 800; color: var(--gold); font-variant-numeric: tabular-nums; }
+  .fav { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font: 800 12px var(--ui); color: #0b0820; flex: none; }
+
+  #announce { position: sticky; top: 65px; z-index: 24; display: flex; align-items: center; justify-content: center; gap: 12px; padding: 10px 50px 10px 16px; font-weight: 700; text-align: center; }
+  #announce[hidden] { display: none; }
+  #announce.info { background: linear-gradient(90deg, #7a3aff, #ff4fd8, #7a3aff) 0 0 / 200% 100%; color: #fff; animation: slidebg 8s linear infinite; }
+  #announce.good { background: linear-gradient(90deg, #12b886, #3ae0ff); color: #062a26; }
+  #announce.warn { background: linear-gradient(90deg, #ffb01a, #ffd23a); color: #2a1800; }
+  #announce.alert { background: linear-gradient(90deg, #ff3a5a, #ff7a3a); color: #fff; }
+  @keyframes slidebg { to { background-position: -200% 0; } }
+  #announce .ico { font-size: 18px; animation: bob 2s ease-in-out infinite; }
+  #announce .go { border: 0; border-radius: 999px; padding: 6px 14px; font: 800 13px var(--ui); background: #0b0820; color: #fff; cursor: pointer; }
+  #announce .x { position: absolute; right: 12px; border: 0; background: #0003; color: inherit; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; }
+  .pill.admin { border-color: #ff5a7a88; color: #ffb0c0; background: #ff5a7a1a; }
+  .pill.admin:hover { border-color: #ff5a7a; color: #fff; }
+  .pill.admin[hidden] { display: none; }
+  #adminNote { margin: 22px 0 -6px; padding: 12px 16px; border-radius: 14px; background: #ff5a7a22; border: 1px solid #ff5a7a66; color: #ffb0c0; font-weight: 700; }
+  #adminNote[hidden] { display: none; }
+  #maint { position: fixed; inset: 0; z-index: 45; display: none; place-items: center; background: radial-gradient(ellipse at 50% 30%, #2a1458, #0b0820); padding: 20px; }
+  #maint.open { display: grid; }
+  #maint .box { text-align: center; max-width: 520px; }
+  #maint img { width: 110px; animation: bob 3s ease-in-out infinite; filter: drop-shadow(0 0 30px #ff4fd866); }
+  #maint h2 { font: 400 clamp(30px, 6vw, 52px) var(--logo); margin: 18px 0 10px; background: linear-gradient(90deg, #ff4fd8, #3ae0ff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  #maint p { color: #d8d2f4; font-size: 18px; } #maint .small { color: var(--muted); font-size: 14px; }
+  #toast { position: fixed; left: 50%; bottom: 30px; z-index: 60; transform: translate(-50%, 30px); opacity: 0; padding: 12px 20px; border-radius: 14px; background: #1e1745; border: 1px solid var(--line2); font-weight: 700; box-shadow: 0 14px 40px #000a; transition: all .3s; pointer-events: none; }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+  @media (max-width: 820px) { #stats { grid-template-columns: repeat(2, 1fr); } #announce { top: 61px; } }
   @media (max-width: 820px) {
     .slide { grid-template-columns: 1fr; padding: 28px 22px 50px; }
     .slide .shot { display: none; }
@@ -187,11 +265,21 @@
   <input id="search" type="search" placeholder="Search games" autocomplete="off" spellcheck="false">
   <button class="pill" id="musicBtn" title="Music">♪ <span class="lbl">Music</span></button>
   <button class="pill" id="sfxBtn" title="Sound effects">🔊 <span class="lbl">Sound</span></button>
+  <a class="pill admin" id="adminBtn" href="admin.html" hidden title="Admin controls">🛡 <span class="lbl">Admin</span></a>
   <div id="acctSlot"></div>
 </nav>
+<div id="announce" hidden></div>
 
 <main id="menu">
   <section id="hero"><button class="arrow" id="prev" aria-label="Previous">‹</button><button class="arrow" id="next" aria-label="Next">›</button><div id="dots"></div></section>
+
+  <div id="adminNote" hidden>🛠 Maintenance mode is ON. Players can't use the arcade right now; only admins can see it.</div>
+  <section id="stats">
+    <div class="stat"><b id="statGames">0</b><span>games</span></div>
+    <div class="stat"><b id="statPlayers">–</b><span>players</span></div>
+    <div class="stat online"><b id="statOnline">–</b><span>online now</span></div>
+    <div class="stat"><b>100%</b><span>free</span></div>
+  </section>
 
   <section id="recentWrap" hidden>
     <div class="sechead"><h3>Jump back in</h3></div>
@@ -203,6 +291,11 @@
     <div id="grid"></div>
     <div id="empty">No games match that search.</div>
   </section>
+
+  <section id="fameWrap" hidden>
+    <div class="sechead"><h3>Hall of Fame</h3><div style="flex:1"></div><button class="pill" id="fameMore">All leaderboards ›</button></div>
+    <div id="fame"></div>
+  </section>
 </main>
 
 <footer><span id="siteFooter"></span><svg id="spore" viewBox="0 0 8 8" shape-rendering="crispEdges">
@@ -212,6 +305,8 @@
     <rect x="3" y="4" width="2" height="4" fill="#e8dcc8"/><rect x="2" y="7" width="4" height="1" fill="#e8dcc8"/></svg></footer>
 
 <div id="soundHint">Click anywhere for sound</div>
+<div id="toast"></div>
+<div id="maint"><div class="box"><img src="assets/icon.svg" alt=""><h2>BE RIGHT BACK</h2><p id="maintText"></p><p class="small">The arcade is closed for maintenance.</p></div></div>
 <canvas id="rain"></canvas>
 <div id="secretBox"><div class="box">
   <h2>YOU FOUND THE<br>SECRET SPORE!</h2>
@@ -246,71 +341,111 @@
   const titleCase = s => s.replace(/'S /, "'s ");
 
   $('siteTitle').textContent = SITE.title;
-  $('siteFooter').innerHTML = `<b>${esc(SITE.footer)}</b> · ${GAMES.length} games · play free in your browser`;
   document.title = titleCase(SITE.title);
   $('acctSlot').appendChild($('acctBtn'));
   const go = id => { Sound.play('click2'); setTimeout(() => { location.hash = id; }, 110); };
   const badgesHTML = g => (g.isNew ? '<span class="badge new">NEW</span>' : '') + (g.online ? '<span class="badge online">ONLINE</span>' : '');
 
+  // ---------------- recently played
+  const RECENT = 'cnatt_arcade_recent';
+  function getRecent() { try { return (JSON.parse(localStorage.getItem(RECENT)) || []).filter(id => LIST.some(g => g.id === id)); } catch (e) { return []; } }
+  function drawRecent() {
+    const ids = getRecent().slice(0, 6);
+    $('recentWrap').hidden = !ids.length; $('recent').innerHTML = '';
+    ids.forEach(id => {
+      const g = LIST.find(x => x.id === id), b = document.createElement('button');
+      b.className = 'mini'; b.style.setProperty('--accent', g.accent || '#b07cff');
+      b.innerHTML = `<div class="t" style="background-image:url('${g.thumbnail}')"></div><div><b>${esc(g.title)}</b><small>${esc(g.tag || '')}</small></div>`;
+      b.onclick = () => go(g.id); b.onmouseenter = () => Sound.play('hover');
+      $('recent').appendChild(b);
+    });
+  }
+  function addRecent(id) { const r = getRecent().filter(x => x !== id); r.unshift(id); try { localStorage.setItem(RECENT, JSON.stringify(r.slice(0, 8))); } catch (e) {} }
+  Account.on(() => drawRecent());   // cloud saves may bring the list down from another computer
+
+  // ---------------- admin settings (hidden / featured / NEW / maintenance) applied on top of games.js
+  let site = Account.siteCached(), LIST = [];
+  function applySite() {
+    const G = site.games || {};
+    LIST = GAMES.map(g => Object.assign({}, g, G[g.id] || {}, { featured: G[g.id] && G[g.id].featured != null ? G[g.id].featured : !!g.isNew }))
+      .filter(g => !g.hidden || (Account.user && Account.user.admin));
+  }
+
   // ---------------- featured banner
-  const featured = GAMES.filter(g => g.isNew).concat(GAMES.filter(g => !g.isNew)).slice(0, 5);
-  let slide = 0, slideTimer;
-  featured.forEach((g, i) => {
-    const s = document.createElement('div');
-    s.className = 'slide'; s.style.setProperty('--accent', g.accent || '#b07cff');
-    s.innerHTML = `<div class="bgimg" style="background-image:url('${g.thumbnail}')"></div>
-      <div><div class="kicker">${g.isNew ? 'New' : 'Featured'} · ${esc(g.tag || 'Game')}</div>
-      <h2>${esc(g.title)}</h2><p>${esc(g.description || '')}</p>
-      <div class="badges">${badgesHTML(g)}<span class="badge">${PPL_SVG.replace('<svg', '<svg width="14" height="14"')} ${esc(g.players || '1')} player${g.players === '1' ? '' : 's'}</span></div>
-      <button class="bigplay">${PLAY_SVG} PLAY NOW</button></div>
-      <div class="shot" style="background-image:url('${g.thumbnail}')"></div>`;
-    s.querySelector('.bigplay').onclick = () => go(g.id);
-    s.querySelector('.shot').onclick = () => go(g.id);
-    s.querySelector('.bigplay').onmouseenter = () => Sound.play('hover');
-    $('hero').insertBefore(s, $('dots'));
-    const d = document.createElement('button'); d.setAttribute('aria-label', g.title); d.onclick = () => { show(i); Sound.play('tab'); };
-    $('dots').appendChild(d);
-  });
+  let slide = 0, slideTimer, featured = [];
+  function buildHero() {
+    $('hero').querySelectorAll('.slide').forEach(e => e.remove()); $('dots').innerHTML = '';
+    featured = LIST.filter(g => g.featured && !g.maintenance); if (!featured.length) featured = LIST.slice(0, 3);
+    featured = featured.slice(0, 6);
+    featured.forEach((g, i) => {
+      const s = document.createElement('div');
+      s.className = 'slide'; s.style.setProperty('--accent', g.accent || '#b07cff');
+      s.innerHTML = `<div class="bgimg" style="background-image:url('${g.thumbnail}')"></div>
+        <div class="txt"><div class="kicker">${g.isNew ? 'New' : 'Featured'} · ${esc(g.tag || 'Game')}</div>
+        <h2>${esc(g.title)}</h2><p>${esc(g.description || '')}</p>
+        <div class="badges">${badgesHTML(g)}<span class="badge">${PPL_SVG.replace('<svg', '<svg width="14" height="14"')} ${esc(g.players || '1')} player${g.players === '1' ? '' : 's'}</span></div>
+        <button class="bigplay">${PLAY_SVG} PLAY NOW</button></div>
+        <div class="shot" style="background-image:url('${g.thumbnail}')"><span class="glare"></span></div>`;
+      s.querySelector('.bigplay').onclick = () => go(g.id);
+      s.querySelector('.shot').onclick = () => go(g.id);
+      s.querySelector('.bigplay').onmouseenter = () => Sound.play('hover');
+      $('hero').insertBefore(s, $('dots'));
+      const d = document.createElement('button'); d.setAttribute('aria-label', g.title); d.onclick = () => { show(i); Sound.play('tab'); };
+      $('dots').appendChild(d);
+    });
+    show(Math.min(slide, featured.length - 1));
+  }
   function show(i) {
     slide = (i + featured.length) % featured.length;
     document.querySelectorAll('.slide').forEach((s, k) => s.classList.toggle('on', k === slide));
-    document.querySelectorAll('#dots button').forEach((d, k) => d.classList.toggle('on', k === slide));
+    document.querySelectorAll('#dots button').forEach((d, k) => { d.classList.toggle('on', k === slide); d.style.setProperty('--dur', '6.5s'); });
     clearInterval(slideTimer); slideTimer = setInterval(() => { if (!document.hidden && !$('hero').matches(':hover')) show(slide + 1); }, 6500);
   }
   $('prev').onclick = () => { show(slide - 1); Sound.play('tab'); };
   $('next').onclick = () => { show(slide + 1); Sound.play('tab'); };
-  show(0);
+  // the screenshot leans toward the mouse
+  $('hero').addEventListener('mousemove', e => {
+    const r = $('hero').getBoundingClientRect(), x = (e.clientX - r.left) / r.width - 0.5, y = (e.clientY - r.top) / r.height - 0.5;
+    $('hero').style.setProperty('--px', x.toFixed(3)); $('hero').style.setProperty('--py', y.toFixed(3));
+  });
 
   // ---------------- cards
-  const cards = GAMES.map((g, i) => {
-    const card = document.createElement('button');
-    card.className = 'card'; card.style.setProperty('--accent', g.accent || '#b07cff'); card.style.animationDelay = (i * 0.05) + 's';
-    card.innerHTML = `<div class="thumb"><i style="background-image:url('${g.thumbnail}')"></i><div class="tl">${badgesHTML(g)}</div><div class="hover-play">${PLAY_SVG}</div></div>
-      <div class="info"><div class="genre">${esc(g.tag || 'Game')}</div><div class="row1"><div class="title">${esc(g.title)}</div></div>
-      <div class="desc">${esc(g.description || '')}</div>
-      <div class="meta">${PPL_SVG} ${esc(g.players || '1')} player${g.players === '1' ? '' : 's'}</div></div>
-      <div class="shine"></div><div class="accentbar"></div>`;
-    card.onmouseenter = () => Sound.play('hover');
-    card.onclick = () => go(g.id);
-    // gentle 3D tilt toward the mouse
-    card.onmousemove = e => {
-      const r = card.getBoundingClientRect(), x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
-      card.style.transform = `perspective(800px) rotateX(${(0.5 - y) * 7}deg) rotateY(${(x - 0.5) * 9}deg) translateY(-6px)`;
-      card.style.setProperty('--mx', x * 100 + '%'); card.style.setProperty('--my', y * 100 + '%');
-    };
-    card.onmouseleave = () => { card.style.transform = ''; };
-    $('grid').appendChild(card);
-    return { g, card };
-  });
+  let cards = [];
+  function buildCards() {
+    $('grid').innerHTML = '';
+    cards = LIST.map((g, i) => {
+      const card = document.createElement('button');
+      card.className = 'card' + (g.maintenance ? ' maint' : '') + (g.hidden ? ' hiddenGame' : ''); card.style.setProperty('--accent', g.accent || '#b07cff'); card.style.animationDelay = (i * 0.05) + 's';
+      card.innerHTML = `<div class="thumb"><i style="background-image:url('${g.thumbnail}')"></i><div class="tl">${badgesHTML(g)}${g.maintenance ? '<span class="badge maintb">🛠 MAINTENANCE</span>' : ''}${g.hidden ? '<span class="badge">HIDDEN (admin only)</span>' : ''}</div><div class="hover-play">${PLAY_SVG}</div></div>
+        <div class="info"><div class="genre">${esc(g.tag || 'Game')}</div><div class="row1"><div class="title">${esc(g.title)}</div></div>
+        <div class="desc">${esc(g.maintenance && g.note ? g.note : g.description || '')}</div>
+        <div class="meta">${PPL_SVG} ${esc(g.players || '1')} player${g.players === '1' ? '' : 's'}</div></div>
+        <div class="shine"></div><div class="accentbar"></div>`;
+      card.onmouseenter = () => Sound.play('hover');
+      card.onclick = () => go(g.id);
+      card.onmousemove = e => {
+        const r = card.getBoundingClientRect(), x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+        card.style.transform = `perspective(800px) rotateX(${(0.5 - y) * 8}deg) rotateY(${(x - 0.5) * 10}deg) translateY(-8px) scale(1.015)`;
+        card.style.setProperty('--mx', x * 100 + '%'); card.style.setProperty('--my', y * 100 + '%');
+      };
+      card.onmouseleave = () => { card.style.transform = ''; };
+      $('grid').appendChild(card);
+      return { g, card };
+    });
+  }
 
   // ---------------- filters + search
-  const CATS = ['All', ...[...new Set(GAMES.flatMap(g => g.cats || []))]];
   let cat = 'All';
-  CATS.forEach(c => {
-    const b = document.createElement('button'); b.textContent = c; b.className = c === cat ? 'on' : '';
-    b.onclick = () => { cat = c; Sound.play('tab'); document.querySelectorAll('#filters button').forEach(x => x.classList.toggle('on', x.textContent === c)); filter(); };
-    $('filters').appendChild(b);
-  });
+  function buildFilters() {
+    $('filters').innerHTML = '';
+    const CATS = ['All', ...[...new Set(LIST.flatMap(g => g.cats || []))]];
+    if (!CATS.includes(cat)) cat = 'All';
+    CATS.forEach(c => {
+      const b = document.createElement('button'); b.textContent = c; b.className = c === cat ? 'on' : '';
+      b.onclick = () => { cat = c; Sound.play('tab'); document.querySelectorAll('#filters button').forEach(x => x.classList.toggle('on', x.textContent === c)); filter(); };
+      $('filters').appendChild(b);
+    });
+  }
   function filter() {
     const q = $('search').value.trim().toLowerCase(); let n = 0;
     cards.forEach(({ g, card }) => {
@@ -322,31 +457,68 @@
   }
   $('search').addEventListener('input', filter);
   $('search').addEventListener('keydown', e => { if (e.key === 'Enter') { const first = cards.find(c => c.card.style.display !== 'none'); if (first) go(first.g.id); } });
-  filter();
 
-  // ---------------- recently played
-  const RECENT = 'cnatt_arcade_recent';
-  function getRecent() { try { return (JSON.parse(localStorage.getItem(RECENT)) || []).filter(id => GAMES.some(g => g.id === id)); } catch (e) { return []; } }
-  function drawRecent() {
-    const ids = getRecent().slice(0, 6);
-    $('recentWrap').hidden = !ids.length; $('recent').innerHTML = '';
-    ids.forEach(id => {
-      const g = GAMES.find(x => x.id === id), b = document.createElement('button');
-      b.className = 'mini'; b.style.setProperty('--accent', g.accent || '#b07cff');
-      b.innerHTML = `<div class="t" style="background-image:url('${g.thumbnail}')"></div><div><b>${esc(g.title)}</b><small>${esc(g.tag || '')}</small></div>`;
-      b.onclick = () => go(g.id); b.onmouseenter = () => Sound.play('hover');
-      $('recent').appendChild(b);
-    });
+  // ---------------- announcement + maintenance
+  function buildAnnouncement() {
+    const a = site.announcement, el = $('announce');
+    if (!a || !a.on || !a.text) { el.hidden = true; return; }
+    try { if (sessionStorage.getItem('ann_closed') === String(a.id)) { el.hidden = true; return; } } catch (e) {}
+    el.hidden = false; el.className = 'ann ' + (a.style || 'info');
+    el.innerHTML = `<span class="ico">📣</span><span class="t"></span>${a.game ? '<button class="go">Play now ›</button>' : ''}<button class="x" title="Hide">✕</button>`;
+    el.querySelector('.t').textContent = a.text;
+    if (a.game) el.querySelector('.go').onclick = () => go(a.game);
+    el.querySelector('.x').onclick = () => { el.hidden = true; try { sessionStorage.setItem('ann_closed', String(a.id)); } catch (e) {} };
   }
-  function addRecent(id) { const r = getRecent().filter(x => x !== id); r.unshift(id); try { localStorage.setItem(RECENT, JSON.stringify(r.slice(0, 8))); } catch (e) {} }
-  drawRecent();
-  Account.on(() => drawRecent());   // cloud saves may bring the list down from another computer
+  function buildMaintenance() {
+    const m = site.maintenance, closed = m && m.on && !(Account.user && Account.user.admin);
+    $('maint').classList.toggle('open', !!closed);
+    if (closed) $('maintText').textContent = m.text || "We're working on something. Check back soon!";
+    $('adminNote').hidden = !(m && m.on && Account.user && Account.user.admin);
+  }
+  function buildAll() { applySite(); buildHero(); buildCards(); buildFilters(); filter(); buildAnnouncement(); buildMaintenance(); drawRecent(); $('siteFooter').innerHTML = `<b>${esc(SITE.footer)}</b> · ${LIST.length} games · play free in your browser`; $('statGames').textContent = LIST.length; }
+
+  // ---------------- live numbers + hall of fame
+  function countUp(el, to) {
+    const from = +el.dataset.v || 0; el.dataset.v = to; const t0 = performance.now();
+    (function f(now) { const u = Math.min(1, (now - t0) / 900), e = 1 - Math.pow(1 - u, 3); el.textContent = Math.round(from + (to - from) * e).toLocaleString(); if (u < 1) requestAnimationFrame(f); })(t0);
+  }
+  async function liveStats() {
+    if (!Account.sb) return;
+    try { const s = await Account.publicStats(); $('stats').classList.add('live'); countUp($('statPlayers'), s.players); countUp($('statOnline'), s.online); } catch (e) {}
+  }
+  const FAME = [['horde_wave', '🧟', 'Nightfall Horde', 'Best wave'], ['kart_lap_meadow', '🏁', 'Turbo Karts', 'Fastest lap: Sunny Circuit'], ['dungeon_floor', '🗝', 'Nightfall Depths', 'Deepest floor'], ['fish_caught', '🎣', 'Fishing Simulator', 'Most fish caught']];
+  async function hallOfFame() {
+    if (!Account.sb) return;
+    const res = await Promise.all(FAME.map(f => Account.leaderboard(f[0], 3).catch(() => [])));
+    const box = $('fame'); box.innerHTML = '';
+    res.forEach((rows, i) => {
+      if (!rows.length) return;
+      const [id, ico, game, name] = FAME[i];
+      const d = document.createElement('div'); d.className = 'fcard';
+      d.innerHTML = `<div class="fh"><span class="fi">${ico}</span><div><b>${esc(game)}</b><small>${esc(name)}</small></div></div>` +
+        rows.map((r, k) => `<div class="fr r${k + 1}"><span class="medal">${['🥇', '🥈', '🥉'][k]}</span><span class="fav" style="background:${esc((r.profiles || {}).color || '#b07cff')}">${esc(((r.profiles || {}).username || '?')[0].toUpperCase())}</span><span class="fn">${esc((r.profiles || {}).username || '?')}</span><span class="fs">${Account.fmtScore(id, r.score)}</span></div>`).join('');
+      box.appendChild(d);
+    });
+    $('fameWrap').hidden = !box.children.length;
+  }
+  $('fameMore').onclick = () => { Sound.play('click'); Account.openPanel('boards'); };
+
+  buildAll();
+  Account.on(() => { $('adminBtn').hidden = !(Account.user && Account.user.admin); });
+  Account.init().then(async () => {
+    site = await Account.site(); buildAll(); route(); liveStats(); hallOfFame();
+    setInterval(liveStats, 60000);
+    setInterval(async () => { const s2 = await Account.site(); if (JSON.stringify(s2) !== JSON.stringify(site)) { site = s2; if (!location.hash) buildAll(); else buildMaintenance(); } }, 90000);
+  });
+  let lastAdmin = null;
+  Account.on(() => { const ad = !!(Account.user && Account.user.admin); if (ad !== lastAdmin) { lastAdmin = ad; buildAll(); } });
 
   // ---------------- routing: yoursite.com/#fishing opens that game directly
   function route() {
     const id = decodeURIComponent(location.hash.slice(1));
-    const g = GAMES.find(x => x.id === id);
-    if (!g) {
+    const g = LIST.find(x => x.id === id);
+    if (g && g.maintenance && !(Account.user && Account.user.admin)) { toast(`🛠 ${g.title} is down for maintenance${g.note ? ': ' + g.note : '.'}`); history.replaceState('', '', location.pathname + location.search); }
+    if (!g || (g.maintenance && !(Account.user && Account.user.admin))) {
       player.classList.remove('open'); menu.style.display = ''; nav.style.display = '';
       Sound.playSong(SONGS.arcade);
       frame.src = 'about:blank';
@@ -370,10 +542,11 @@
   const bg = { run: true };
   (function () {
     const cv = $('bgfx'), x = cv.getContext('2d');
-    let W, H, stars = [];
+    let W, H, stars = [], sparks = [];
     const resize = () => {
       const dpr = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = innerHeight;
       cv.width = W * dpr; cv.height = H * dpr; x.setTransform(dpr, 0, 0, dpr, 0, 0);
+      sparks = Array.from({ length: 26 }, () => ({ x: Math.random() * W, y: Math.random() * H, v: 8 + Math.random() * 22, r: Math.random() * 1.6 + 0.6, p: Math.random() * 6, c: Math.random() < 0.5 ? '#ff4fd8' : '#3ae0ff' }));
       stars = Array.from({ length: Math.round(W * H / 5000) }, () => ({ x: Math.random() * W, y: Math.random() * H * 0.75, r: Math.random() * 1.3 + 0.2, p: Math.random() * 6, s: Math.random() * 0.6 + 0.2 }));
     };
     resize(); addEventListener('resize', resize);
@@ -392,8 +565,21 @@
       // stars
       for (const s of stars) { x.globalAlpha = 0.35 + 0.65 * Math.abs(Math.sin(t * s.s + s.p)); x.fillStyle = '#fff'; x.beginPath(); x.arc(s.x, s.y - (window.scrollY * 0.05 * s.r), s.r, 0, 6.3); x.fill(); }
       x.globalAlpha = 1;
-      // perspective grid floor
       const hz = H * 0.72, sp = reduce ? 0 : (t * 0.35) % 1;
+      // synthwave sun sinking into the horizon
+      const R = Math.min(W, H) * 0.24, sx = W / 2, sy = hz - R * 0.18;
+      x.save(); x.beginPath(); x.rect(0, 0, W, hz); x.clip();
+      g = x.createRadialGradient(sx, sy, R * 0.6, sx, sy, R * 2.2); g.addColorStop(0, '#ff4fd830'); g.addColorStop(1, '#ff4fd800'); x.fillStyle = g; x.fillRect(sx - R * 2.2, sy - R * 2.2, R * 4.4, R * 4.4);
+      g = x.createLinearGradient(0, sy - R, 0, sy + R); g.addColorStop(0, '#ffe45a'); g.addColorStop(0.5, '#ff7a6a'); g.addColorStop(1, '#ff2fb0');
+      x.fillStyle = g; x.globalAlpha = 0.5; x.beginPath(); x.arc(sx, sy, R, 0, 6.3); x.fill(); x.globalAlpha = 1;
+      x.globalCompositeOperation = 'destination-out';
+      for (let k = 0; k < 7; k++) { const yy = sy + R * (0.05 + k * 0.14) + ((t * 8) % (R * 0.14)) * (reduce ? 0 : 1); x.fillRect(sx - R, yy, R * 2, 2 + k * 1.6); }
+      x.globalCompositeOperation = 'source-over'; x.restore();
+      // rising sparks
+      for (const p of sparks) { p.y -= p.v * 0.016; p.x += Math.sin(t + p.p) * 0.2; if (p.y < -10) { p.y = H + 10; p.x = Math.random() * W; }
+        x.globalAlpha = 0.25 + 0.35 * Math.abs(Math.sin(t * 2 + p.p)); x.fillStyle = p.c; x.beginPath(); x.arc(p.x, p.y, p.r, 0, 6.3); x.fill(); }
+      x.globalAlpha = 1;
+      // perspective grid floor
       x.save(); x.beginPath(); x.rect(0, hz, W, H - hz); x.clip();
       g = x.createLinearGradient(0, hz, 0, H); g.addColorStop(0, '#ff4fd800'); g.addColorStop(1, '#ff4fd824'); x.fillStyle = g; x.fillRect(0, hz, W, H - hz);
       x.lineWidth = 1;
@@ -411,8 +597,8 @@
   })();
 
   window.addEventListener('hashchange', route);
-  Account.init();
   route();
+  function toast(t) { const el = $('toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('show'), 3500); }
 
   frame.addEventListener('load', () => { try { frame.contentWindow.focus(); } catch (e) {} });
   ['backBtn', 'fsBtn', 'tabBtn'].forEach(id => { $(id).addEventListener('mouseenter', () => Sound.play('hover')); });

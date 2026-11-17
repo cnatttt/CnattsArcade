@@ -34,7 +34,7 @@
   ];
   const sentScore = {};
   function scoresFromSave(key, data) {
-    if (!A.user || data == null) return;
+    if (!A.user || A.user.banned || data == null) return;
     const s = J(data); if (s == null) return;
     BOARDS.forEach(b => {
       if (!(b.key instanceof RegExp ? b.key.test(key) : b.key === key)) return;
@@ -143,9 +143,11 @@
 
   // ------------------------------------------------------------ auth
   async function loadProfile(u) {
-    const r = await A.sb.from('profiles').select('id,username,color').eq('id', u.id).maybeSingle();
+    let r = await A.sb.from('profiles').select('id,username,color,banned').eq('id', u.id).maybeSingle();
+    if (r.error) r = await A.sb.from('profiles').select('id,username,color').eq('id', u.id).maybeSingle();   // older database without the admin columns
     if (r.data) A.user = r.data;
     else A.user = { id: u.id, username: (u.user_metadata && u.user_metadata.username) || 'player', color: '#b07cff' };
+    try { const ad = await A.sb.from('admins').select('user_id').eq('user_id', u.id).maybeSingle(); A.user.admin = !!ad.data; } catch (e) { A.user.admin = false; }
   }
   A.init = async function () {
     if (A._init) return A._init;
@@ -200,6 +202,29 @@
   function stopPresence() { clearInterval(presTimer); presTimer = null; }
   A.setPlaying = g => { A.playing = g || null; beat(); };
   A.isOnline = p => p && p.last_seen && Date.now() - new Date(p.last_seen).getTime() < 150000;
+
+  // ------------------------------------------------------------ site settings (set by admins) + public numbers
+  const SITE_CACHE = 'arcade_site';
+  A.siteCached = () => J(ls.getItem(SITE_CACHE)) || {};
+  A.site = async function () {
+    if (!A.sb) return A.siteCached();
+    const r = await A.sb.from('site_settings').select('key,value');
+    if (r.error) return A.siteCached();
+    const o = {}; r.data.forEach(x => { o[x.key] = x.value; });
+    try { rawSet.call(ls, SITE_CACHE, JSON.stringify(o)); } catch (e) {}
+    return o;
+  };
+  A.setSite = async function (key, value) {
+    const r = await A.sb.from('site_settings').upsert({ key, value, updated_at: new Date().toISOString() });
+    if (r.error) throw r.error;
+  };
+  A.publicStats = async function () {
+    const since = new Date(Date.now() - 150000).toISOString();
+    const [a, b] = await Promise.all([
+      A.sb.from('profiles').select('id', { count: 'exact', head: true }),
+      A.sb.from('profiles').select('id', { count: 'exact', head: true }).gt('last_seen', since)]);
+    return { players: a.count || 0, online: b.count || 0 };
+  };
 
   // ------------------------------------------------------------ leaderboards
   A.leaderboard = async function (board, limit = 50) {

@@ -155,6 +155,8 @@
     }).catch(() => { stats.innerHTML = ''; });
     body.append(
       el('div', { class: 'row', style: 'gap:18px;margin-bottom:18px' }, avatar(me, true), el('div', {}, el('h3', { style: 'margin:0 0 6px;font-size:16px' }, me.username), el('p', { style: 'margin:0' }, 'Signed in. Your name is used in online games.'))),
+      me.banned ? el('p', { style: 'color:#ff9ab0;font-weight:700' }, 'This account is banned from the leaderboards and friends. Your saves still work.') : null,
+      me.admin ? el('a', { class: 'btn', href: 'admin.html', style: 'display:inline-block;text-decoration:none;margin-bottom:8px' }, '🛡 OPEN ADMIN PANEL') : null,
       el('label', {}, 'COLOUR'), sw,
       el('label', {}, 'YOUR RECORDS'), stats,
       el('label', {}, 'CLOUD SAVES'),
