@@ -15,6 +15,15 @@ const SITE = {
 
 const GAMES = [
   {
+    id: "horde",
+    title: "Nightfall Horde",
+    folder: "zombies",
+    thumbnail: "assets/thumb_horde.png",
+    tag: "Survival",
+    description: "Survive 30 zombie waves. Pick 1 of 3 upgrades after each wave and fight 1,000+ zombies.",
+    accent: "#8aff6a"
+  },
+  {
     id: "siege",
     title: "Nightfall Siege",
     folder: "siege",
