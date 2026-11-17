@@ -15,6 +15,15 @@ const SITE = {
 
 const GAMES = [
   {
+    id: "party",
+    title: "Party Clash",
+    folder: "party",
+    thumbnail: "assets/thumb_party.png",
+    tag: "2 Player",
+    description: "7 two-player mini-games: same keyboard, vs computer, or online with a room code.",
+    accent: "#ff4a6a"
+  },
+  {
     id: "kart",
     title: "Turbo Karts",
     folder: "kart",

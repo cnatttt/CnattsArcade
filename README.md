@@ -8,6 +8,7 @@ A menu page for all my games. Each game lives in its own folder:
 | `mush/`    | MUSH               |
 | `fishing/` | Fishing Simulator  |
 | `dungeon/` | Nightfall Depths (data in `dungeon/js/data.js`) |
+| `party/` | Party Clash 2-player mini-games (games in `party/js/games.js`) |
 | `kart/` | Turbo Karts 3D racer (tracks + racers in `kart/js/tracks.js`, custom WebGL engine in `kart/js/engine.js`) |
 | `zombies/` | Nightfall Horde zombie survival (balance numbers in `zombies/js/data.js`) |
 | `siege/` | Nightfall Siege tower defense (balance numbers in `siege/js/data.js`) |
@@ -41,4 +42,4 @@ The title, subtitle and footer are at the top of `games.js`.
 `assets/audio.js` plays the menu music and the click sounds. The ♪ MUSIC / SFX buttons mute them, and that setting is shared with the fishing game.
 
 ## Links
-Every game has a direct link: `https://2playertag.com/#fishing`, `#mush`, `#chess`, `#tag`, `#dungeon`, `#siege`, `#horde`, `#kart`.
+Every game has a direct link: `https://2playertag.com/#fishing`, `#mush`, `#chess`, `#tag`, `#dungeon`, `#siege`, `#horde`, `#kart`, `#party`.
