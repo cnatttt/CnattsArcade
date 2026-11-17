@@ -7,7 +7,7 @@
   const A = window.Account;
   const COLORS = ['#b07cff', '#ff6a7a', '#ffcc33', '#6ae06a', '#6ad0ff', '#ff9a4a', '#ff7ad8', '#4ae0c0', '#e8e4f0', '#8a8aff'];
   const css = `
-  #acctBtn { position: fixed; top: 14px; left: 14px; z-index: 20; display: flex; align-items: center; gap: 10px; font-family: var(--pixel); font-size: 10px;
+  #acctBtn { position: fixed; top: 14px; left: 14px; z-index: 20; display: flex; align-items: center; gap: 10px; font-family: var(--pixel); font-weight: 700; font-size: 14px;
     color: var(--text); background: var(--panel2); border: 3px solid var(--line); padding: 7px 12px 7px 8px; cursor: pointer; box-shadow: 0 3px 0 #000a; }
   #acctBtn:hover { border-color: var(--gold); }
   #acctBtn:active { transform: translateY(2px); box-shadow: none; }
@@ -15,25 +15,25 @@
   #acctBtn .dot.busy { background: var(--gold); box-shadow: 0 0 8px var(--gold); animation: blink 0.8s steps(2) infinite; }
   #acctBtn .dot.err { background: #ff6a7a; box-shadow: 0 0 8px #ff6a7a; }
   #acctBtn .badge { background: #ff6a7a; color: #07061a; padding: 3px 5px; font-size: 8px; }
-  .av { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; font-family: var(--pixel); font-size: 11px;
+  .av { border-radius: 50%; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; font-family: var(--pixel); font-weight: 700; font-size: 15px;
     color: #07061a; border: 2px solid #07061a; box-shadow: inset 0 -3px 0 #0004; flex: none; }
   .av.big { width: 64px; height: 64px; font-size: 26px; border-width: 3px; box-shadow: inset 0 -6px 0 #0004, 0 4px 0 #000a; }
   #acct { position: fixed; inset: 0; z-index: 50; display: none; align-items: flex-start; justify-content: center; background: #07061add; padding: 60px 14px; overflow: auto; }
   #acct.open { display: flex; }
-  #acct .box { width: 100%; max-width: 620px; background: var(--panel); border: 4px solid var(--line); box-shadow: 0 8px 0 #000a, 0 0 50px #b07cff33; animation: pop .25s cubic-bezier(.2,1.5,.4,1); }
+  #acct .box { width: 100%; max-width: 620px; background: var(--panel); border: 2px solid var(--line); border-radius: 22px; overflow: hidden; box-shadow: 0 8px 0 #000a, 0 0 50px #b07cff33; animation: pop .25s cubic-bezier(.2,1.5,.4,1); }
   #acct .tabs { display: flex; border-bottom: 4px solid var(--line); }
-  #acct .tabs button { flex: 1; font-family: var(--pixel); font-size: 10px; padding: 14px 6px; background: var(--panel2); color: var(--muted); border: 0; border-right: 3px solid var(--line); cursor: pointer; position: relative; }
+  #acct .tabs button { flex: 1; font-family: var(--pixel); font-weight: 700; font-size: 14px; padding: 14px 6px; background: var(--panel2); color: var(--muted); border: 0; border-right: 3px solid var(--line); cursor: pointer; position: relative; }
   #acct .tabs button.on { background: var(--panel); color: var(--gold); }
   #acct .tabs button .badge { background: #ff6a7a; color: #07061a; padding: 2px 5px; font-size: 8px; margin-left: 6px; }
   #acct .tabs .x { flex: none; width: 52px; border-right: 0; color: var(--text); font-size: 14px; }
   #acct .body { padding: 26px 28px 30px; min-height: 260px; }
-  #acct h3 { font-family: var(--pixel); font-size: 13px; color: var(--gold); margin: 0 0 16px; letter-spacing: 1px; }
-  #acct p { color: var(--muted); margin: 0 0 14px; line-height: 1.1; }
+  #acct h3 { font-family: var(--pixel); font-weight: 700; font-size: 17px; color: var(--gold); margin: 0 0 16px; letter-spacing: 1px; }
+  #acct p { color: var(--muted); margin: 0 0 14px; line-height: 1.45; }
   #acct .row { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
-  #acct label { font-family: var(--pixel); font-size: 9px; color: var(--muted); display: block; margin: 14px 0 6px; }
-  #acct input, #acct select { width: 100%; font-family: var(--body); font-size: 24px; padding: 8px 12px; background: #07061a; color: var(--text); border: 3px solid var(--line); outline: none; }
+  #acct label { font-family: var(--pixel); font-weight: 700; font-size: 13px; color: var(--muted); display: block; margin: 14px 0 6px; }
+  #acct input, #acct select { width: 100%; font-family: var(--body); font-size: 17px; padding: 11px 14px; border-radius: 12px; background: #07061a; color: var(--text); border: 3px solid var(--line); outline: none; }
   #acct input:focus, #acct select:focus { border-color: var(--gold); }
-  #acct .btn { font-family: var(--pixel); font-size: 10px; padding: 12px 16px; background: var(--gold); color: #07061a; border: 0; cursor: pointer; box-shadow: inset 0 -4px 0 #0005, 0 3px 0 #000a; white-space: nowrap; }
+  #acct .btn { border-radius: 999px; font-family: var(--pixel); font-weight: 700; font-size: 14px; padding: 12px 16px; background: var(--gold); color: #07061a; border: 0; cursor: pointer; box-shadow: inset 0 -4px 0 #0005, 0 3px 0 #000a; white-space: nowrap; }
   #acct .btn.alt { background: var(--panel2); color: var(--text); border: 3px solid var(--line); box-shadow: 0 3px 0 #000a; padding: 9px 12px; }
   #acct .btn.red { background: #ff6a7a; }
   #acct .btn.sm { font-size: 8px; padding: 8px 10px; }
@@ -42,30 +42,30 @@
   #acct .msg { min-height: 24px; margin-top: 12px; color: #ff9ab0; }
   #acct .msg.ok { color: #8aff9a; }
   #acct .sub { display: flex; gap: 8px; margin-bottom: 18px; }
-  #acct .sub button { font-family: var(--pixel); font-size: 9px; padding: 9px 12px; background: transparent; color: var(--muted); border: 3px solid var(--line); cursor: pointer; }
+  #acct .sub button { border-radius: 999px; font-family: var(--pixel); font-weight: 700; font-size: 13px; padding: 9px 12px; background: transparent; color: var(--muted); border: 3px solid var(--line); cursor: pointer; }
   #acct .sub button.on { color: var(--gold); border-color: var(--gold); }
   #acct .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
-  #acct .sw { width: 34px; height: 34px; border: 3px solid #07061a; cursor: pointer; box-shadow: 0 3px 0 #000a; }
+  #acct .sw { width: 34px; height: 34px; border-radius: 50%; border: 3px solid #07061a; cursor: pointer; box-shadow: 0 3px 0 #000a; }
   #acct .sw.on { outline: 3px solid var(--text); outline-offset: 2px; }
   #acct .list { display: flex; flex-direction: column; gap: 8px; }
-  #acct .item { display: flex; align-items: center; gap: 12px; background: var(--panel2); border: 3px solid var(--line); padding: 8px 10px; }
+  #acct .item { display: flex; align-items: center; gap: 12px; background: var(--panel2); border: 2px solid var(--line); border-radius: 14px; padding: 8px 12px; }
   #acct .item .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #acct .item .st { color: var(--muted); font-size: 18px; }
+  #acct .item .st { color: var(--muted); font-size: 14px; }
   #acct .item .st.on { color: #8aff9a; }
   #acct .item.me { border-color: var(--gold); }
-  #acct .rank { font-family: var(--pixel); font-size: 11px; width: 36px; text-align: right; color: var(--muted); }
+  #acct .rank { font-family: var(--pixel); font-weight: 700; font-size: 15px; width: 36px; text-align: right; color: var(--muted); }
   #acct .rank.r1 { color: #ffcc33; } #acct .rank.r2 { color: #d8dce8; } #acct .rank.r3 { color: #e8a060; }
-  #acct .score { font-family: var(--pixel); font-size: 11px; color: var(--gold); }
+  #acct .score { font-family: var(--pixel); font-weight: 700; font-size: 15px; color: var(--gold); }
   #acct .empty { color: var(--muted); text-align: center; padding: 30px 0; }
   #acct .stat { display: grid; grid-template-columns: 1fr auto; gap: 6px 14px; margin: 6px 0 18px; }
   #acct .stat span:nth-child(odd) { color: var(--muted); } #acct .stat span:nth-child(even) { text-align: right; }
-  #acct code { font-size: 18px; color: var(--gold); }
+  #acct code { font-size: 15px; color: var(--gold); }
   #acctAsk { position: fixed; inset: 0; z-index: 60; display: none; align-items: center; justify-content: center; background: #07061add; }
   #acctAsk.open { display: flex; }
-  #acctAsk .box { max-width: 520px; background: var(--panel); border: 4px solid var(--gold); padding: 28px 30px; text-align: center; box-shadow: 0 8px 0 #000a; }
-  #acctAsk h2 { font-family: var(--pixel); font-size: 14px; color: var(--gold); margin: 0 0 16px; line-height: 1.5; }
+  #acctAsk .box { max-width: 520px; background: var(--panel); border: 2px solid var(--gold); border-radius: 22px; padding: 28px 30px; text-align: center; box-shadow: 0 8px 0 #000a; }
+  #acctAsk h2 { font-family: var(--pixel); font-weight: 700; font-size: 18px; color: var(--gold); margin: 0 0 16px; line-height: 1.5; }
   #acctAsk p { color: var(--muted); margin: 0 0 18px; }
-  #acctAsk .btn { font-family: var(--pixel); font-size: 10px; padding: 12px 14px; margin: 6px; border: 0; cursor: pointer; background: var(--gold); color: #07061a; box-shadow: inset 0 -4px 0 #0005, 0 3px 0 #000a; }
+  #acctAsk .btn { border-radius: 999px; font-family: var(--pixel); font-weight: 700; font-size: 14px; padding: 12px 14px; margin: 6px; border: 0; cursor: pointer; background: var(--gold); color: #07061a; box-shadow: inset 0 -4px 0 #0005, 0 3px 0 #000a; }
   #acctAsk .btn.alt { background: var(--panel2); color: var(--text); }
   @media (max-width: 600px) { #acct .body { padding: 18px 16px 22px; } #acctBtn .nm { display: none; } }`;
   const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
@@ -89,7 +89,7 @@
   function drawBtn() {
     btn.innerHTML = '';
     if (!A.ready) { btn.append('…'); return; }
-    if (!A.user) { btn.append(el('span', {}, '👤'), el('span', {}, 'SIGN IN')); return; }
+    if (!A.user) { btn.append(el('span', { class: 'av', style: 'background:#ffffff22;color:#fff;border-color:transparent' }, '👤'), el('span', {}, 'Sign in')); return; }
     btn.append(avatar(A.user), el('span', { class: 'nm' }, A.user.username), el('span', { class: 'dot' + (A.syncing ? ' busy' : A.error ? ' err' : ''), title: A.syncing ? 'Syncing saves...' : A.error || 'Saves synced' }));
     if (pending) btn.append(el('span', { class: 'badge', title: 'Friend requests' }, pending));
   }
