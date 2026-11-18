@@ -12,7 +12,10 @@ A menu page for all my games. Each game lives in its own folder:
 | `kart/` | Turbo Karts 3D racer (tracks + racers in `kart/js/tracks.js`, custom WebGL engine in `kart/js/engine.js`) |
 | `zombies/` | Nightfall Horde zombie survival (balance numbers in `zombies/js/data.js`) |
 | `siege/` | Nightfall Siege tower defense (balance numbers in `siege/js/data.js`) |
-| `tag/`     | 2 Player Tag (arenas in `tag/js/arenas.js`) |
+| `tag/`     | 2 Player Tag (arenas in `tag/js/arenas.js`), online + ranked |
+| `soccer/`  | Rocket Soccer (car soccer, CPU / 2P / online) |
+| `snake/`   | Snake Arena (io-style, bots / online rooms) |
+| `ski/`     | Powder Peak (3D ski + snowboard tricks, uses `kart/js/engine.js`) |
 
 ## Updating a game
 1. On GitHub, open the game's folder (for example `mush/`).
@@ -42,4 +45,4 @@ The title, subtitle and footer are at the top of `games.js`.
 `assets/audio.js` plays the menu music and the click sounds. The ♪ MUSIC / SFX buttons mute them, and that setting is shared with the fishing game.
 
 ## Links
-Every game has a direct link: `https://2playertag.com/#fishing`, `#mush`, `#chess`, `#tag`, `#dungeon`, `#siege`, `#horde`, `#kart`, `#party`.
+Every game has a direct link: `https://2playertag.com/#fishing`, `#mush`, `#chess`, `#tag`, `#dungeon`, `#siege`, `#horde`, `#kart`, `#party`, `#soccer`, `#snake`, `#ski`.

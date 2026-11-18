@@ -31,6 +31,11 @@
     { id: 'fish_dex', game: 'Fishing Simulator', name: 'Species discovered', key: 'cnatt_fishing_v2', get: s => s.dex && Object.keys(s.dex).length },
     { id: 'mush_total', game: 'Mush', name: 'Total mushrooms earned', key: /^mush_save_\d+$/, fmt: 'big', get: s => s.totalEarned },
     { id: 'tag_wins', game: '2 Player Tag', name: 'Total rounds won', key: 'cnatt_tag_wins', get: s => Array.isArray(s) ? s[0] + s[1] : 0 },
+    { id: 'soccer_wins', game: 'Rocket Soccer', name: 'Match wins', key: 'cnatt_soccer', get: s => s.wins },
+    { id: 'soccer_goals', game: 'Rocket Soccer', name: 'Goals scored', key: 'cnatt_soccer', get: s => s.goals },
+    { id: 'snake_best', game: 'Snake Arena', name: 'Longest snake', key: 'cnatt_snake', get: s => s.best },
+    { id: 'snake_kills', game: 'Snake Arena', name: 'Total kills', key: 'cnatt_snake', get: s => s.kills },
+    { id: 'ski_best', game: 'Powder Peak', name: 'Best run score', key: 'cnatt_ski', get: s => s.best },
     { id: 'tag_elo', game: '2 Player Tag', name: 'Ranked Elo', key: null },
   ];
   const sentScore = {};

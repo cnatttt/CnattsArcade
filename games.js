@@ -20,6 +20,36 @@ const SITE = {
 
 const GAMES = [
   {
+    id: "soccer",
+    title: "Rocket Soccer",
+    folder: "soccer",
+    thumbnail: "assets/thumb_soccer.png",
+    tag: "Sports",
+    description: "Car soccer with boost and flips. 1v1 or 2v2 against the CPU, a friend, or online.",
+    players: "1-2", online: true, isNew: true, cats: ["2 Player", "Online", "Sports", "Action"],
+    accent: "#3b82f6"
+  },
+  {
+    id: "snake",
+    title: "Snake Arena",
+    folder: "snake",
+    thumbnail: "assets/thumb_snake.png",
+    tag: "Arena",
+    description: "Eat, grow and cut off rivals in a huge arena. Play the bots or host an online room for 8.",
+    players: "1-8", online: true, isNew: true, cats: ["Online", "Action"],
+    accent: "#22d3ee"
+  },
+  {
+    id: "ski",
+    title: "Powder Peak",
+    folder: "ski",
+    thumbnail: "assets/thumb_ski.png",
+    tag: "3D Sports",
+    description: "3D freeride skiing and snowboarding. Hit kickers and rails, spin, flip and grab, then land clean.",
+    players: "1", isNew: true, cats: ["Sports", "Action"],
+    accent: "#7dd3fc"
+  },
+  {
     id: "party",
     title: "Party Clash",
     folder: "party",
@@ -105,8 +135,8 @@ const GAMES = [
     folder: "tag",
     thumbnail: "assets/thumb_tag.png",
     tag: "2 Player",
-    description: "4 modes, 5 arenas, dashes and power-ups. Play a friend on one keyboard or take on the CPU.",
-    players: "1-2", cats: ["2 Player", "Action", "Party"],
+    description: "4 modes, 5 arenas, dashes and power-ups. Same keyboard, vs CPU, online, or climb the ranked ladder.",
+    players: "1-2", online: true, cats: ["2 Player", "Online", "Action", "Party"],
     accent: "#ffd400"
   }
 ];
