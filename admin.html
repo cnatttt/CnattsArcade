@@ -73,6 +73,22 @@
   .bars { display: flex; flex-direction: column; gap: 8px; }
   .bar { display: grid; grid-template-columns: 160px 1fr 40px; gap: 10px; align-items: center; }
   .bar div { height: 12px; border-radius: 99px; background: linear-gradient(90deg, var(--pink), var(--cyan)); }
+  #pm { position: fixed; inset: 0; z-index: 20; display: none; align-items: flex-start; justify-content: center; background: #0b0820cc; backdrop-filter: blur(6px); overflow: auto; padding: 40px 14px; }
+  #pm.open { display: flex; }
+  #pm .box { width: 100%; max-width: 860px; background: var(--panel); border: 1px solid var(--line2); border-radius: 20px; padding: 22px 24px 26px; box-shadow: 0 30px 80px #000c; }
+  #pm .hd { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+  #pm .hd h2 { margin: 0; font: 800 22px var(--ui); flex: 1; }
+  #pm .av { width: 46px; height: 46px; font-size: 20px; }
+  #pm h3 { margin: 18px 0 8px; font-size: 13px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); }
+  .savebox { border: 1px solid var(--line); border-radius: 12px; margin-bottom: 8px; overflow: hidden; }
+  .savebox summary { cursor: pointer; padding: 10px 14px; font-weight: 700; display: flex; gap: 10px; align-items: center; }
+  .savebox summary span { color: var(--muted); font-weight: 500; font-size: 13px; flex: 1; }
+  .savebox textarea { width: 100%; min-height: 220px; border-radius: 0; border: 0; border-top: 1px solid var(--line); font: 12px/1.4 ui-monospace, Menlo, monospace; }
+  .savebox .row { padding: 10px 14px; }
+  .kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+  .kv div { background: #0b0820; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; }
+  .kv b { display: block; font-size: 18px; } .kv span { color: var(--muted); font-size: 12px; }
+  a.lnk { color: var(--cyan); }
   @media (max-width: 700px) { .hide-sm { display: none; } td, th { padding: 8px 5px; } }
 </style>
 </head>
@@ -84,6 +100,7 @@
   <div class="who" id="who"></div>
   <a class="pill" href="./">‹ Back to arcade</a>
 </header>
+<div id="pm"><div class="box" id="pmBox"></div></div>
 <div class="wrap" id="app"><div class="gate"><h2>Loading...</h2></div></div>
 
 <script src="games.js"></script>
@@ -133,7 +150,14 @@ async function dash(v) {
     v.innerHTML = `<div class="tiles">${tiles.map(([n, x, c]) => `<div class="tile" style="--c:${c}"><b>${Number(x || 0).toLocaleString()}</b><span>${n}</span></div>`).join('')}</div>
       <div class="card"><h2>Playing right now</h2><p class="sub">Signed-in players online, by game. Updates every 30 seconds.</p>
       ${playing.length ? `<div class="bars">${playing.map(([g, n]) => `<div class="bar"><span>${esc(g)}</span><div style="width:${n / mx * 100}%"></div><b>${n}</b></div>`).join('')}</div>` : '<p class="muted">Nobody is in a game right now.</p>'}</div>
+      <div class="card"><h2>Live online rooms</h2><p class="sub">Players hosting or in an online room right now. Click to jump in.</p><div id="rooms" class="muted">Loading...</div></div>
       <div class="card"><h2>Newest players</h2><div id="newest" class="muted">Loading...</div></div>`;
+    try {
+      const rr = await A.sb.from('profiles').select('id,username,color,room,last_seen').not('room', 'is', null).gt('last_seen', new Date(Date.now() - 150000).toISOString()).limit(50);
+      const byRoom = {}; (rr.data || []).forEach(p => { (byRoom[p.room] = byRoom[p.room] || []).push(p); });
+      const names = { party: 'Party Clash', kart: 'Turbo Karts', tag: '2 Player Tag', soccer: 'Rocket Soccer', snake: 'Snake Arena' };
+      document.getElementById('rooms').innerHTML = Object.entries(byRoom).map(([room, ps]) => { const [g, code] = room.split(':'); return `<div class="row" style="padding:6px 0"><b>${esc(names[g] || g)}</b> <span class="tag on">${esc(code)}</span> ${ps.map(p => av(p) + ' ' + esc(p.username)).join(' ')} <a class="pill" href="./#${esc(g)}&join=${esc(code)}">Join ›</a></div>`; }).join('') || 'No live rooms.';
+    } catch (e) { document.getElementById('rooms').textContent = 'Needs the latest setup.sql.'; }
     const r = await A.sb.from('profiles').select('username,color,created_at,last_seen,playing').order('created_at', { ascending: false }).limit(8);
     document.getElementById('newest').innerHTML = (r.data || []).map(p => `<div class="row" style="padding:6px 0">${av(p)} <b>${esc(p.username)}</b> <span class="muted">joined ${day(p.created_at)} · ${ago(p.last_seen)}${p.playing && ago(p.last_seen) === 'online now' ? ' · ' + esc(p.playing) : ''}</span></div>`).join('') || 'No players yet.';
   };
@@ -195,11 +219,12 @@ function players(v) {
     if (!r.data.length) { el.textContent = 'No players found.'; return; }
     el.className = '';
     el.innerHTML = `<table><thead><tr><th>Player</th><th class="hide-sm">Joined</th><th>Last seen</th><th></th></tr></thead><tbody>${r.data.map(p => `<tr>
-      <td><div class="row">${av(p)}<b>${esc(p.username)}</b>${admins.has(p.id) ? '<span class="tag admin">ADMIN</span>' : ''}${p.banned ? '<span class="tag banned">BANNED</span>' : ''}</div></td>
+      <td><div class="row" style="cursor:pointer" data-open="${p.id}" title="Open player">${av(p)}<b style="text-decoration:underline dotted">${esc(p.username)}</b>${admins.has(p.id) ? '<span class="tag admin">ADMIN</span>' : ''}${p.banned ? '<span class="tag banned">BANNED</span>' : ''}</div></td>
       <td class="hide-sm muted">${day(p.created_at)}</td>
       <td>${ago(p.last_seen) === 'online now' ? `<span class="tag on">● ${esc(p.playing || 'online')}</span>` : `<span class="muted">${ago(p.last_seen)}</span>`}</td>
       <td style="text-align:right;white-space:nowrap">${admins.has(p.id) ? '' : `<button class="btn sm ${p.banned ? 'green' : 'red'}" data-ban="${p.id}" data-v="${p.banned ? 0 : 1}" data-n="${esc(p.username)}">${p.banned ? 'Unban' : 'Ban'}</button>
         <button class="btn sm alt" data-wipe="${p.id}" data-n="${esc(p.username)}">Wipe scores</button>`}</td></tr>`).join('')}</tbody></table>`;
+    el.querySelectorAll('[data-open]').forEach(b => b.onclick = () => openPlayer(b.dataset.open));
     el.querySelectorAll('[data-ban]').forEach(b => b.onclick = async () => {
       const ban = b.dataset.v === '1';
       if (!confirm(`${ban ? 'Ban' : 'Unban'} ${b.dataset.n}?`)) return;
@@ -217,6 +242,52 @@ function players(v) {
   document.getElementById('pb').onchange = load;
   load();
 }
+
+// ------------------------------------------------------------ one player: everything about them
+const pm = document.getElementById('pm'), pmBox = document.getElementById('pmBox');
+pm.onclick = e => { if (e.target === pm) pm.classList.remove('open'); };
+async function openPlayer(id) {
+  pm.classList.add('open'); pmBox.innerHTML = '<p class="muted">Loading...</p>';
+  const [pr, ad, sc, rk, sv] = await Promise.all([
+    A.sb.from('profiles').select('*').eq('id', id).maybeSingle(), A.sb.from('admins').select('user_id').eq('user_id', id).maybeSingle(),
+    A.sb.from('scores').select('board,score').eq('user_id', id), A.sb.from('ranked').select('*').eq('user_id', id).maybeSingle(),
+    A.sb.from('saves').select('key,data,updated_at').eq('user_id', id)]);
+  const p = pr.data; if (!p) { pmBox.innerHTML = '<p>Player not found.</p>'; return; }
+  const isAdmin = !!ad.data, isCnatt = p.username.toLowerCase() === 'cnatt';
+  const boardName = b => { const x = A.BOARDS.find(z => z.id === b); return x ? `${x.game}: ${x.name}` : b; };
+  pmBox.innerHTML = `<div class="hd">${av(p)}<h2>${esc(p.username)} ${isAdmin ? '<span class="tag admin">ADMIN</span>' : ''} ${p.banned ? '<span class="tag banned">BANNED</span>' : ''}</h2><button class="btn alt sm" id="pmX">Close</button></div>
+    <div class="kv"><div><b>${day(p.created_at)}</b><span>joined</span></div><div><b>${ago(p.last_seen)}</b><span>last seen${p.playing ? ' · ' + esc(p.playing) : ''}</span></div>
+      <div><b>${rk.data ? rk.data.elo : '–'}</b><span>tag ranked elo${rk.data ? ` · ${rk.data.wins}W ${rk.data.losses}L` : ''}</span></div><div><b>${(sv.data || []).length}</b><span>cloud saves</span></div></div>
+    <h3>Actions</h3><div class="row">
+      ${isCnatt ? '' : `<button class="btn sm ${p.banned ? 'green' : 'red'}" id="pmBan">${p.banned ? 'Unban' : 'Ban'}</button>`}
+      ${isCnatt ? '' : `<button class="btn sm alt" id="pmAdmin">${isAdmin ? 'Remove admin' : 'Make admin'}</button>`}
+      <button class="btn sm alt" id="pmScores">Wipe all scores</button>
+      ${rk.data ? '<button class="btn sm alt" id="pmRank">Reset ranked</button>' : ''}
+      <button class="btn sm alt" id="pmWipe">Delete all cloud saves</button></div>
+    <div class="msg" id="pmMsg"></div>
+    <h3>Leaderboard scores</h3>${(sc.data || []).length ? `<table>${sc.data.map(r => `<tr><td>${esc(boardName(r.board))}</td><td><input type="text" value="${r.score}" data-sc="${esc(r.board)}" style="width:130px"></td><td style="text-align:right"><button class="btn sm alt" data-scsave="${esc(r.board)}">Save</button> <button class="btn sm alt" data-scdel="${esc(r.board)}">Remove</button></td></tr>`).join('')}</table>` : '<p class="muted">No scores.</p>'}
+    <h3>Cloud saves (edit coins, unlocks, progress...)</h3>${(sv.data || []).map(x => `<details class="savebox"><summary>${esc(x.key)} <span>${(x.data.length / 1024).toFixed(1)} KB · ${new Date(Number(x.updated_at)).toLocaleString()}</span></summary>
+      <textarea data-key="${esc(x.key)}" spellcheck="false">${esc(pretty(x.data))}</textarea><div class="row"><button class="btn sm" data-svsave="${esc(x.key)}">Save changes</button><button class="btn sm alt" data-svdel="${esc(x.key)}">Delete this save</button><span class="muted">Changes reach the player next time they open the arcade.</span></div></details>`).join('') || '<p class="muted">No cloud saves.</p>'}`;
+  const msg = (t, ok = true) => say(document.getElementById('pmMsg'), t, ok);
+  const reopen = () => setTimeout(() => openPlayer(id), 500);
+  document.getElementById('pmX').onclick = () => pm.classList.remove('open');
+  const on = (sel, fn) => { const e = document.getElementById(sel); if (e) e.onclick = fn; };
+  on('pmBan', async () => { if (!confirm(`${p.banned ? 'Unban' : 'Ban'} ${p.username}?`)) return; const r = await A.sb.rpc('admin_set_ban', { p_user: id, p_banned: !p.banned, p_wipe: false }); r.error ? msg(r.error.message, false) : reopen(); });
+  on('pmAdmin', async () => { if (!confirm(isAdmin ? `Remove ${p.username}'s admin powers?` : `Give ${p.username} full admin powers?`)) return; const r = isAdmin ? await A.sb.from('admins').delete().eq('user_id', id) : await A.sb.from('admins').insert({ user_id: id }); r.error ? msg(r.error.message, false) : reopen(); });
+  on('pmScores', async () => { if (!confirm(`Remove all of ${p.username}'s scores?`)) return; const r = await A.sb.from('scores').delete().eq('user_id', id); r.error ? msg(r.error.message, false) : reopen(); });
+  on('pmRank', async () => { if (!confirm(`Reset ${p.username}'s ranked to 1000?`)) return; const r = await A.sb.from('ranked').update({ elo: 1000, wins: 0, losses: 0, streak: 0, peak: 1000 }).eq('user_id', id); r.error ? msg(r.error.message, false) : reopen(); });
+  on('pmWipe', async () => { if (prompt(`Type DELETE to erase ALL of ${p.username}'s cloud saves.`) !== 'DELETE') return; const r = await A.sb.from('saves').delete().eq('user_id', id); r.error ? msg(r.error.message, false) : reopen(); });
+  pmBox.querySelectorAll('[data-scsave]').forEach(b => b.onclick = async () => { const v = Number(pmBox.querySelector(`[data-sc="${b.dataset.scsave}"]`).value); if (!isFinite(v)) return msg('Not a number', false); const r = await A.sb.from('scores').update({ score: v }).eq('user_id', id).eq('board', b.dataset.scsave); r.error ? msg(r.error.message, false) : msg('Score saved.'); });
+  pmBox.querySelectorAll('[data-scdel]').forEach(b => b.onclick = async () => { const r = await A.sb.from('scores').delete().eq('user_id', id).eq('board', b.dataset.scdel); r.error ? msg(r.error.message, false) : reopen(); });
+  pmBox.querySelectorAll('[data-svsave]').forEach(b => b.onclick = async () => {
+    const ta = pmBox.querySelector(`textarea[data-key="${b.dataset.svsave}"]`); let data = ta.value;
+    try { data = JSON.stringify(JSON.parse(data)); } catch (e) { if (!confirm('That is not valid JSON. Save it as plain text anyway?')) return; }
+    const r = await A.sb.from('saves').update({ data, updated_at: Date.now() }).eq('user_id', id).eq('key', b.dataset.svsave);
+    r.error ? msg(r.error.message, false) : msg(`Saved ${b.dataset.svsave}.`);
+  });
+  pmBox.querySelectorAll('[data-svdel]').forEach(b => b.onclick = async () => { if (!confirm(`Delete ${b.dataset.svdel}?`)) return; const r = await A.sb.from('saves').delete().eq('user_id', id).eq('key', b.dataset.svdel); r.error ? msg(r.error.message, false) : reopen(); });
+}
+const pretty = d => { try { return JSON.stringify(JSON.parse(d), null, 2); } catch (e) { return d; } };
 
 // ------------------------------------------------------------ leaderboards
 let boardSel = A.BOARDS[0].id;

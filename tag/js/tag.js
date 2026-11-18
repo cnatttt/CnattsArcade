@@ -1195,6 +1195,9 @@ window.__cheats = [
   { name: '+1 point for Player 1', icon: '🏅', need: inMatch, run() { score[0]++; } },
   { name: 'Make Player 2 IT', icon: '👉', need: inMatch, run() { itIdx = 1; } },
   { name: 'Make Player 1 IT', icon: '👈', need: inMatch, run() { itIdx = 0; } },
+  { name: 'Freeze Player 2 for 4s', icon: '🧊', need: inMatch, run() { players[1].frozen = 4; } },
+  { name: 'Super speed for Player 1', icon: '⚡', need: inMatch, run() { players[0].speed = 8; } },
+  { name: 'Shield for Player 1', icon: '🛡', need: inMatch, run() { players[0].shield = 8; } },
 ];
 
 })();

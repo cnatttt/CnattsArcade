@@ -1367,6 +1367,9 @@ window.__cheats = [
   { name: 'Kill every zombie', icon: '💥', need: inRun, run() { zs.slice().forEach(z => hit(z, z.hp + 1e6)); } },
   { name: '+5 rerolls', icon: '🎲', need: inRun, run() { run.rerolls += 5; } },
   { name: 'Unlock every hero', icon: '🦸', run() { CHARACTERS.forEach(c => save.chars[c.id] = 1); store(); } },
+  { name: 'Spawn a boss now', icon: '👹', need: inRun, run() { spawnBoss(); } },
+  { name: 'Jump ahead 5 waves', icon: '⏭', need: inRun, run() { zs.slice().forEach(z => hit(z, z.hp + 1e6)); run.wave += 4; run.phase = 'ready'; run.phaseT = 0.1; } },
+  { name: 'Pull in every coin and gem', icon: '🧲', need: inRun, run() { pickups.forEach(p => { p.x = P.x; p.y = P.y; }); } },
 ];
 
 })();

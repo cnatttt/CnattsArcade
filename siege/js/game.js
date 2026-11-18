@@ -1102,6 +1102,8 @@ window.__cheats = [
   { name: '+20 lives', icon: '❤', need: inMap, run() { G.lives += 20; G.maxLives = Math.max(G.maxLives, G.lives); } },
   { name: 'Destroy every enemy', icon: '💥', need: inMap, run() { enemies.slice().forEach(e => hurt(e, 1e9)); } },
   { name: '3 stars on every map', icon: '⭐', run() { MAPS.forEach(m => save.stars[m.id] = 3); store(); } },
+  { name: '+10,000 gold', icon: '🏦', need: inMap, run() { G.gold += 10000; } },
+  { name: 'Send the next wave now', icon: '⏭', need: inMap, run() { if (!G.active) startWave(); } },
 ];
 
 })();

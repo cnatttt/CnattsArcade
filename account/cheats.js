@@ -23,6 +23,14 @@
     { name: 'Take back a move', icon: '↩', need: () => G('game && game.online') ? 'Not in online games' : '', run() { G('game.undo()'); } },
   ];
 
+  // game speed for any game: stretch the frame clock the games read
+  let speed = 1, vt = 0, lastReal = null, wrapped = false;
+  function setSpeed(v) {
+    speed = v;
+    if (wrapped) return; wrapped = true;
+    const orig = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = cb => orig(ts => { if (lastReal == null) { lastReal = ts; vt = ts; } vt += (ts - lastReal) * speed; lastReal = ts; cb(vt); });
+  }
   const hidden = () => { try { return localStorage.getItem(HIDE_KEY) === '1'; } catch (e) { return false; } };
   const setHidden = v => { try { localStorage.setItem(HIDE_KEY, v ? '1' : '0'); } catch (e) {} if (btn) btn.style.display = v ? 'none' : ''; };
 
@@ -55,7 +63,11 @@
     #ownerCheats .ft { padding: 10px 14px 14px; border-top: 1px solid #ffffff1a; font-size: 12px; color: #a49cd0; line-height: 1.45; }
     #ownerCheats .ft button { margin-top: 8px; width: 100%; padding: 9px; border-radius: 10px; border: 1px solid #ffffff22; background: #ffffff10; color: #fff; font: 700 13px Rubik, system-ui, sans-serif; cursor: pointer; }
     #ownerCheats .ft button:hover { border-color: #ffc21a; }
-    #ownerCheats .empty { padding: 14px; color: #a49cd0; }`;
+    #ownerCheats .empty { padding: 14px; color: #a49cd0; }
+    #ownerCheats .spd { display: flex; align-items: center; gap: 5px; padding: 10px 12px 2px; font-size: 11px; font-weight: 800; color: #a49cd0; }
+    #ownerCheats .spd span { flex: 1; letter-spacing: 1px; }
+    #ownerCheats .spd button { border: 1px solid #ffffff22; background: #ffffff0d; color: #fff; border-radius: 8px; padding: 5px 7px; font: 700 12px Rubik, system-ui, sans-serif; cursor: pointer; }
+    #ownerCheats .spd button.on { background: #ffc21a; color: #2a1800; border-color: #ffc21a; }`;
     document.head.appendChild(st);
     btn = document.createElement('button'); btn.id = 'ownerCheatBtn'; btn.title = 'Owner cheats'; btn.textContent = '👑';
     panel = document.createElement('div'); panel.id = 'ownerCheats';
@@ -74,11 +86,13 @@
   function render(note, err) {
     const list = window.__cheats || [];
     panel.innerHTML = `<div class="hd">👑 <span>OWNER CHEATS</span><button title="Close">✕</button></div>
+      <div class="spd"><span>GAME SPEED</span>${[0.25, 0.5, 1, 2, 3].map(v => `<button data-sp="${v}" class="${v === speed ? 'on' : ''}">${v}x</button>`).join('')}</div>
       <div class="list">${list.length ? '' : '<div class="empty">No cheats for this game yet.</div>'}</div>
       <div class="msg${err ? ' err' : ''}">${note || ''}</div>
       <div class="ft">Scores from this session won't go on the leaderboards after you cheat.<br>Bring this back any time: type <b>cnatt</b> or press <b>Ctrl+Shift+Y</b>.
       <button class="hide">${hidden() ? 'Show the 👑 button' : 'Hide the 👑 button'}</button></div>`;
     panel.querySelector('.hd button').onclick = () => toggle(false);
+    panel.querySelectorAll('[data-sp]').forEach(b => b.onclick = () => { setSpeed(+b.dataset.sp); A.cheated = A.cheated || speed !== 1; render(`Game speed ${speed}x`); });
     panel.querySelector('.hide').onclick = () => { setHidden(!hidden()); render(hidden() ? 'Button hidden. Type cnatt to open this again.' : 'Button is back.'); };
     const box = panel.querySelector('.list');
     list.forEach(c => {

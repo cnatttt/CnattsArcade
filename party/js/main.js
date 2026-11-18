@@ -578,6 +578,7 @@ const me = () => net.role === 'client' ? 1 : 0;
 const inGame = () => net.role === 'client' ? 'Only works when you are the host' : ui === 'game' && S && S.scr === 'play' && S.gs && S.gs.phase === 'play' ? '' : 'Wait until a round is being played';
 window.__cheats = [
   { name: 'Win this round', icon: '🏅', need: inGame, run() { givePoint(S.gs, S, me(), 'OWNER POWER!'); } },
+  { name: 'Give the other player a point', icon: '🎁', need: inGame, run() { givePoint(S.gs, S, 1 - me(), 'GIFT FROM THE OWNER'); } },
   { name: 'Win this mini-game', icon: '👑', need: inGame, run() { S.gs.score[me()] = Math.max(S.gs.score[me()], (S.gs.target || 3) - 1); givePoint(S.gs, S, me(), 'OWNER POWER!'); } },
 ];
 

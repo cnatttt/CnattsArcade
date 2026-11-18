@@ -1429,6 +1429,7 @@ window.__cheats = [
   { name: 'Get a Shield', icon: '🛡', need: inRace, run() { giveIt('shield'); } },
   { name: 'Mega boost', icon: '💨', need: inRace, run() { myKart().boostT = 3.5; } },
   { name: 'Star power', icon: '⭐', need: inRace, run() { myKart().starT = 8; } },
+  { name: 'Skip to the final lap', icon: '🏁', need: inRace, run() { const k = myKart(); k.lap = Math.max(k.lap, LAPS); } },
   { name: 'Gold trophy in every class', icon: '🏆', run() { CLASSES.forEach(c => save.trophies[c.id] = 'gold'); store(); } },
 ];
 

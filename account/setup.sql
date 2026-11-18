@@ -266,3 +266,21 @@ begin
 end $$;
 revoke all on function public.ranked_report(text, uuid, boolean) from public, anon;
 grant execute on function public.ranked_report(text, uuid, boolean) to authenticated;
+
+-- =====================================================================
+--  MORE ADMIN CONTROLS (added later - safe to run the whole file again)
+-- =====================================================================
+-- admins can look at and fix any player's cloud saves
+drop policy if exists "admins manage saves" on public.saves;
+create policy "admins manage saves" on public.saves for all using (public.is_admin()) with check (public.is_admin());
+-- admins can make other admins (the cnatt account can never be removed)
+drop policy if exists "admins add admins" on public.admins;
+create policy "admins add admins" on public.admins for insert with check (public.is_admin());
+drop policy if exists "admins remove admins" on public.admins;
+create policy "admins remove admins" on public.admins for delete using (public.is_admin() and user_id not in (select id from public.profiles where username_lower = 'cnatt'));
+-- admins can edit or reset ranked
+drop policy if exists "admins edit ranked" on public.ranked;
+create policy "admins edit ranked" on public.ranked for all using (public.is_admin()) with check (public.is_admin());
+-- admins can edit leaderboard scores
+drop policy if exists "admins edit scores" on public.scores;
+create policy "admins edit scores" on public.scores for update using (public.is_admin()) with check (public.is_admin());
