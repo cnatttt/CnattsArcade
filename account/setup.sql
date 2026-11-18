@@ -178,3 +178,91 @@ grant execute on function public.admin_stats() to authenticated;
 -- =====================================================================
 alter table public.profiles add column if not exists room text check (char_length(room) <= 40);
 grant update (room) on public.profiles to authenticated;
+
+-- =====================================================================
+--  2 PLAYER TAG RANKED (added later - safe to run the whole file again)
+-- =====================================================================
+create table if not exists public.ranked (
+  user_id uuid primary key references public.profiles on delete cascade,
+  elo int not null default 1000,
+  wins int not null default 0,
+  losses int not null default 0,
+  streak int not null default 0,
+  peak int not null default 1000,
+  updated_at timestamptz not null default now()
+);
+alter table public.ranked enable row level security;
+drop policy if exists "ranked is public" on public.ranked;
+create policy "ranked is public" on public.ranked for select using (true);
+
+create table if not exists public.ranked_matches (
+  id text primary key check (char_length(id) <= 60),
+  a uuid not null references public.profiles on delete cascade,
+  b uuid not null references public.profiles on delete cascade,
+  a_won boolean, b_won boolean,
+  done boolean not null default false,
+  created_at timestamptz not null default now()
+);
+alter table public.ranked_matches enable row level security;
+drop policy if exists "see own ranked matches" on public.ranked_matches;
+create policy "see own ranked matches" on public.ranked_matches for select using (auth.uid() in (a, b));
+
+-- apply an Elo result (internal)
+create or replace function public.ranked_apply(p_winner uuid, p_loser uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare ew int; el int; exp_w float8; k int := 32; d int;
+begin
+  insert into public.ranked (user_id) values (p_winner) on conflict do nothing;
+  insert into public.ranked (user_id) values (p_loser) on conflict do nothing;
+  select elo into ew from public.ranked where user_id = p_winner;
+  select elo into el from public.ranked where user_id = p_loser;
+  exp_w := 1 / (1 + power(10, (el - ew) / 400.0));
+  d := greatest(1, round(k * (1 - exp_w)));
+  update public.ranked set elo = elo + d, wins = wins + 1, streak = greatest(streak, 0) + 1, peak = greatest(peak, elo + d), updated_at = now() where user_id = p_winner;
+  update public.ranked set elo = greatest(0, elo - d), losses = losses + 1, streak = least(streak, 0) - 1, updated_at = now() where user_id = p_loser;
+  insert into public.scores (user_id, board, score) select user_id, 'tag_elo', elo from public.ranked where user_id in (p_winner, p_loser)
+    on conflict (user_id, board) do update set score = excluded.score, updated_at = now();
+end $$;
+revoke all on function public.ranked_apply(uuid, uuid) from public, anon, authenticated;
+
+-- matches where only one player reported (the other left) count after 3 minutes
+create or replace function public.ranked_resolve() returns void
+language plpgsql security definer set search_path = public as $$
+declare m record;
+begin
+  for m in select * from public.ranked_matches where not done and created_at < now() - interval '3 minutes' and ((a_won is null) <> (b_won is null)) loop
+    if coalesce(m.a_won, not m.b_won) then perform public.ranked_apply(m.a, m.b); else perform public.ranked_apply(m.b, m.a); end if;
+    update public.ranked_matches set done = true where id = m.id;
+  end loop;
+end $$;
+grant execute on function public.ranked_resolve() to authenticated;
+
+-- each player reports the result; when both agree the Elo changes
+create or replace function public.ranked_report(p_match text, p_opp uuid, p_won boolean) returns json
+language plpgsql security definer set search_path = public as $$
+declare me uuid := auth.uid(); m public.ranked_matches;
+begin
+  if me is null or p_opp is null or me = p_opp then return json_build_object('ok', false); end if;
+  if exists (select 1 from public.profiles where id = me and banned) then return json_build_object('ok', false); end if;
+  perform public.ranked_resolve();
+  select * into m from public.ranked_matches where id = p_match for update;
+  if not found then
+    insert into public.ranked_matches (id, a, b, a_won) values (p_match, me, p_opp, p_won);
+    return json_build_object('ok', true, 'waiting', true);
+  end if;
+  if m.done then return json_build_object('ok', true, 'done', true); end if;
+  if m.a = me and m.b = p_opp then update public.ranked_matches set a_won = p_won where id = p_match;
+  elsif m.b = me and m.a = p_opp then update public.ranked_matches set b_won = p_won where id = p_match;
+  else return json_build_object('ok', false); end if;
+  select * into m from public.ranked_matches where id = p_match;
+  if m.a_won is not null and m.b_won is not null then
+    if m.a_won <> m.b_won then
+      if m.a_won then perform public.ranked_apply(m.a, m.b); else perform public.ranked_apply(m.b, m.a); end if;
+    end if;
+    update public.ranked_matches set done = true where id = p_match;
+    return json_build_object('ok', true, 'done', true);
+  end if;
+  return json_build_object('ok', true, 'waiting', true);
+end $$;
+revoke all on function public.ranked_report(text, uuid, boolean) from public, anon;
+grant execute on function public.ranked_report(text, uuid, boolean) to authenticated;

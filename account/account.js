@@ -31,6 +31,7 @@
     { id: 'fish_dex', game: 'Fishing Simulator', name: 'Species discovered', key: 'cnatt_fishing_v2', get: s => s.dex && Object.keys(s.dex).length },
     { id: 'mush_total', game: 'Mush', name: 'Total mushrooms earned', key: /^mush_save_\d+$/, fmt: 'big', get: s => s.totalEarned },
     { id: 'tag_wins', game: '2 Player Tag', name: 'Total rounds won', key: 'cnatt_tag_wins', get: s => Array.isArray(s) ? s[0] + s[1] : 0 },
+    { id: 'tag_elo', game: '2 Player Tag', name: 'Ranked Elo', key: null },
   ];
   const sentScore = {};
   function scoresFromSave(key, data) {
