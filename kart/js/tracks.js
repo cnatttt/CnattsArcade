@@ -99,6 +99,9 @@ const RACERS = [
   { id: 'frost', name: 'FROST', body: '#3ad8e8', trim: '#ffffff', suit: '#2a9ab0', helmet: '#ffffff', speed: 3, accel: 4, handling: 4, weight: 2 },
 ];
 
+// the site owner's special kart (only offered to the admin account): max everything
+const ADMIN_KART = { id: 'admin', name: 'CNATT GT', body: '#15151c', trim: '#ffd400', suit: '#0d0d12', helmet: '#ffd400', speed: 5, accel: 5, handling: 5, weight: 5, admin: true };
+
 // engine classes: top speed in m/s, AI skill
 const CLASSES = [
   { id: '50cc',  name: '50cc',  speed: 22, ai: 0.88, desc: 'Relaxed' },

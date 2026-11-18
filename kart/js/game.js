@@ -36,6 +36,9 @@ if (!save.set.name) save.set.name = 'Racer' + Math.floor(100 + Math.random() * 9
 const myName = () => (window.Account && Account.user && Account.user.username) || SET().name;
 // the site owner gets a gold OWNER tag next to their name
 const OWN = () => !!(window.Account && Account.isOwnerMe && Account.isOwnerMe());
+const ADMIN_ON = () => OWN() && save.adminKart !== false;   // on by default for the owner
+// the admin kart keeps the picked racer's id (so points/standings still work) but gets max stats and its own body
+function adminize(k) { k.racer = Object.assign({}, ADMIN_KART, { id: k.racer.id }); k.mesh = 'kart_admin'; k.adm = true; }
 const ownOK = (n, f) => !!(window.Account && Account.ownerOK && Account.ownerOK(n, f));
 const ownTag = (x, y, h, align) => (window.Account && Account.drawOwnerTag ? Account.drawOwnerTag(ctx, x, y, h, align) : 0);
 const SET = () => save.set;
@@ -103,6 +106,7 @@ function staticMeshes() {
   MESH.oil = R.mesh(buildOil()); MESH.orb = R.mesh(buildOrb([0.25, 0.95, 0.35, 0.35])); MESH.rocket = R.mesh(buildRocket()); MESH.bomb = R.mesh(buildBomb());
   MESH.blades = R.mesh(prefab('blades')); MESH.balloon = R.mesh(prefab('balloon'));
   RACERS.forEach((r, i) => { const kb = buildKart(r, i + 1); MESH['kart_' + r.id] = R.mesh(kb.mb); KART_WHEELS[r.id] = kb.wheels; });
+  { const kb = buildKart(ADMIN_KART, 9); MESH.kart_admin = R.mesh(kb.mb); KART_WHEELS.admin = kb.wheels; }
   // podium
   const pb = new MB(); [[0, 3.2, '#ffcc33'], [-4.2, 2.2, '#c8c8d8'], [4.2, 1.4, '#c87a3a']].forEach(([x, h, c]) => { pb.box(M4.compose(x, h / 2, 0, 0, 4, h, 4), c); });
   MESH.podium = R.mesh(pb);
@@ -154,19 +158,20 @@ function startRace(mode, ti, opts = {}) {
   karts = []; objs = []; parts = []; skids = []; toasts = [];
   // build the grid: a list of { racer, human, owner, name }
   let grid;
-  if (on) grid = on.grid.map(gq => ({ racer: RACERS.find(r => r.id === gq.racer), human: gq.owner === net.myId ? 0 : -1, owner: gq.owner, name: gq.name }));
+  if (on) grid = on.grid.map(gq => ({ racer: RACERS.find(r => r.id === gq.racer), human: gq.owner === net.myId ? 0 : -1, owner: gq.owner, name: gq.name, own: !!gq.own, adm: !!gq.adm }));
   else {
     const picks = [RACERS.find(r => r.id === save.p1)];
     if (humans === 2) picks.push(RACERS.find(r => r.id === save.p2) || RACERS[1]);
     let others = RACERS.filter(r => !picks.includes(r)).sort(() => Math.random() - 0.5);
     if (mode === 'quick' || mode === 'vs') others = others.slice(0, Math.max(0, Math.min(others.length, SET().ai)));
     const order = mode === 'tt' ? [picks[0]] : (opts.gridOrder || [...others, ...picks]);
-    grid = order.map(r => ({ racer: r, human: picks.indexOf(r), owner: picks.includes(r) ? 'me' : 'ai', name: r.name, own: picks.indexOf(r) === 0 && OWN() }));
+    grid = order.map(r => ({ racer: r, human: picks.indexOf(r), owner: picks.includes(r) ? 'me' : 'ai', name: r.name, own: picks.indexOf(r) === 0 && OWN(), adm: picks.indexOf(r) === 0 && ADMIN_ON() }));
   }
   const P = world.P, N = world.N;
   grid.forEach((gq, slot) => {
     const k = makeKart(gq.racer, gq.human, slot);
     k.owner = gq.owner; k.name = gq.name || gq.racer.name; k.own = !!gq.own;
+    if (gq.adm && gq.own) adminize(k);
     if (on && gq.owner !== 'ai' && gq.owner !== net.myId) k.remote = true;        // another player's kart
     if (on && net.role === 'client' && gq.owner === 'ai') k.remote = true;          // the host drives the AI
     const row = Math.floor(slot / 2), side = slot % 2 ? 1 : -1, back = 4 + row * 3.5;
@@ -555,7 +560,7 @@ function hostRoom() {
   net.role = 'host'; net.myId = 'host'; net.screen = 'connecting'; net.error = '';
   net.code = Array.from({ length: 5 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
   net.tr = NetTransport.host(net.code, {
-    ready: () => { NetTransport.announce('kart', net.code); net.screen = 'lobby'; net.players = [{ id: 'host', name: myName(), racer: save.p1, own: OWN() }]; netLobby(); },
+    ready: () => { NetTransport.announce('kart', net.code); net.screen = 'lobby'; net.players = [{ id: 'host', name: myName(), racer: save.p1, own: OWN(), adm: ADMIN_ON() }]; netLobby(); },
     join: () => {},
     leave: id => netPlayerLeft(id),
     msg: (from, d) => hostMsg(from, d),
@@ -568,7 +573,7 @@ function joinRoom(code) {
   net.tr = NetTransport.join(net.code, {
     ready: id => {
       net.myId = id; NetTransport.announce('kart', net.code);
-      const hello = () => netSend('host', { t: 'hello', name: myName(), racer: save.p1, own: OWN() });
+      const hello = () => netSend('host', { t: 'hello', name: myName(), racer: save.p1, own: OWN(), adm: ADMIN_ON() });
       hello(); let n = 0; const tr = net.tr;
       const iv = setInterval(() => { if (net.tr !== tr || net.screen === 'lobby' || ++n > 10) { clearInterval(iv); if (net.tr === tr && net.screen !== 'lobby') netLost('The room did not answer. Try again.'); return; } hello(); }, 1500);
     },
@@ -601,7 +606,7 @@ function freeRacer(want, id) {
 function hostMsg(from, d) {
   if (d.t === 'hello') {
     if (net.players.length >= 8) { netSend(from, { t: 'full' }); return; }
-    if (!net.players.some(p => p.id === from)) net.players.push({ id: from, name: String(d.name || 'Racer').slice(0, 16), racer: freeRacer(d.racer, from), own: !!d.own });
+    if (!net.players.some(p => p.id === from)) net.players.push({ id: from, name: String(d.name || 'Racer').slice(0, 16), racer: freeRacer(d.racer, from), own: !!d.own, adm: !!d.adm && !!d.own });
     netLobby();
   } else if (d.t === 'pick') { const p = net.players.find(q => q.id === from); if (p) { p.racer = freeRacer(d.racer, from); netLobby(); } }
   else if (d.t === 'bye') netPlayerLeft(from);
@@ -631,7 +636,7 @@ function hostStart() {
   const c = net.cfg, humans = net.players.slice(0, 8);
   const used = new Set(humans.map(p => p.racer));
   const ai = c.ai ? RACERS.filter(r => !used.has(r.id)).slice(0, 8 - humans.length).map(r => ({ racer: r.id, owner: 'ai', name: r.name })) : [];
-  const grid = [...ai.sort(() => Math.random() - 0.5), ...humans.map(p => ({ racer: p.racer, owner: p.id, name: p.name, own: !!p.own }))];
+  const grid = [...ai.sort(() => Math.random() - 0.5), ...humans.map(p => ({ racer: p.racer, owner: p.id, name: p.name, own: !!p.own, adm: !!p.adm }))];
   const msg = { t: 'start', grid, ti: c.ti, mirror: c.mirror, laps: c.laps, items: c.items, cls: c.cls };
   net.inRace = true; netBroadcast(msg); netLobby();
   startRace('online', c.ti, { online: msg });
@@ -958,6 +963,7 @@ function showroom(dt, racer, right) {
   let k = karts.find(x => x.showroom);
   if (!k) { k = makeKart(racer, -1, 0); k.showroom = true; karts.push(k); }
   karts = [k]; k.racer = racer; k.mesh = 'kart_' + racer.id;
+  if (ADMIN_ON() && (state === 'chars' ? sel.pickFor !== 2 : true)) adminize(k);
   k.x = p.x; k.z = p.z; k.y = p.y; k.h = t * 0.6; k.i = Math.floor(world.N * 0.02); k.speed = 0; k.drift = 0; k.steerVis = Math.sin(t) * 0.5; k.wheelRot += dt * 2;
   const c = menuDemo.cam; c.eye = [p.x + p.tx * 8 - p.rx * 2.5, p.y + 2.8, p.z + p.tz * 8 - p.rz * 2.5]; c.at = [p.x + p.rx * 3.2, p.y + 1.2, p.z + p.rz * 3.2]; c.fov = 0.72; c.shake = 0;
   drawWorld({ x: 0, y: 0, w: W, h: H }, c);
@@ -1182,9 +1188,10 @@ function drawChars() {
     }
   });
   // stats of the selected racer
-  const sr = hoverRacer || r0;
+  const adm = ADMIN_ON() && who !== 2, sr = adm && !hoverRacer ? Object.assign({}, ADMIN_KART, { body: '#ffd400' }) : (hoverRacer || r0);
   panel(54, 420, 580, 200);
   txt(sr.name, 80, 438, 34, sr.body, 'left', { stroke: 6, italic: true });
+  if (OWN() && who !== 2 && button('admk', 404, 432, 214, 42, ADMIN_ON() ? 'ADMIN KART: ON' : 'ADMIN KART: OFF', { color: ADMIN_ON() ? '#c89a00' : '#3a3f58', size: 15, sfx: 'tab' })) { save.adminKart = !ADMIN_ON(); store(); }
   [['SPEED', sr.speed], ['ACCEL', sr.accel], ['HANDLING', sr.handling], ['WEIGHT', sr.weight]].forEach(([n, v], i) => {
     txt(n, 80, 492 + i * 30, 17, '#c8d0e8'); for (let k = 0; k < 5; k++) { rr(220 + k * 56, 492 + i * 30, 50, 18, 6); ctx.fillStyle = k < v ? sr.body : 'rgba(255,255,255,0.12)'; ctx.fill(); }
   });
