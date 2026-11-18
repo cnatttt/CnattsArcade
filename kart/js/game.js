@@ -554,7 +554,7 @@ function hostRoom() {
   net.role = 'host'; net.myId = 'host'; net.screen = 'connecting'; net.error = '';
   net.code = Array.from({ length: 5 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
   net.tr = NetTransport.host(net.code, {
-    ready: () => { net.screen = 'lobby'; net.players = [{ id: 'host', name: myName(), racer: save.p1, own: OWN() }]; netLobby(); },
+    ready: () => { NetTransport.announce('kart', net.code); net.screen = 'lobby'; net.players = [{ id: 'host', name: myName(), racer: save.p1, own: OWN() }]; netLobby(); },
     join: () => {},
     leave: id => netPlayerLeft(id),
     msg: (from, d) => hostMsg(from, d),
@@ -566,7 +566,7 @@ function joinRoom(code) {
   net.role = 'client'; net.code = code.toUpperCase(); net.screen = 'connecting'; net.error = '';
   net.tr = NetTransport.join(net.code, {
     ready: id => {
-      net.myId = id;
+      net.myId = id; NetTransport.announce('kart', net.code);
       const hello = () => netSend('host', { t: 'hello', name: myName(), racer: save.p1, own: OWN() });
       hello(); let n = 0; const tr = net.tr;
       const iv = setInterval(() => { if (net.tr !== tr || net.screen === 'lobby' || ++n > 10) { clearInterval(iv); if (net.tr === tr && net.screen !== 'lobby') netLost('The room did not answer. Try again.'); return; } hello(); }, 1500);
@@ -577,7 +577,8 @@ function joinRoom(code) {
     error: e => { net.error = e === 'Room not found' ? `Room ${net.code} was not found` : 'Online error: ' + e; net.screen = 'menu'; netReset(true); },
   });
 }
-function netReset(keepError) { if (net.tr) try { net.tr.close(); } catch (e) {} net.tr = null; net.role = null; net.players = []; net.inRace = false; if (!keepError) net.error = ''; }
+function netReset(k) { NetTransport.announce('kart', null); netResetBase(k); }
+function netResetBase(keepError) { if (net.tr) try { net.tr.close(); } catch (e) {} net.tr = null; net.role = null; net.players = []; net.inRace = false; if (!keepError) net.error = ''; }
 function netLost(why) {
   const wasRacing = state === 'race' || state === 'results' || state === 'pause';
   netReset(); net.error = why; net.screen = 'menu';
@@ -1407,7 +1408,9 @@ function frame(now) {
 // keep online races running (and sending) while the tab is in the background
 NetTransport.backgroundTicker(dt => { if (state === 'race' && race && race.online) { t += dt; updateRace(dt); } });
 const fontReady = document.fonts ? Promise.race([document.fonts.load(`24px ${FONT}`), new Promise(r => setTimeout(r, 2500))]) : Promise.resolve();
-fontReady.then(() => { applySettings(); go('title'); requestAnimationFrame(n => { last = n; frame(n); }); });
+fontReady.then(() => { applySettings(); go('title');
+  // opened from a friend's Join button: go straight into their room
+  const jc = NetTransport.joinCode(); if (jc) { go('online'); joinRoom(jc); } requestAnimationFrame(n => { last = n; frame(n); }); });
 
 window.__kt = {
   get state() { return state; }, get race() { return race; }, get karts() { return karts; }, get world() { return world; }, save: () => save,

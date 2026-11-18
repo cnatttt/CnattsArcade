@@ -172,3 +172,9 @@ begin
 end $$;
 revoke all on function public.admin_stats() from public, anon;
 grant execute on function public.admin_stats() to authenticated;
+
+-- =====================================================================
+--  FRIENDS CAN JOIN FRIENDS (added later - safe to run the whole file again)
+-- =====================================================================
+alter table public.profiles add column if not exists room text check (char_length(room) <= 40);
+grant update (room) on public.profiles to authenticated;

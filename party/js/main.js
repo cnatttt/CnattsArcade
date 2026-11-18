@@ -401,7 +401,7 @@ function hostRoom() {
   netReset(); net.role = 'host'; net.myId = 'host'; net.screen = 'connecting'; net.error = '';
   net.code = Array.from({ length: 5 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
   net.tr = NetTransport.host(net.code, {
-    ready: () => { net.screen = 'lobby'; },
+    ready: () => { NetTransport.announce('party', net.code); net.screen = 'lobby'; },
     join: () => {},
     leave: id => { if (id === net.guestId) { net.guest = null; net.guestId = null; if (ui === 'game') { go('online'); net.screen = 'lobby'; net.error = 'Your friend left'; } } },
     msg: (from, d) => {
@@ -417,7 +417,7 @@ function joinRoom(code) {
   netReset(); net.role = 'client'; net.code = code.toUpperCase(); net.screen = 'connecting'; net.error = '';
   net.tr = NetTransport.join(net.code, {
     ready: id => {
-      net.myId = id; net.joinedAt = performance.now();
+      net.myId = id; NetTransport.announce('party', net.code); net.joinedAt = performance.now();
       const hello = () => netSend('host', { t: 'hello', name: myName(), look: save.players[0].look, own: OWN() });
       hello(); let n = 0; const tr = net.tr;
       const iv = setInterval(() => { if (net.tr !== tr || net.screen === 'lobby' || ++n > 10) { clearInterval(iv); if (net.tr === tr && net.screen !== 'lobby') netLost('The room did not answer. Try again.'); return; } hello(); }, 1500);
@@ -434,7 +434,8 @@ function joinRoom(code) {
     error: e => { net.error = e === 'Room not found' ? `Room ${net.code} was not found` : 'Online error: ' + e; netReset(true); net.screen = 'menu'; },
   });
 }
-function netReset(keepErr) { if (net.tr) try { net.tr.close(); } catch (e) {} net.tr = null; net.role = null; net.guest = null; net.guestId = null; net.prev = net.cur = null; if (!keepErr) net.error = ''; }
+function netReset(k) { NetTransport.announce('party', null); netResetBase(k); }
+function netResetBase(keepErr) { if (net.tr) try { net.tr.close(); } catch (e) {} net.tr = null; net.role = null; net.guest = null; net.guestId = null; net.prev = net.cur = null; if (!keepErr) net.error = ''; }
 function netLost(why) { netReset(); net.error = why; net.screen = 'menu'; S = null; go('online'); }
 function leaveOnline() { if (net.role === 'client') netSend('host', { t: 'bye' }); netReset(); net.screen = 'menu'; S = null; go('title'); }
 function lobbySync() { netBroadcast({ t: 'lobby', cfg: net.cfg, host: { name: myName(), look: save.players[0].look, own: OWN() }, guest: net.guest }); }
@@ -555,7 +556,9 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 const fontReady = document.fonts ? Promise.race([document.fonts.load(`700 24px ${FONT}`), new Promise(r => setTimeout(r, 2500))]) : Promise.resolve();
-fontReady.then(() => { applyAudio(); go('title'); requestAnimationFrame(n => { last = n; frame(n); }); });
+fontReady.then(() => { applyAudio(); go('title');
+  // opened from a friend's Join button: go straight into their room
+  const jc = NetTransport.joinCode(); if (jc) { go('online'); joinRoom(jc); } requestAnimationFrame(n => { last = n; frame(n); }); });
 
 window.__pc = {
   get S() { return S; }, get ui() { return ui; }, startMatch, go, save: () => save, net, hostRoom, joinRoom, hostStartMatch,

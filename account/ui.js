@@ -153,7 +153,7 @@
       if (!rows.length) { stats.append(el('span', {}, 'Play some games to set records!'), el('span')); return; }
       A.BOARDS.forEach(b => { const r = rows.find(x => x.board === b.id); if (r) stats.append(el('span', {}, `${b.game}: ${b.name}`), el('span', {}, A.fmtScore(b.id, r.score))); });
     }).catch(() => { stats.innerHTML = ''; });
-    body.append(
+    body.append(...[
       el('div', { class: 'row', style: 'gap:18px;margin-bottom:18px' }, avatar(me, true), el('div', {}, el('h3', { style: 'margin:0 0 6px;font-size:16px' }, me.username), el('p', { style: 'margin:0' }, 'Signed in. Your name is used in online games.'))),
       me.banned ? el('p', { style: 'color:#ff9ab0;font-weight:700' }, 'This account is banned from the leaderboards and friends. Your saves still work.') : null,
       me.admin ? el('a', { class: 'btn', href: 'admin.html', style: 'display:inline-block;text-decoration:none;margin-bottom:8px' }, '🛡 OPEN ADMIN PANEL') : null,
@@ -164,7 +164,7 @@
       el('div', { class: 'row' },
         el('button', { class: 'btn alt sm', onclick: async () => { snd('click'); syncMsg.className = 'msg ok'; syncMsg.textContent = 'Syncing...'; const ch = await A.sync(); render(); if (ch.length) syncMsg.textContent += ` (${ch.length} save${ch.length > 1 ? 's' : ''} updated)`; } }, 'SYNC NOW'),
         el('button', { class: 'btn red sm', onclick: async () => { snd('back'); await A.signOut(); loginMode = 'in'; open('login'); } }, 'SIGN OUT')),
-      syncMsg);
+      syncMsg].filter(Boolean));
   }
 
   async function vFriends(body) {
@@ -179,11 +179,12 @@
     let F; try { F = await A.friends(); } catch (e) { list.innerHTML = ''; list.append(el('div', { class: 'empty' }, 'Could not load friends: ' + (e.message || e))); return; }
     pending = F.incoming.length; drawBtn();
     list.innerHTML = '';
-    const row = (p, extra, ...btns) => { const online = A.isOnline(p); return el('div', { class: 'item' }, avatar(p), el('span', { class: 'nm' }, p.username), el('span', { class: 'st' + (online ? ' on' : '') }, extra != null ? extra : online ? (p.playing ? '● ' + p.playing : '● Online') : 'seen ' + ago(p.last_seen)), ...btns); };
+    const row = (p, extra, ...btns) => { const online = A.isOnline(p); return el('div', { class: 'item' }, avatar(p), el('span', { class: 'nm' }, p.username), el('span', { class: 'st' + (online ? ' on' : '') }, extra != null ? extra : online ? (p.playing ? '● ' + p.playing + (p.room ? ' (online room)' : '') : '● Online') : 'seen ' + ago(p.last_seen)), ...btns.filter(Boolean)); };
     F.incoming.forEach(p => list.append(row(p, 'wants to be friends',
       el('button', { class: 'btn sm', onclick: async () => { snd('coin'); await A.acceptFriend(p.id); refresh(); } }, 'ACCEPT'),
       el('button', { class: 'btn alt sm', onclick: async () => { snd('back'); await A.removeFriend(p.id); refresh(); } }, 'NO'))));
-    F.friends.forEach(p => list.append(row(p, null, el('button', { class: 'btn alt sm', title: 'Remove friend', onclick: async () => { if (!confirm(`Remove ${p.username} from your friends?`)) return; await A.removeFriend(p.id); refresh(); } }, '✕'))));
+    const joinBtn = p => { const m = A.isOnline(p) && p.room && /^([a-z0-9]+):([A-Za-z0-9]{4,6})$/.exec(p.room); return m ? el('button', { class: 'btn sm', title: 'Join their game', onclick: () => { snd('coin'); root.classList.remove('open'); if (A.joinFriend) A.joinFriend(m[1], m[2]); } }, 'JOIN') : null; };
+    F.friends.forEach(p => list.append(row(p, null, joinBtn(p), el('button', { class: 'btn alt sm', title: 'Remove friend', onclick: async () => { if (!confirm(`Remove ${p.username} from your friends?`)) return; await A.removeFriend(p.id); refresh(); } }, '✕'))));
     F.outgoing.forEach(p => list.append(row(p, 'request sent', el('button', { class: 'btn alt sm', title: 'Cancel request', onclick: async () => { await A.removeFriend(p.id); refresh(); } }, '✕'))));
     if (!list.children.length) list.append(el('div', { class: 'empty' }, 'No friends yet. Add someone by their username!'));
   }

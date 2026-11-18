@@ -188,7 +188,7 @@
   };
   A.signOut = async function () {
     await A.flush().catch(() => {});
-    try { await A.sb.from('profiles').update({ playing: null, last_seen: null }).eq('id', A.user.id); } catch (e) {}
+    try { await A.sb.from('profiles').update({ playing: null, last_seen: null }).eq('id', A.user.id); await A.sb.from('profiles').update({ room: null }).eq('id', A.user.id); } catch (e) {}
     await A.sb.auth.signOut(); A.user = null; stopPresence(); emit();
   };
   A.setColor = async function (color) {
@@ -198,7 +198,14 @@
 
   // ------------------------------------------------------------ presence ("online now / playing X")
   let presTimer = null; A.playing = null;
-  function beat() { if (A.user) A.sb.from('profiles').update({ last_seen: new Date().toISOString(), playing: A.playing }).eq('id', A.user.id).then(() => {}); }
+  A.room = null;
+  function beat() {
+    if (!A.user) return;
+    A.sb.from('profiles').update({ last_seen: new Date().toISOString(), playing: A.playing }).eq('id', A.user.id).then(() => {});
+    A.sb.from('profiles').update({ room: A.room }).eq('id', A.user.id).then(() => {});   // separate: older databases have no room column
+  }
+  // the online room I'm in, so friends can join me ("party:ABCDE")
+  A.setRoom = r => { const v = r && r.code ? r.game + ':' + r.code : null; if (v === A.room) return; A.room = v; beat(); };
   function startPresence() { stopPresence(); beat(); presTimer = setInterval(beat, 60000); }
   function stopPresence() { clearInterval(presTimer); presTimer = null; }
   A.setPlaying = g => { A.playing = g || null; beat(); };
@@ -277,10 +284,12 @@
   };
 
   // ------------------------------------------------------------ friends
-  const PF = 'id,username,color,last_seen,playing';
+  let PF = 'id,username,color,last_seen,playing,room';
   A.friends = async function () {
     const me = A.user.id;
-    const r = await A.sb.from('friends').select(`requester,addressee,status,a:profiles!friends_requester_fkey(${PF}),b:profiles!friends_addressee_fkey(${PF})`).or(`requester.eq.${me},addressee.eq.${me}`);
+    const q = () => A.sb.from('friends').select(`requester,addressee,status,a:profiles!friends_requester_fkey(${PF}),b:profiles!friends_addressee_fkey(${PF})`).or(`requester.eq.${me},addressee.eq.${me}`);
+    let r = await q();
+    if (r.error && PF.includes('room')) { PF = 'id,username,color,last_seen,playing'; r = await q(); }
     if (r.error) throw r.error;
     const out = { friends: [], incoming: [], outgoing: [] };
     r.data.forEach(f => {

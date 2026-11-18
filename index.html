@@ -481,7 +481,8 @@
 
   // ---------------- routing: yoursite.com/#fishing opens that game directly
   function route() {
-    const id = decodeURIComponent(location.hash.slice(1));
+    const [id, extra] = decodeURIComponent(location.hash.slice(1)).split('&');
+    const jm = extra && /^join=([A-Za-z0-9]{4,6})$/.exec(extra);
     const g = LIST.find(x => x.id === id);
     if (g && g.maintenance && !(Account.user && Account.user.admin)) { toast(`🛠 ${g.title} is down for maintenance${g.note ? ': ' + g.note : '.'}`); history.replaceState('', '', location.pathname + location.search); }
     if (!g || (g.maintenance && !(Account.user && Account.user.admin))) {
@@ -493,7 +494,7 @@
       if (Account.user) { Account.setPlaying(null); Account.flush(); }
       return;
     }
-    const url = g.folder.replace(/\/+$/, '') + '/index.html';
+    const url = g.folder.replace(/\/+$/, '') + '/index.html' + (jm ? '?join=' + jm[1].toUpperCase() : '');
     $('nowPlaying').textContent = g.title;
     $('tabBtn').href = url;
     document.title = g.title + ' | ' + titleCase(SITE.title);
@@ -501,7 +502,7 @@
     Sound.stopSong(); addRecent(g.id);
     Account.setPlaying(g.title);
     // wait (briefly) for cloud saves to come down before the game reads them
-    if (!frame.src.endsWith(url)) Promise.race([Account.init().then(() => Account.firstSync), new Promise(r => setTimeout(r, 5000))]).then(() => { if (location.hash.slice(1) === g.id && !frame.src.endsWith(url)) frame.src = url; });
+    if (!frame.src.endsWith(url)) Promise.race([Account.init().then(() => Account.firstSync), new Promise(r => setTimeout(r, 5000))]).then(() => { if (decodeURIComponent(location.hash.slice(1)).split('&')[0] === g.id && !frame.src.endsWith(url)) frame.src = url; });
   }
 
   const bg = { run: true };
@@ -546,6 +547,8 @@
     }, { passive: true });
   })();
 
+  // friends list JOIN button
+  Account.joinFriend = (game, code) => { frame.src = 'about:blank'; location.hash = game + '&join=' + code; };
   window.addEventListener('hashchange', route);
   route();
   function toast(t) { const el = $('toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('show'), 3500); }
