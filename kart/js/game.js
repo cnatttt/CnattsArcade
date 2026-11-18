@@ -210,13 +210,14 @@ function controlsFor(k) {
   if (k.human < 0 || k.finished || window.__ktAI) return aiControls(k);
   const set = ctrlSet(race.humans === 2 ? (k.human === 0 ? 'p1' : 'p2') : 'solo');
   k.lookBack = any(set.back, keys);
-  let steer = (any(set.right, keys) ? 1 : 0) - (any(set.left, keys) ? 1 : 0);
+  // heading grows toward +x, which is screen-left from the chase camera, so left = +1
+  let steer = (any(set.left, keys) ? 1 : 0) - (any(set.right, keys) ? 1 : 0);
   let gas = any(set.up, keys) || save.autoGas || (race.mode === 'online' && SET().autoGasOnline) ? 1 : 0; if (any(set.down, keys)) gas = -1;
   let drift = any(set.drift, keys), item = set.item.some(c => pressed[c]);
   if (touch.used && race.humans === 1) { // simple touch: left/right thirds steer, buttons at the bottom right
     let tl = false, tr = false, td = false, ti = false;
     touchPts.forEach(([x, y]) => { if (x > W - 300 && y > H - 170) { if (x > W - 150) ti = true; else td = true; } else if (x < W / 2) tl = true; else tr = true; });
-    steer = (tr ? 1 : 0) - (tl ? 1 : 0); gas = 1; drift = drift || td; if (ti && !touch.item) item = true; touch.item = ti;
+    steer = (tl ? 1 : 0) - (tr ? 1 : 0); gas = 1; drift = drift || td; if (ti && !touch.item) item = true; touch.item = ti;
   }
   return { steer, gas, drift, item };
 }

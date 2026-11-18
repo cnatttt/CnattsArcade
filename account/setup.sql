@@ -388,3 +388,24 @@ begin
 end $$;
 revoke all on function public.ranked_game_cpu(text, int, float8) from public, anon;
 grant execute on function public.ranked_game_cpu(text, int, float8) to authenticated;
+
+-- 2 Player Tag: a ranked match against the PRO CPU (reported by the player, rate limited)
+create or replace function public.ranked_cpu(p_cpu_elo int, p_won boolean) returns json
+language plpgsql security definer set search_path = public as $$
+declare me uuid := auth.uid(); r public.ranked; ce int; d int;
+begin
+  if me is null then return json_build_object('ok', false); end if;
+  insert into public.ranked (user_id, updated_at) values (me, now() - interval '1 hour') on conflict do nothing;
+  select * into r from public.ranked where user_id = me for update;
+  if r.updated_at > now() - interval '45 seconds' then return json_build_object('ok', false, 'elo', r.elo, 'reason', 'too soon'); end if;
+  ce := least(greatest(p_cpu_elo, r.elo), r.elo + 400);
+  d := round(32 * ((case when p_won then 1 else 0 end) - 1 / (1 + power(10, (ce - r.elo) / 400.0))));
+  update public.ranked set elo = greatest(0, elo + d), wins = wins + (case when p_won then 1 else 0 end), losses = losses + (case when p_won then 0 else 1 end),
+    streak = case when p_won then greatest(streak, 0) + 1 else least(streak, 0) - 1 end, peak = greatest(peak, elo + d), updated_at = now()
+    where user_id = me returning elo into ce;
+  insert into public.scores (user_id, board, score) values (me, 'tag_elo', ce)
+    on conflict (user_id, board) do update set score = excluded.score, updated_at = now();
+  return json_build_object('ok', true, 'elo', ce, 'delta', d);
+end $$;
+revoke all on function public.ranked_cpu(int, boolean) from public, anon;
+grant execute on function public.ranked_cpu(int, boolean) to authenticated;

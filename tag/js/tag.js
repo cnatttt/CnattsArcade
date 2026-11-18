@@ -52,6 +52,7 @@ const MODES = [
   { id: 'potato', name: 'HOT POTATO', target: 5, desc: 'IT holds a bomb. Pass it with a tag before it explodes!' },
   { id: 'coins', name: 'COIN RUSH', target: 15, desc: 'Runner grabs coins. Tagger tags to steal the runner role.' },
 ];
+const oppLvl = () => NET.cpuRanked ? 4 : settings.opp;
 const OPP = [['human', '2 PLAYERS'], ['easy', 'CPU EASY'], ['normal', 'CPU NORMAL'], ['hard', 'CPU HARD']];
 let settings = { mode: 0, arena: 0, opp: 0, target: 10, skins: [{ color: 0, face: 0 }, { color: 1, face: 2 }] };
 try { const s = JSON.parse(localStorage.getItem('cnatt_tag_settings')); if (s) settings = Object.assign(settings, s); } catch (e) {}
@@ -211,7 +212,7 @@ function makePlayer(i) {
   const sk = settings.skins[i], s = spawns[i], c = center(s.c, s.r);
   return {
     i, x: c.x, y: c.y, vx: 0, vy: 0, color: COLORS[sk.color], face: FACES[sk.face],
-    name: NET.role ? NET.names[i] : i === 1 && settings.opp > 0 ? 'CPU' : 'P' + (i + 1), cpu: !NET.role && i === 1 && settings.opp > 0, own: NET.role ? NET.own[i] : i === 0 && !!(window.Account && Account.isOwnerMe && Account.isOwnerMe()),
+    name: NET.role ? NET.names[i] : i === 1 && oppLvl() > 0 ? (NET.cpuRanked ? 'PRO CPU' : 'CPU') : 'P' + (i + 1), cpu: !NET.role && i === 1 && oppLvl() > 0, own: NET.role ? NET.own[i] : i === 0 && !!(window.Account && Account.isOwnerMe && Account.isOwnerMe()),
     frozen: 0, ghost: 0, shield: 0, speed: 0, shrink: 0, dashCd: 0, dashT: 0, portalCd: 0, stun: 0,
     inBush: false, trail: [], look: { x: i === 0 ? 1 : -1, y: 0 }, squash: 0,
     ai: { next: 0, path: [], goal: null }, stats: { tags: 0, dashes: 0, powers: 0, coins: 0 },
@@ -241,7 +242,7 @@ function newRound(swap) {
 }
 function pauseGame() { if (NET.role) { NET.menu = !NET.menu; Sound.play('back'); return; } screen = 'pause'; Sound.play('back'); }
 function resume() { screen = 'play'; Sound.play('click'); }
-function toMenu() { if (NET.role) netLeave(); screen = 'menu'; matchId++; Sound.playSong(SONGS.tag_menu); }
+function toMenu() { if (NET.role) netLeave(); endCpuRanked(screen === 'play' || screen === 'pause'); screen = 'menu'; matchId++; Sound.playSong(SONGS.tag_menu); }
 function toggleFullscreen() {
   const el = document.documentElement;
   if (!document.fullscreenElement) (el.requestFullscreen || el.webkitRequestFullscreen || (() => {})).call(el);
@@ -290,7 +291,7 @@ function updatePlayer(p, dt) {
   const ice = tile === '~', mud = tile === ',';
   p.inBush = tile === 'B';
   let max = 300 * (p.i === itIdx ? 1.06 : 1) * (p.speed > 0 ? 1.4 : 1) * (mud ? 0.55 : 1) * (p.shrink > 0 ? 1.1 : 1);
-  if (p.cpu) max *= [1, 0.82, 0.93, 1.0][settings.opp];
+  if (p.cpu) max *= [1, 0.82, 0.93, 1.0, 1.0][oppLvl()];
   const accel = ice ? 700 : 3200, fric = ice ? 0.6 : 10;
   if (p.frozen > 0 || p.stun > 0) { inp.x = 0; inp.y = 0; inp.dash = false; }
   p.vx += inp.x * accel * dt; p.vy += inp.y * accel * dt;
@@ -361,7 +362,7 @@ function stepToward(p, dist) {
   return best ? center(best[0], best[1]) : null;
 }
 function cpuInput(p, dt) {
-  const lvl = settings.opp, react = [0, 0.38, 0.2, 0.09][lvl];
+  const lvl = oppLvl(), react = [0, 0.38, 0.2, 0.09, 0.035][lvl];
   const me = p, foe = players[0];
   p.ai.next -= dt;
   if (p.ai.next <= 0) {
@@ -372,25 +373,31 @@ function cpuInput(p, dt) {
     if (iAmIt && !(mode().id === 'longest' && p.i !== itIdx)) {
       // chase (aim a little ahead of where the player is going)
       let tc = fc, tr = fr;
-      if (lvl >= 2) { const [pc, pr] = tileOf(foe.x + foe.vx * 0.3, foe.y + foe.vy * 0.3); if (!solid(pc, pr)) { tc = pc; tr = pr; } }
+      if (lvl >= 2) { const lead = lvl >= 4 ? 0.45 : 0.3, [pc, pr] = tileOf(foe.x + foe.vx * lead, foe.y + foe.vy * lead); if (!solid(pc, pr)) { tc = pc; tr = pr; } }
       if (hidden && p.ai.lastSeen) { tc = p.ai.lastSeen[0]; tr = p.ai.lastSeen[1]; }
       else p.ai.lastSeen = [fc, fr];
       p.ai.dist = bfs(tc, tr);
-      p.ai.wantDash = Math.hypot(foe.x - me.x, foe.y - me.y) < [0, 70, 120, 150][lvl] && Math.random() < [0, 0.3, 0.6, 0.9][lvl];
+      const dd = Math.hypot(foe.x - me.x, foe.y - me.y);
+      if (lvl >= 4) { const sp = Math.hypot(me.vx, me.vy) || 1, aim = ((foe.x - me.x) * me.vx + (foe.y - me.y) * me.vy) / (dd * sp || 1); p.ai.wantDash = dd < 165 && aim > 0.85; }
+      else p.ai.wantDash = dd < [0, 70, 120, 150][lvl] && Math.random() < [0, 0.3, 0.6, 0.9][lvl];
     } else {
       // flee: pick a reachable spot far from the tagger
       const dT = bfs(fc, fr), dA = bfs(mc, mr);
       let best = null, bs = -1e9;
       for (let r = 1; r < ROWS - 1; r++) for (let c = 1; c < COLS - 1; c++) {
-        if (dA[r][c] > 9 || dA[r][c] >= 1e9) continue;
-        let s = dT[r][c] * 1.0 - dA[r][c] * 0.35 + Math.random() * [0, 6, 3, 1][lvl];
+        if (dA[r][c] > (lvl >= 4 ? 12 : 9) || dA[r][c] >= 1e9) continue;
+        let s = dT[r][c] * 1.0 - dA[r][c] * 0.35 + Math.random() * [0, 6, 3, 1, 0.2][lvl];
+        if (lvl >= 4) {   // pro: never run somewhere the tagger reaches first, and keep escape routes open
+          if (dT[r][c] <= dA[r][c] + 1) s -= 25;
+          s += [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([a, b]) => !solid(c + a, r + b)).length * 1.6;
+        }
         if (tileAt(c, r) === 'B') s += 3;
         if (mode().id === 'coins') coins.forEach(cn => { const [cc, cr] = tileOf(cn.x, cn.y); if (cc === c && cr === r) s += 6; });
         powerups.forEach(u => { const [uc, ur] = tileOf(u.x, u.y); if (uc === c && ur === r) s += 4; });
         if (s > bs) { bs = s; best = [c, r]; }
       }
       p.ai.dist = best ? bfs(best[0], best[1]) : dT;
-      p.ai.wantDash = Math.hypot(foe.x - me.x, foe.y - me.y) < [0, 60, 90, 110][lvl] && Math.random() < [0, 0.3, 0.6, 0.9][lvl];
+      p.ai.wantDash = Math.hypot(foe.x - me.x, foe.y - me.y) < [0, 60, 90, 110, 95][lvl] && Math.random() < [0, 0.3, 0.6, 0.9, 1][lvl];
     }
   }
   let x = 0, y = 0;
@@ -451,6 +458,7 @@ function addPoint(i, why) {
 function endMatch(w) {
   winner = w; screen = 'over'; matchT = 0;
   if (NET.ranked && NET.role === 'host') reportRanked(w === NET.me);
+  if (NET.cpuRanked) reportCpuRanked(w === 0);
   if (w >= 0 && !NET.role) wins[w]++; saveSettings();
   sfx.win(); Sound.playSong(SONGS.tag_win);
   confetti = Array.from({ length: 160 }, () => ({ x: rand(0, W), y: rand(-H, 0), vx: rand(-60, 60), vy: rand(80, 240), r: rand(0, 6), vr: rand(-8, 8), col: pick(COLORS), s: rand(6, 12) }));
@@ -802,7 +810,7 @@ function drawPause() {
   box(W / 2 - 260, 190, 520, 340, '#11131e', '#ffd400');
   text('PAUSED', W / 2, 230, 32, '#ffd400', 'center');
   if (button('res', W / 2 - 200, 300, 400, 64, 'RESUME', { color: '#16a34a' })) resume();
-  if (button('rst', W / 2 - 200, 376, 400, 56, 'RESTART', { color: '#334155' })) startMatch();
+  if (!NET.cpuRanked && button('rst', W / 2 - 200, 376, 400, 56, 'RESTART', { color: '#334155' })) startMatch();
   if (button('men', W / 2 - 200, 444, 400, 56, 'MENU', { color: '#dc2626', sfx: 'back' })) toMenu();
 }
 function drawOver() {
@@ -827,8 +835,10 @@ function drawOver() {
     text(`POWER-UPS ${p.stats.powers}`, x + 130, 416, 8, '#a1a7bb', 'center');
   });
   ctx.restore();
-  if (NET.ranked) drawRankedResult();
-  if (NET.ranked) {
+  if (NET.ranked || NET.cpuRanked) drawRankedResult();
+  if (NET.cpuRanked) {
+    if (button('again', W / 2 - 300, 470, 290, 72, 'NEXT MATCH', { color: '#d97706', size: 16 })) startCpuRanked();
+  } else if (NET.ranked) {
     if (button('again', W / 2 - 300, 470, 290, 72, 'FIND MATCH', { color: '#d97706', size: 16 })) { netLeave(); openRanked(true); }
   } else if (NET.role === 'client') { text('WAITING FOR HOST...', W / 2 - 155, 500, 10, '#a1a7bb', 'center'); }
   else if (button('again', W / 2 - 300, 470, 290, 72, 'REMATCH', { color: '#16a34a', size: 16 })) startMatch();
@@ -988,6 +998,7 @@ function joinRoom(code) {
 }
 function netLobby() { if (NET.role === 'host') netSend({ t: 'lobby', names: NET.names, own: NET.own, uid: window.Account && Account.user ? Account.user.id : null, elo: NET.myElo || 1000, ranked: NET.ranked, matchId: NET.matchId }); }
 function netStart() {
+  if (NET.cpuRanked) endCpuRanked(false);
   if (NET.ranked) { settings.mode = 0; settings.target = 5; settings.arena = Math.floor(Math.random() * ARENAS.length); NET.matchId = NET.code + '-' + Date.now().toString(36); NET.reported = false; netLobby(); }
   settings.opp = 0; startMatch();
 }
@@ -1162,6 +1173,33 @@ async function reportRanked(won) {
     }
   } catch (e) {}
 }
+// ranked against the PRO CPU: classic, first to 5, random arena. Quitting counts as a loss.
+function startCpuRanked() {
+  const A = window.Account, online = !!(A && A.configured && A.user && A.sb);
+  const before = online ? (NET.myElo || (NET.myRank && NET.myRank.elo) || 1000) : (settings.relo || 1000);
+  if (!NET.cpuRanked) NET.cpuPrev = { mode: settings.mode, target: settings.target, arena: settings.arena };
+  NET.cpuRanked = { before, cpuElo: Math.max(1250, before + 150), online, done: false };
+  NET.result = null; NET.forfeitWin = false; NET.ranked = false;
+  settings.mode = 0; settings.target = 5; settings.arena = Math.floor(Math.random() * ARENAS.length); loadArena(ARENAS[settings.arena]);
+  startMatch();
+}
+function reportCpuRanked(won) {
+  const R = NET.cpuRanked; if (!R || R.done) return; R.done = true;
+  NET.result = { won, before: R.before, after: null };
+  const exp = 1 / (1 + Math.pow(10, (R.cpuElo - R.before) / 400)), d = Math.round(32 * ((won ? 1 : 0) - exp));
+  if (!R.online) { settings.relo = Math.max(0, R.before + d); NET.result.after = settings.relo; saveSettings(); return; }
+  const A = window.Account;
+  A.sb.rpc('ranked_cpu', { p_cpu_elo: R.cpuElo, p_won: won }).then(r => {
+    const e = r && r.data && r.data.elo; NET.result.after = e != null ? e : R.before;
+    if (e != null) { NET.myElo = e; if (NET.myRank) NET.myRank.elo = e; }
+  }).catch(() => { NET.result.after = R.before; });
+}
+function endCpuRanked(quit) {
+  if (!NET.cpuRanked) return;
+  if (quit && !NET.cpuRanked.done) reportCpuRanked(false);
+  const pv = NET.cpuPrev; if (pv) { settings.mode = pv.mode; settings.target = pv.target; settings.arena = pv.arena; loadArena(ARENAS[settings.arena]); saveSettings(); }
+  NET.cpuRanked = null; NET.cpuPrev = null;
+}
 function winByForfeit() { winner = NET.me; screen = 'over'; matchT = 0; sfxRaw.win(); reportRanked(true); NET.forfeitWin = true; }
 function drawRankedResult() {
   const r = NET.result; if (!r) return;
@@ -1177,8 +1215,13 @@ function drawRanked() {
   text('Classic mode, first to 5, random arena. Win to climb.', W / 2, 96, 8, '#a1a7bb', 'center');
   const A = window.Account;
   if (!A || !A.configured || !A.user) {
-    text('SIGN IN ON THE ARCADE TO PLAY RANKED', W / 2, 300, 12, '#ffffff', 'center');
-    text('(your rank is saved to your account)', W / 2, 330, 8, '#8b91a7', 'center');
+    const le = settings.relo || 1000, lr = rankOf(le);
+    box(80, 140, 520, 340, '#11131e', lr.col);
+    drawRankBadge(200, 250, 2.4, le);
+    text(lr.name, 330, 200, 16, lr.col); text(`${le} ELO`, 330, 236, 20, '#ffffff');
+    text('OFFLINE RANK (THIS COMPUTER)', 330, 276, 8, '#a1a7bb');
+    text('Sign in on the arcade to play people', 330, 296, 8, '#8b91a7');
+    if (button('rcpu', 140, 380, 400, 64, 'RANKED VS PRO CPU', { color: '#6366f1', size: 16 })) startCpuRanked();
   } else {
     // my card
     const m = NET.myRank || { elo: 1000, wins: 0, losses: 0, streak: 0, peak: 1000 }, rk = rankOf(m.elo);
@@ -1196,7 +1239,10 @@ function drawRanked() {
       text('FINDING AN OPPONENT' + '...'.slice(0, 1 + Math.floor(t * 2) % 3), 340, 390, 12, '#ffffff', 'center');
       text(`${Math.floor(NET.queueT)}s  ·  ${n} in queue`, 340, 414, 8, '#8b91a7', 'center');
       if (button('rcancel', 190, 430, 300, 40, 'CANCEL', { color: '#dc2626', size: 10, sfx: 'back' })) { NET.queue && NET.queue.leave(); NET.rscreen = 'home'; }
-    } else if (button('rfind', 140, 400, 400, 64, 'FIND MATCH', { color: '#d97706', size: 18 })) startQueue();
+    } else {
+      if (button('rfind', 140, 366, 400, 56, 'FIND MATCH', { color: '#d97706', size: 16 })) startQueue();
+      if (button('rcpu', 140, 430, 400, 40, 'RANKED VS PRO CPU', { color: '#6366f1', size: 11 })) startCpuRanked();
+    }
   }
   // leaderboard
   box(640, 140, 560, 460, '#11131e', '#334155');
@@ -1217,7 +1263,7 @@ function drawRanked() {
 { const jc = NetTransport.joinCode(); if (jc) setTimeout(() => { screen = 'online'; joinRoom(jc); }, 300); }
 
 window.__tag = { NET, hostRoom, joinRoom, netStart, rankOf, endMatch, openRanked, get screen() { return screen; }, get phase() { return phase; }, get score() { return score; }, get players() { return players; }, get it() { return itIdx; },
-  settings, startMatch, cpuInput, tileOf, setArena(i) { settings.arena = i; loadArena(ARENAS[i]); } };
+  settings, startMatch, cpuInput, tileOf, startCpuRanked, endMatch, setArena(i) { settings.arena = i; loadArena(ARENAS[i]); } };
 
 // ------------------------------------------------------------ owner cheats (only shown for the site admin, see account/cheats.js)
 const inMatch = () => screen === 'play' ? '' : 'Start a match first';
