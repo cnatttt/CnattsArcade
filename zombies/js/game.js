@@ -31,7 +31,7 @@ function modernPanel(x, y, w, h, border, fill) {
 function modernButton(x, y, w, h, base, over, pressed, disabled) {
   const dy = pressed ? 1 : over && !disabled ? -1 : 0, r = Math.min(12, h / 2);
   ctx.save(); if (!disabled) { ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = over ? 16 : 8; ctx.shadowOffsetY = 4; }
-  rrect(x, y + dy, w, h, r); const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, shade(base, over && !disabled ? 0.2 : 0.1)); g.addColorStop(1, shade(base, over && !disabled ? -0.02 : -0.12));
+  rrect(x, y + dy, w, h, r); const g = ctx.createLinearGradient(0, y, 0, y + h); const hexb = /^#[0-9a-f]{6}$/i.test(base); g.addColorStop(0, hexb ? shade(base, over && !disabled ? 0.2 : 0.1) : base); g.addColorStop(1, hexb ? shade(base, over && !disabled ? -0.02 : -0.12) : base);
   ctx.fillStyle = g; ctx.fill(); ctx.restore();
   rrect(x + 0.5, y + dy + 0.5, w - 1, h - 1, r); ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1; ctx.stroke();
   return dy;
