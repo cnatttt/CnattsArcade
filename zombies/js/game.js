@@ -11,7 +11,32 @@ const lo = document.createElement('canvas'); lo.width = VW * RS; lo.height = VH 
 const lx = lo.getContext('2d'); lx.imageSmoothingEnabled = false;
 const dark = document.createElement('canvas'); dark.width = VW; dark.height = VH;
 const dx_ = dark.getContext('2d');
-const FONT = '"Press Start 2P", monospace';
+const FONT = 'Inter, system-ui, sans-serif';
+const HEADF = '"Plus Jakarta Sans", Inter, sans-serif';
+const fontOf = size => size >= 24 ? `800 ${Math.round(size * 1.25)}px ${HEADF}` : `${size <= 8 ? 600 : 700} ${Math.round(size * (size <= 8 ? 1.5 : 1.3))}px ${FONT}`;
+function rrect(x, y, w, h, r) { r = Math.min(r, w / 2, h / 2); ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+function bigTitle(str, x, y, size, c1, c2) {
+  ctx.font = `800 ${size}px ${HEADF}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  const w = ctx.measureText(str).width, g = ctx.createLinearGradient(0, y, 0, y + size); g.addColorStop(0, c1); g.addColorStop(1, c2);
+  ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = size * 0.35; ctx.shadowOffsetY = size * 0.06; ctx.fillStyle = g; ctx.fillText(str, x, y); ctx.restore();
+  return w;
+}
+function modernPanel(x, y, w, h, border, fill) {
+  ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.45)'; ctx.shadowBlur = 28; ctx.shadowOffsetY = 10;
+  rrect(x, y, w, h, 16); ctx.fillStyle = fill; ctx.globalAlpha = 0.96; ctx.fill(); ctx.restore();
+  const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, 'rgba(255,255,255,0.07)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  rrect(x, y, w, h, 16); ctx.fillStyle = g; ctx.fill();
+  rrect(x + 0.5, y + 0.5, w - 1, h - 1, 16); ctx.strokeStyle = border; ctx.globalAlpha = 0.9; ctx.lineWidth = 1.5; ctx.stroke(); ctx.globalAlpha = 1;
+}
+function modernButton(x, y, w, h, base, over, pressed, disabled) {
+  const dy = pressed ? 1 : over && !disabled ? -1 : 0, r = Math.min(12, h / 2);
+  ctx.save(); if (!disabled) { ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = over ? 16 : 8; ctx.shadowOffsetY = 4; }
+  rrect(x, y + dy, w, h, r); const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, shade(base, over && !disabled ? 0.2 : 0.1)); g.addColorStop(1, shade(base, over && !disabled ? -0.02 : -0.12));
+  ctx.fillStyle = g; ctx.fill(); ctx.restore();
+  rrect(x + 0.5, y + dy + 0.5, w - 1, h - 1, r); ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1; ctx.stroke();
+  return dy;
+}
+
 
 // ------------------------------------------------------------ helpers
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -1031,32 +1056,25 @@ function drawLighting() {
 
 // ------------------------------------------------------------ UI helpers
 function text(s, x, y, size = 16, col = '#fff', align = 'left', shadow_ = true) {
-  ctx.font = `${size}px ${FONT}`; ctx.textAlign = align; ctx.textBaseline = 'top';
-  if (shadow_) { ctx.fillStyle = 'rgba(0,0,0,0.85)'; ctx.fillText(s, x + Math.max(2, size / 8), y + Math.max(2, size / 8)); }
-  ctx.fillStyle = col; ctx.fillText(s, x, y);
+  ctx.font = fontOf(size); ctx.textAlign = align; ctx.textBaseline = 'top';
+  if (shadow_) { ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = Math.max(4, size / 3); ctx.shadowOffsetY = Math.max(1, size / 10); ctx.fillStyle = col; ctx.fillText(s, x, y); ctx.restore(); }
+  else { ctx.fillStyle = col; ctx.fillText(s, x, y); }
 }
 function wrapText(s, x, y, maxW, size, col, lh, align = 'left') {
-  ctx.font = `${size}px ${FONT}`; const words = s.split(' '); let line = '', yy = y;
+  ctx.font = fontOf(size); const words = s.split(' '); let line = '', yy = y;
   words.forEach(w => { const tt = line ? line + ' ' + w : w; if (ctx.measureText(tt).width > maxW && line) { text(line, x, yy, size, col, align); line = w; yy += lh; } else line = tt; });
   if (line) text(line, x, yy, size, col, align); return yy + lh;
 }
 function panel(x, y, w, h, border = '#3a4a3a', fill = '#101410') {
-  ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(x + 6, y + 6, w, h);
-  ctx.fillStyle = '#050605'; ctx.fillRect(x, y, w, h);
-  ctx.fillStyle = border; ctx.fillRect(x + 3, y + 3, w - 6, h - 6);
-  ctx.fillStyle = fill; ctx.fillRect(x + 7, y + 7, w - 14, h - 14);
-  ctx.fillStyle = shade(border, 0.3); ctx.fillRect(x + 3, y + 3, w - 6, 2);
+  modernPanel(x, y, w, h, border, fill);
 }
 function button(id, x, y, w, h, label, o = {}) {
   const over = mouse.x >= x && mouse.x < x + w && mouse.y >= y && mouse.y < y + h;
   if (over && !o.disabled) UI.hover = id;
   const pressed = over && UI.down, base = o.disabled ? '#2a2e2a' : (o.color || '#2a5a2a'), dy = pressed ? 3 : 0;
-  ctx.fillStyle = '#050605'; ctx.fillRect(x, y + 4, w, h);
-  ctx.fillStyle = shade(base, -0.45); ctx.fillRect(x, y + dy, w, h);
-  ctx.fillStyle = over && !o.disabled ? shade(base, 0.15) : base; ctx.fillRect(x, y + dy, w, h - 5);
-  ctx.fillStyle = shade(base, 0.35); ctx.fillRect(x, y + dy, w, 3);
+  modernButton(x, y, w, h, base, over, pressed, o.disabled);
   if (o.draw) o.draw(x, y + dy);
-  if (label) text(label, x + w / 2, y + dy + (h - 5 - (o.size || 16)) / 2 + 1, o.size || 16, o.disabled ? '#6a706a' : (o.tc || '#ffffff'), 'center');
+  if (label) text(label, x + w / 2, y + dy + (h - (o.size || 16) * 1.3) / 2 + 1, o.size || 16, o.disabled ? '#6a706a' : (o.tc || '#ffffff'), 'center');
   const c = UI.click;
   if (c && c.x >= x && c.x < x + w && c.y >= y && c.y < y + h && c.px >= x && c.px < x + w && c.py >= y && c.py < y + h) { UI.click = null; if (o.disabled) { Sound.play('error'); return false; } Sound.play(o.sfx || 'click'); return true; }
   return false;
@@ -1153,7 +1171,7 @@ function drawTitle() {
   const vg = ctx.createRadialGradient(W / 2, H / 2, 200, W / 2, H / 2, 760); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.8)'); ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
   text('NIGHTFALL', W / 2, 60, 24, '#c8d8c8', 'center');
   const T = 'HORDE';
-  [...T].forEach((ch, i) => { const x = W / 2 - 2 * 92 + i * 92, y = 100 + Math.sin(t * 2 + i * 0.7) * 4; for (const [a, b] of [[-5, 0], [5, 0], [0, -5], [0, 5], [6, 6]]) text(ch, x + a, y + b, 80, '#0a1a04', 'center', false); text(ch, x, y, 80, i % 2 ? '#8aff4a' : '#b8ff6a', 'center', false); ctx.fillStyle = '#5ac83a'; ctx.fillRect(x - 6 + (i * 13) % 20, y + 80, 6, 10 + ((t * 20 + i * 7) % 26)); });
+  bigTitle(T, W / 2, 90, 110, '#ecfccb', '#4ade80');
   text('Survive 30 waves of the undead. Over 1,000 at once.', W / 2, 230, 8, '#a8b8a8', 'center');
   const C = charDef(save.char);
   if (button('play', W / 2 - 170, 290, 340, 76, 'PLAY', { color: '#2a6a1a', size: 24 })) startRun(save.char);
@@ -1338,7 +1356,7 @@ function frame(now) {
   // toasts
   toastQ.forEach((m, i) => {
     m.t += rdt; const a = m.t < 0.2 ? m.t / 0.2 : m.t > m.dur - 0.4 ? Math.max(0, (m.dur - m.t) / 0.4) : 1;
-    ctx.globalAlpha = a; ctx.font = `12px ${FONT}`; const tw = ctx.measureText(m.s).width + 40, y = 150 + i * 42;
+    ctx.globalAlpha = a; ctx.font = fontOf(12); const tw = ctx.measureText(m.s).width + 40, y = 150 + i * 42;
     ctx.fillStyle = 'rgba(4,6,4,0.85)'; ctx.fillRect(W / 2 - tw / 2, y, tw, 32); ctx.fillStyle = m.col; ctx.fillRect(W / 2 - tw / 2, y, 4, 32);
     text(m.s, W / 2, y + 10, 12, m.col, 'center'); ctx.globalAlpha = 1;
   });
@@ -1347,7 +1365,7 @@ function frame(now) {
   UI.lastHover = UI.hover; UI.click = null;
   requestAnimationFrame(frame);
 }
-const fontReady = document.fonts ? Promise.race([document.fonts.load(`16px ${FONT}`), new Promise(r => setTimeout(r, 2500))]) : Promise.resolve();
+const fontReady = document.fonts ? Promise.race([Promise.all([document.fonts.load(fontOf(16)), document.fonts.load(fontOf(30))]), new Promise(r => setTimeout(r, 2500))]) : Promise.resolve();
 fontReady.then(() => { state = 'title'; Sound.playSong(SONGS.zmenu); requestAnimationFrame(n => { last = n; frame(n); }); });
 
 window.__zb = {

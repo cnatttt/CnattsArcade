@@ -12,7 +12,32 @@ const PX = MW * S;                                 // side panel starts here (10
 const cv = document.getElementById('game'), ctx = cv.getContext('2d');
 const lo = document.createElement('canvas'); lo.width = MW; lo.height = MH + 4;
 let lx = lo.getContext('2d');
-const FONT = '"Press Start 2P", monospace';
+const FONT = 'Inter, system-ui, sans-serif';
+const HEADF = '"Plus Jakarta Sans", Inter, sans-serif';
+const fontOf = size => size >= 24 ? `800 ${Math.round(size * 1.25)}px ${HEADF}` : `${size <= 8 ? 600 : 700} ${Math.round(size * (size <= 8 ? 1.5 : 1.3))}px ${FONT}`;
+function rrect(x, y, w, h, r) { r = Math.min(r, w / 2, h / 2); ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+function bigTitle(str, x, y, size, c1, c2) {
+  ctx.font = `800 ${size}px ${HEADF}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  const w = ctx.measureText(str).width, g = ctx.createLinearGradient(0, y, 0, y + size); g.addColorStop(0, c1); g.addColorStop(1, c2);
+  ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = size * 0.35; ctx.shadowOffsetY = size * 0.06; ctx.fillStyle = g; ctx.fillText(str, x, y); ctx.restore();
+  return w;
+}
+function modernPanel(x, y, w, h, border, fill) {
+  ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.45)'; ctx.shadowBlur = 28; ctx.shadowOffsetY = 10;
+  rrect(x, y, w, h, 16); ctx.fillStyle = fill; ctx.globalAlpha = 0.96; ctx.fill(); ctx.restore();
+  const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, 'rgba(255,255,255,0.07)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  rrect(x, y, w, h, 16); ctx.fillStyle = g; ctx.fill();
+  rrect(x + 0.5, y + 0.5, w - 1, h - 1, 16); ctx.strokeStyle = border; ctx.globalAlpha = 0.9; ctx.lineWidth = 1.5; ctx.stroke(); ctx.globalAlpha = 1;
+}
+function modernButton(x, y, w, h, base, over, pressed, disabled) {
+  const dy = pressed ? 1 : over && !disabled ? -1 : 0, r = Math.min(12, h / 2);
+  ctx.save(); if (!disabled) { ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = over ? 16 : 8; ctx.shadowOffsetY = 4; }
+  rrect(x, y + dy, w, h, r); const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, shade(base, over && !disabled ? 0.2 : 0.1)); g.addColorStop(1, shade(base, over && !disabled ? -0.02 : -0.12));
+  ctx.fillStyle = g; ctx.fill(); ctx.restore();
+  rrect(x + 0.5, y + dy + 0.5, w - 1, h - 1, r); ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1; ctx.stroke();
+  return dy;
+}
+
 
 // ------------------------------------------------------------ helpers
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -748,32 +773,25 @@ function drawEnemy(e) {
 
 // ------------------------------------------------------------ UI helpers (full res)
 function text(s, x, y, size = 16, col = '#fff', align = 'left', shadow = true) {
-  ctx.font = `${size}px ${FONT}`; ctx.textAlign = align; ctx.textBaseline = 'top';
-  if (shadow) { ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.fillText(s, x + Math.max(2, size / 8), y + Math.max(2, size / 8)); }
-  ctx.fillStyle = col; ctx.fillText(s, x, y);
+  ctx.font = fontOf(size); ctx.textAlign = align; ctx.textBaseline = 'top';
+  if (shadow) { ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = Math.max(4, size / 3); ctx.shadowOffsetY = Math.max(1, size / 10); ctx.fillStyle = col; ctx.fillText(s, x, y); ctx.restore(); }
+  else { ctx.fillStyle = col; ctx.fillText(s, x, y); }
 }
 function wrapText(s, x, y, maxW, size, col, lh, align = 'left') {
-  ctx.font = `${size}px ${FONT}`; const words = s.split(' '); let line = '', yy = y;
+  ctx.font = fontOf(size); const words = s.split(' '); let line = '', yy = y;
   words.forEach(w => { const tt = line ? line + ' ' + w : w; if (ctx.measureText(tt).width > maxW && line) { text(line, x, yy, size, col, align); line = w; yy += lh; } else line = tt; });
   if (line) text(line, x, yy, size, col, align); return yy + lh;
 }
 function panel(x, y, w, h, border = '#5a4a3a', fill = '#1a140e') {
-  ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(x + 6, y + 6, w, h);
-  ctx.fillStyle = '#0a0806'; ctx.fillRect(x, y, w, h);
-  ctx.fillStyle = border; ctx.fillRect(x + 3, y + 3, w - 6, h - 6);
-  ctx.fillStyle = fill; ctx.fillRect(x + 7, y + 7, w - 14, h - 14);
-  ctx.fillStyle = shade(border, 0.3); ctx.fillRect(x + 3, y + 3, w - 6, 2);
+  modernPanel(x, y, w, h, border, fill);
 }
 function button(id, x, y, w, h, label, o = {}) {
   const over = mouse.x >= x && mouse.x < x + w && mouse.y >= y && mouse.y < y + h;
   if (over && !o.disabled) UI.hover = id;
   const pressed = over && UI.down, base = o.disabled ? '#3a3430' : (o.color || '#5a3a2a'), dy = pressed ? 3 : 0;
-  ctx.fillStyle = '#0a0806'; ctx.fillRect(x, y + 4, w, h);
-  ctx.fillStyle = shade(base, -0.45); ctx.fillRect(x, y + dy, w, h);
-  ctx.fillStyle = over && !o.disabled ? shade(base, 0.15) : base; ctx.fillRect(x, y + dy, w, h - 5);
-  ctx.fillStyle = shade(base, 0.35); ctx.fillRect(x, y + dy, w, 3);
+  modernButton(x, y, w, h, base, over, pressed, o.disabled);
   if (o.draw) o.draw(x, y + dy);
-  if (label) text(label, x + w / 2, y + dy + (h - 5 - (o.size || 16)) / 2 + 1 + (o.oy || 0), o.size || 16, o.disabled ? '#7a7068' : (o.tc || '#ffffff'), 'center');
+  if (label) text(label, x + w / 2, y + dy + (h - (o.size || 16) * 1.3) / 2 + 1 + (o.oy || 0), o.size || 16, o.disabled ? '#7a7068' : (o.tc || '#ffffff'), 'center');
   const c = UI.click;
   if (c && c.x >= x && c.x < x + w && c.y >= y && c.y < y + h && c.px >= x && c.px < x + w && c.py >= y && c.py < y + h) { UI.click = null; if (o.disabled) { Sound.play('error'); return false; } Sound.play(o.sfx || 'click'); return true; }
   return false;
@@ -910,7 +928,7 @@ function drawMenu() {
   ctx.fillStyle = 'rgba(10,6,4,0.55)'; ctx.fillRect(0, 0, W, H);
   // title
   const t1 = 'NIGHTFALL', t2 = 'SIEGE';
-  [...t1].forEach((ch, i) => { const x = W / 2 - t1.length * 23 + i * 46 + 23, y = 40 + Math.sin(t * 2 + i * 0.5) * 3; for (const [a, b] of [[-4, 0], [4, 0], [0, -4], [0, 4], [5, 5]]) text(ch, x + a, y + b, 48, '#1a0a04', 'center', false); text(ch, x, y, 48, i % 2 ? '#ffcc66' : '#ffe680', 'center', false); });
+  bigTitle(t1, W / 2, 30, 64, '#fff1c2', '#f59e0b');
   text(t2, W / 2, 104, 32, '#ff8a3a', 'center');
   text('defend the castle - a tower defense by Cnatt', W / 2, 150, 8, '#c8b8a0', 'center');
   // map cards
@@ -1080,7 +1098,7 @@ function frame(now) {
   // toasts
   toastQ.forEach((m, i) => {
     m.t += rdt; const a = m.t < 0.2 ? m.t / 0.2 : m.t > m.dur - 0.4 ? Math.max(0, (m.dur - m.t) / 0.4) : 1;
-    ctx.globalAlpha = a; ctx.font = `12px ${FONT}`; const tw = ctx.measureText(m.s).width + 40, y = 70 + i * 42, cx = screen === 'play' ? PX / 2 : W / 2;
+    ctx.globalAlpha = a; ctx.font = fontOf(12); const tw = ctx.measureText(m.s).width + 40, y = 70 + i * 42, cx = screen === 'play' ? PX / 2 : W / 2;
     ctx.fillStyle = 'rgba(10,6,4,0.85)'; ctx.fillRect(cx - tw / 2, y, tw, 32); ctx.fillStyle = m.col; ctx.fillRect(cx - tw / 2, y, 4, 32);
     text(m.s, cx, y + 10, 12, m.col, 'center'); ctx.globalAlpha = 1;
   });
@@ -1090,7 +1108,7 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
-const fontReady = document.fonts ? Promise.race([document.fonts.load(`16px ${FONT}`), new Promise(r => setTimeout(r, 2500))]) : Promise.resolve();
+const fontReady = document.fonts ? Promise.race([Promise.all([document.fonts.load(fontOf(16)), document.fonts.load(fontOf(30))]), new Promise(r => setTimeout(r, 2500))]) : Promise.resolve();
 fontReady.then(() => { screen = 'menu'; Sound.playSong(SONGS.smenu); requestAnimationFrame(n => { last = n; frame(n); }); });
 
 window.__sg = { get G() { return G; }, get screen() { return screen; }, get towers() { return towers; }, get enemies() { return enemies; }, newGame, sell, cast: castSpell, meteor(x, y) { dropMeteor(x, y); }, place(id, c, r) { placing = id; place(c, r); placing = null; }, startWave, upgrade, isPath: (c, r) => isPath(c, r), tileFree: (c, r) => tileFree(c, r), sim(dt, n) { for (let k = 0; k < n && screen === 'play'; k++) { update(dt); updateFx(dt); } return screen; }, save: () => save, setScreen(s) { screen = s; }, get pathLen() { return pathLen; } };

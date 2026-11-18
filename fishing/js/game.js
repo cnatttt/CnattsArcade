@@ -12,7 +12,32 @@ const cv = document.getElementById('game');
 const ctx = cv.getContext('2d');
 const lo = document.createElement('canvas'); lo.width = LW; lo.height = LH;
 const lx = lo.getContext('2d');
-const FONT = '"Press Start 2P", monospace';
+const FONT = 'Inter, system-ui, sans-serif';
+const HEADF = '"Plus Jakarta Sans", Inter, sans-serif';
+const fontOf = size => size >= 24 ? `800 ${Math.round(size * 1.25)}px ${HEADF}` : `${size <= 8 ? 600 : 700} ${Math.round(size * (size <= 8 ? 1.5 : 1.3))}px ${FONT}`;
+function rrect(x, y, w, h, r) { r = Math.min(r, w / 2, h / 2); ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+function bigTitle(str, x, y, size, c1, c2) {
+  ctx.font = `800 ${size}px ${HEADF}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  const w = ctx.measureText(str).width, g = ctx.createLinearGradient(0, y, 0, y + size); g.addColorStop(0, c1); g.addColorStop(1, c2);
+  ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = size * 0.35; ctx.shadowOffsetY = size * 0.06; ctx.fillStyle = g; ctx.fillText(str, x, y); ctx.restore();
+  return w;
+}
+function modernPanel(x, y, w, h, border, fill) {
+  ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.45)'; ctx.shadowBlur = 28; ctx.shadowOffsetY = 10;
+  rrect(x, y, w, h, 16); ctx.fillStyle = fill; ctx.globalAlpha = 0.96; ctx.fill(); ctx.restore();
+  const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, 'rgba(255,255,255,0.07)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  rrect(x, y, w, h, 16); ctx.fillStyle = g; ctx.fill();
+  rrect(x + 0.5, y + 0.5, w - 1, h - 1, 16); ctx.strokeStyle = border; ctx.globalAlpha = 0.9; ctx.lineWidth = 1.5; ctx.stroke(); ctx.globalAlpha = 1;
+}
+function modernButton(x, y, w, h, base, over, pressed, disabled) {
+  const dy = pressed ? 1 : over && !disabled ? -1 : 0, r = Math.min(12, h / 2);
+  ctx.save(); if (!disabled) { ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = over ? 16 : 8; ctx.shadowOffsetY = 4; }
+  rrect(x, y + dy, w, h, r); const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, shade(base, over && !disabled ? 0.2 : 0.1)); g.addColorStop(1, shade(base, over && !disabled ? -0.02 : -0.12));
+  ctx.fillStyle = g; ctx.fill(); ctx.restore();
+  rrect(x + 0.5, y + dy + 0.5, w - 1, h - 1, r); ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1; ctx.stroke();
+  return dy;
+}
+
 
 // ------------------------------------------------------------ helpers
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -693,12 +718,12 @@ function drawBobber() {
 
 // ------------------------------------------------------------ UI primitives (full-res)
 function text(s, x, y, size = 16, col = '#fff', align = 'left', shadow = true) {
-  ctx.font = `${size}px ${FONT}`; ctx.textAlign = align; ctx.textBaseline = 'top';
-  if (shadow) { ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillText(s, x + Math.max(2, size / 8), y + Math.max(2, size / 8)); }
-  ctx.fillStyle = col; ctx.fillText(s, x, y);
+  ctx.font = fontOf(size); ctx.textAlign = align; ctx.textBaseline = 'top';
+  if (shadow) { ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = Math.max(4, size / 3); ctx.shadowOffsetY = Math.max(1, size / 10); ctx.fillStyle = col; ctx.fillText(s, x, y); ctx.restore(); }
+  else { ctx.fillStyle = col; ctx.fillText(s, x, y); }
 }
 function wrap(s, x, y, maxW, size, col, lineH) {
-  ctx.font = `${size}px ${FONT}`;
+  ctx.font = fontOf(size);
   const words = s.split(' '); let line = '', yy = y;
   words.forEach(w => {
     const test = line ? line + ' ' + w : w;
@@ -708,14 +733,8 @@ function wrap(s, x, y, maxW, size, col, lineH) {
   return yy + lineH;
 }
 function panel(x, y, w, h, fill = '#1a1530', border = '#3a2f63', light = null) {
-  x = Math.round(x); y = Math.round(y);
-  ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(x + 8, y + 8, w, h);
-  ctx.fillStyle = '#0a0812'; ctx.fillRect(x + 4, y, w - 8, h); ctx.fillRect(x, y + 4, w, h - 8);
-  ctx.fillStyle = border; ctx.fillRect(x + 8, y + 4, w - 16, h - 8); ctx.fillRect(x + 4, y + 8, w - 8, h - 16);
-  ctx.fillStyle = light || shade(border, 0.35); ctx.fillRect(x + 8, y + 4, w - 16, 4); ctx.fillRect(x + 4, y + 8, 4, h - 16);
-  ctx.fillStyle = fill; ctx.fillRect(x + 12, y + 12, w - 24, h - 24);
-  ctx.fillStyle = 'rgba(255,255,255,0.025)';
-  for (let yy = y + 12; yy < y + h - 12; yy += 16) ctx.fillRect(x + 12, yy, w - 24, 8);
+  modernPanel(x, y, w, h, border, fill);
+  void light;
 }
 function hitRegion(x, y, w, h) { UI.regions.push([x, y, w, h]); }
 function button(id, x, y, w, h, label, o = {}) {
@@ -725,19 +744,14 @@ function button(id, x, y, w, h, label, o = {}) {
   if (over && !o.disabled) UI.hover = id;
   const base = o.disabled ? '#3a3a4a' : (o.color || '#4a3a8a');
   const top = pressed ? 4 : 0;
-  ctx.fillStyle = '#0a0812';
-  ctx.fillRect(x + 4, y, w - 8, h); ctx.fillRect(x, y + 4, w, h - 8);
-  ctx.fillStyle = shade(base, -0.45); ctx.fillRect(x + 4, y + h - 12, w - 8, 8);
-  ctx.fillStyle = over && !o.disabled ? shade(base, 0.15) : base;
-  ctx.fillRect(x + 4, y + 4 + top, w - 8, h - 16 + (pressed ? -4 : 0) + (pressed ? 4 : 0) - (pressed ? 4 : 0));
-  ctx.fillStyle = shade(base, over && !o.disabled ? 0.45 : 0.3); ctx.fillRect(x + 8, y + 4 + top, w - 16, 4);
+  modernButton(x, y, w, h, base, over, pressed, o.disabled);
   if (o.icon) {
     const isz = o.iconSize || 24;
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(o.icon, x + 12, y + (h - 8 - isz) / 2 + top, isz, isz);
   }
   const sz = o.size || 16;
-  text(label, x + w / 2 + (o.icon ? 14 : 0), y + (h - 8 - sz) / 2 + top + 1, sz, o.disabled ? '#8a8a9a' : (o.textCol || '#ffffff'), 'center');
+  text(label, x + w / 2 + (o.icon ? 14 : 0), y + (h - sz * 1.3) / 2 + top + 1, sz, o.disabled ? '#8a8a9a' : (o.textCol || '#ffffff'), 'center');
   const c = UI.click;
   if (c && inRect(c.x, c.y, x, y, w, h) && inRect(c.px, c.py, x, y, w, h)) {
     UI.click = null;
@@ -946,7 +960,7 @@ function drawShop() {
   ctx.fillStyle = '#16101e'; ctx.fillRect(kx - 10, ky - 10, 290, 4); ctx.fillRect(kx - 10, ky + 116, 290, 4);
   ctx.fillRect(kx - 10, ky - 10, 4, 130); ctx.fillRect(kx + 276, ky - 10, 4, 130);
   ctx.fillStyle = '#f2f0e8'; ctx.fillRect(kx + 120, ky + 120, 20, 12); ctx.fillRect(kx + 126, ky + 132, 8, 8);
-  ctx.font = `12px ${FONT}`;
+  ctx.font = fontOf(12);
   const words = shown.split(' '); let line = '', yy = ky + 10;
   words.forEach(wd => { const tst = line ? line + ' ' + wd : wd; if (ctx.measureText(tst).width > 250 && line) { text(line, kx + 6, yy, 12, '#16101e', 'left', false); line = wd; yy += 22; } else line = tst; });
   if (line) text(line, kx + 6, yy, 12, '#16101e', 'left', false);
@@ -1033,7 +1047,7 @@ function drawGear() {
     const eq = save.rod === r.id;
     ctx.fillStyle = eq ? rgba(l.accent, 0.25) : 'rgba(0,0,0,0.3)'; ctx.fillRect(bx, by, 136, 110);
     sprite(rodIcon(r), bx + 41, by + 8, 3);
-    ctx.font = `8px ${FONT}`;
+    ctx.font = fontOf(8);
     text(r.name.length > 14 ? r.name.slice(0, 13) + '.' : r.name, bx + 68, by + 68, 8, '#ffffff', 'center');
     hitRegion(bx, by, 136, 110);
     if (eq) text('EQUIPPED', bx + 68, by + 88, 8, l.accent, 'center');
@@ -1426,7 +1440,7 @@ function drawTank() {
   if (!tankFish.length) text('Catch some fish and they will swim here!', W / 2, ty + th / 2 - 20, 12, '#c8e8ff', 'center');
   if (tankHover) {
     const f = tankHover.f, d = save.dex[f.id];
-    ctx.font = `12px ${FONT}`;
+    ctx.font = fontOf(12);
     const label = `${f.name}  -  best ${d.best >= 100 ? (d.best / 100).toFixed(1) + 'm' : d.best + 'cm'}`;
     const lw2 = ctx.measureText(label).width + 24;
     ctx.fillStyle = 'rgba(5,4,14,0.85)'; ctx.fillRect(UI.mx + 14, UI.my - 34, lw2, 30);
@@ -1447,11 +1461,7 @@ function drawVignette() {
 function drawTitle() {
   ctx.fillStyle = 'rgba(4,2,12,0.35)'; ctx.fillRect(0, 0, W, H);
   const title = 'FISHING', sub = 'SIMULATOR';
-  [...title].forEach((ch, i) => {
-    const y = 150 + Math.sin(t * 2.5 + i * 0.5) * 10, x = W / 2 - (title.length * 72) / 2 + i * 72 + 36;
-    for (const [ox, oy] of [[-4, 0], [4, 0], [0, -4], [0, 4], [4, 4], [6, 8]]) text(ch, x + ox, y + oy, 64, '#2a1408', 'center', false);
-    text(ch, x, y, 64, i % 2 ? '#ffe680' : '#ffcc33', 'center', false);
-  });
+  bigTitle(title, W / 2, 140, 96, '#fff4c2', '#f5b40b');
   text(sub, W / 2, 250, 32, '#a8d8ff', 'center');
   if (Math.random() < 0.03) jumpers.push({ x: rand(140, 290), y: rand(HORIZON + 10, 150), t: 0, dur: 0.8, fish: pick(FISH.filter(f => f.lake === save.lake)), big: true });
   text('by Cnatt', W / 2, 306, 12, '#c8c0e8', 'center');
@@ -1531,7 +1541,7 @@ function frame(now) {
     m.t += dt;
     const a = m.t < 0.2 ? m.t / 0.2 : m.t > m.dur - 0.4 ? Math.max(0, (m.dur - m.t) / 0.4) : 1;
     ctx.globalAlpha = a;
-    ctx.font = `12px ${FONT}`;
+    ctx.font = fontOf(12);
     const tw = ctx.measureText(m.text).width + 40;
     const y = 100 + i * 44;
     ctx.fillStyle = 'rgba(8,6,20,0.85)'; ctx.fillRect(W / 2 - tw / 2, y, tw, 34);
@@ -1548,7 +1558,7 @@ function frame(now) {
 // ------------------------------------------------------------ boot
 ctx.fillStyle = '#07061a'; ctx.fillRect(0, 0, W, H);
 ctx.fillStyle = '#fff'; ctx.font = '16px monospace'; ctx.textAlign = 'center'; ctx.fillText('Loading...', W / 2, H / 2);
-const fontReady = document.fonts ? Promise.race([document.fonts.load(`16px ${FONT}`), new Promise(r => setTimeout(r, 2500))]) : Promise.resolve();
+const fontReady = document.fonts ? Promise.race([Promise.all([document.fonts.load(fontOf(16)), document.fonts.load(fontOf(30))]), new Promise(r => setTimeout(r, 2500))]) : Promise.resolve();
 Promise.all([...loading, fontReady]).then(() => {
   load();
   coinShown = save.coins;
