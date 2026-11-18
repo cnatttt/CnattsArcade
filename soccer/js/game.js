@@ -74,7 +74,7 @@ function startMatch(m) {
   const humans = m.humans || [];   // [{team, ctrl, name, own}]
   for (let team = 0; team < 2; team++) for (let slot = 0; slot < m.size; slot++) {
     const h = humans.find(x => x.team === team && x.slot === slot);
-    const c = makeCar(team, slot, h ? h.ctrl : 'cpu', h ? h.name : ['ROOKIE', 'PRO', 'ALL-STAR'][m.cpu] + (m.size > 1 ? ' ' + (slot + 1) : ''));
+    const c = makeCar(team, slot, h ? h.ctrl : 'cpu', h ? h.name : ['ROOKIE', 'PRO', 'ALL-STAR', 'LEGEND'][m.cpu] + (m.size > 1 ? ' ' + (slot + 1) : ''));
     c.own = !!(h && h.own); c.human = !!h; cars.push(c);
   }
   kickoffPositions();
@@ -135,7 +135,8 @@ function updateCar(c, dt, frozen) {
   } else vf *= Math.exp(-dt * 6);
   I.fl = false;
   vl *= Math.exp(-dt * (c.flipT > 0 ? 3 : 9));
-  const cap = c.boosting || c.flipT > 0 ? BOOSTV : MAXV;
+  const legend = !c.human && match && match.cpu === 3 ? 1.05 : 1;
+  const cap = (c.boosting || c.flipT > 0 ? BOOSTV : MAXV) * legend;
   vf = clamp(vf, -MAXV * 0.55, cap);
   const nfx = Math.cos(c.a), nfy = Math.sin(c.a);
   c.vx = nfx * vf - nfy * vl; c.vy = nfy * vf + nfx * vl;
@@ -229,7 +230,8 @@ function endMatch() {
       store();
     }
   }
-  { const me = cars.find(c => c.ctrl === 'p1' || c.ctrl === 'net-me'); if (window.Arcade && me && match.mode !== 'local') Arcade.event('soccer', 'match', { won: me.team === winner, goals: me.goals || 0, cpu: match.cpu }); }
+  { const me = cars.find(c => c.ctrl === 'p1' || c.ctrl === 'net-me' || c.ctrl === 'p1both'); if (window.Arcade && me && match.mode !== 'local') Arcade.event('soccer', 'match', { won: me.team === winner, goals: me.goals || 0, cpu: match.cpu });
+    rankedFinish(); }
   if (NET.role === 'host') netSendState(true);
 }
 
@@ -241,10 +243,10 @@ function aiDrive(c, dt) {
   const mates = cars.filter(o => o.team === c.team);
   const closest = mates.reduce((b, o) => Math.hypot(o.x - ball.x, o.y - ball.y) < Math.hypot(b.x - ball.x, b.y - ball.y) ? o : b, mates[0]);
   if (c.ai.t <= 0) {
-    c.ai.t = [0.32, 0.14, 0.03][lvl];
-    const err = [70, 28, 6][lvl];
+    c.ai.t = [0.32, 0.14, 0.03, 0.012][lvl];
+    const err = [70, 28, 6, 1.5][lvl];
     // predict the ball a little
-    const look = [0.08, 0.18, 0.22][lvl];
+    const look = [0.08, 0.18, 0.22, 0.26][lvl];
     const bx = ball.x + ball.vx * look, by = ball.y + ball.vy * look;
     let tx, ty;
     const dangerous = Math.sign(ball.vx) === Math.sign(ownX) && Math.abs(ball.x - ownX) < 520;
@@ -262,9 +264,9 @@ function aiDrive(c, dt) {
   const want = Math.atan2(c.ai.ty - c.y, c.ai.tx - c.x), d = angDiff(c.a, want), dist = Math.hypot(c.ai.tx - c.x, c.ai.ty - c.y);
   if (Math.abs(d) > 2.2 && dist < 140) { I.th = -1; I.st = clamp(-d * 2, -1, 1); }
   else { I.th = dist > 30 ? 1 : 0.3; I.st = clamp(d * 2.6, -1, 1); }
-  I.bo = c.boost > [40, 15, 5][lvl] && Math.abs(d) < 0.3 && dist > [420, 260, 160][lvl];
+  I.bo = c.boost > [40, 15, 5, 2][lvl] && Math.abs(d) < 0.3 && dist > [420, 260, 160, 110][lvl];
   const bd = Math.hypot(ball.x - c.x, ball.y - c.y), ba = Math.abs(angDiff(c.a, Math.atan2(ball.y - c.y, ball.x - c.x)));
-  I.fl = lvl > 0 && bd < 95 && ba < 0.35 && Math.random() < [0, 0.3, 0.6][lvl];
+  I.fl = lvl > 0 && bd < 95 && ba < 0.35 && Math.random() < [0, 0.3, 0.6, 0.9][lvl];
   if (lvl === 0) I.th *= 0.85;
 }
 
@@ -442,22 +444,82 @@ function drawHUD() {
 }
 
 // ------------------------------------------------------------ online (host runs the game; guest sends controls)
+// ------------------------------------------------------------ ranked (vs LEGEND CPU or a player online)
+const RK = { screen: 'home', q: null, online: false, started: false, result: null, matchId: null, opp: null, cpuElo: 1300, err: '' };
+function rankedFinish() {
+  if (!match || !match.ranked || RK.result) return;
+  const me = cars.find(c => c.ctrl === 'p1' || c.ctrl === 'net-me' || c.ctrl === 'p1both'); if (!me) return;
+  const won = me.team === winner; RK.result = { pending: true, won };
+  const done = r => { RK.result = Object.assign(r, { won }); };
+  if (match.ranked === 'cpu') Ranked.cpu('soccer', RK.cpuElo, won ? 1 : 0).then(done);
+  else Ranked.report('soccer', RK.matchId, RK.opp && RK.opp.id, won).then(done);
+}
+function startRankedCpu() {
+  RK.online = false; RK.result = null; RK.cpuElo = Math.max(1300, Ranked.elo('soccer') + 150);
+  startMatch({ mode: 'cpu', ranked: 'cpu', size: 1, cpu: 3, time: 180, humans: [{ team: 0, slot: 0, ctrl: 'p1both', name: myName(), own: OWN() }] });
+}
+function findRanked() {
+  if (!Ranked.signedIn()) { RK.err = 'Sign in on the arcade to play ranked online.'; return; }
+  RK.err = ''; RK.screen = 'queue';
+  RK.q = Ranked.queue('soccer', m => {
+    RK.q = null; RK.online = true; RK.started = false; RK.opp = m.opp; RK.screen = 'connecting';
+    if (m.role === 'host') hostRoom(m.code); else joinRoom(m.code);
+    setTimeout(() => { if (RK.screen === 'connecting' && !RK.started) { netReset(); RK.online = false; RK.screen = 'home'; RK.err = 'Could not connect to the other player.'; screen = 'ranked'; } }, 25000);
+  });
+}
+function drawRanked(dt) {
+  demoTick(dt);
+  ctx.fillStyle = 'rgba(8,9,13,0.72)'; ctx.fillRect(0, 0, W, H);
+  U.txt('Ranked', 70, 44, 42, '#fff', 'left', { head: true, weight: 800 });
+  U.txt('1v1, 3 minutes. Beat the LEGEND computer or a real player to climb.', 72, 100, 15, '#cbd5e1', 'left', { weight: 600 });
+  const st = Ranked.state.soccer || {}, m = st.me || { elo: Ranked.elo('soccer'), wins: 0, losses: 0, peak: 1000 }, rk = Ranked.rankOf(m.elo);
+  U.panel(70, 140, 560, 290);
+  Ranked.drawBadge(ctx, 170, 250, 2.2 + Math.sin(t * 2) * 0.04, m.elo);
+  U.txt(rk.name, 270, 184, 26, rk.col, 'left', { head: true, weight: 800 });
+  U.txt(`${m.elo} Elo`, 270, 224, 22, '#fff', 'left', { weight: 800 });
+  U.rr(270, 264, 320, 10, 5); ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fill();
+  U.rr(270, 264, Math.max(10, 320 * clamp((m.elo - rk.lo) / (rk.hi - rk.lo), 0, 1)), 10, 5); ctx.fillStyle = rk.col; ctx.fill();
+  U.txt(`${m.wins || 0} wins  ·  ${m.losses || 0} losses  ·  best ${m.peak || m.elo}`, 270, 290, 14, '#94a3b8', 'left', { weight: 600 });
+  U.txt(Ranked.signedIn() ? 'Your rank is saved to your account.' : 'Not signed in: your rank stays on this computer.', 94, 352, 13, Ranked.signedIn() ? '#86efac' : '#fbbf24', 'left', { weight: 600 });
+  if (RK.err || st.err) U.txt(RK.err || st.err, 94, 380, 13, '#f87171', 'left', { weight: 700 });
+  U.panel(650, 140, 560, 290);
+  U.txt('Top players', 674, 160, 18, '#fff', 'left', { weight: 800 });
+  const top = st.top || [];
+  if (!top.length) U.txt(Ranked.signedIn() ? (st.loading ? 'Loading…' : 'Nobody ranked yet. Be the first!') : 'Sign in to see the online ladder.', 674, 200, 14, '#94a3b8', 'left', { weight: 600 });
+  top.forEach((r, i) => { const y = 196 + i * 28, rr2 = Ranked.rankOf(r.elo); U.txt(`${i + 1}.`, 690, y, 14, '#94a3b8', 'right', { weight: 700 }); U.txt((r.profiles && r.profiles.username) || 'player', 704, y, 14, '#fff', 'left', { weight: 700 }); U.txt(rr2.name, 1050, y, 13, rr2.col, 'right', { weight: 700 }); U.txt(String(r.elo), 1186, y, 14, '#fde047', 'right', { weight: 800 }); });
+  if (RK.screen === 'home') {
+    if (U.button('rcpu', 70, 460, 360, 84, 'VS LEGEND CPU', { color: '#3b82f6', size: 20 })) startRankedCpu();
+    U.txt('Fastest, smartest computer driver', 250, 552, 13, '#94a3b8', 'center', { weight: 600 });
+    if (U.button('rpvp', 450, 460, 360, 84, 'FIND A PLAYER', { color: Ranked.signedIn() ? '#f59e0b' : '#475569', size: 20 })) findRanked();
+    U.txt('1v1 against a real player online', 630, 552, 13, '#94a3b8', 'center', { weight: 600 });
+    if (U.button('rback', 830, 460, 380, 84, 'BACK', { ghost: true, size: 18, sfx: 'back' })) screen = 'title';
+  } else {
+    const secs = RK.q ? Math.floor((Date.now() - RK.q.started) / 1000) : 0;
+    U.panel(70, 460, 740, 84); U.txt(RK.screen === 'queue' ? `Looking for a player…  ${secs}s` : 'Connecting…', 100, 502, 22, '#fff', 'left', { base: 'middle', weight: 800 });
+    if (RK.screen === 'queue' && secs > 40) U.txt('Nobody around? Try the LEGEND CPU meanwhile.', 100, 562, 13, '#94a3b8', 'left', { weight: 600 });
+    if (U.button('rcancel', 830, 460, 380, 84, 'CANCEL', { ghost: true, size: 18, sfx: 'back' })) { if (RK.q) RK.q.cancel(); RK.q = null; netReset(); RK.online = false; RK.screen = 'home'; }
+  }
+}
+function openRanked() { screen = 'ranked'; RK.screen = 'home'; RK.err = ''; Ranked.load('soccer'); }
 const NET = { role: null, code: '', screen: 'menu', error: '', input: { value: '', max: 6, upper: true, allow: /[a-zA-Z0-9]/ }, names: ['', ''], own: [false, false], snaps: [], guest: null, size: 1, cpu: 1 };
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const netSend = m => NET.tr && NET.tr.broadcast(m);
 function netReset() { NetTransport.announce('soccer', null); if (NET.tr) try { NET.tr.close(); } catch (e) {} NET.tr = null; NET.role = null; NET.guest = null; NET.snaps = []; }
-function netLost(why) { netReset(); NET.error = why; NET.screen = 'menu'; screen = 'online'; Sound.playSong(SONGS.soccerMenu); }
-function hostRoom() {
+function netLost(why) {
+  if (RK.online) { if (screen === 'play' && match && match.ranked && !RK.result) { const me = cars.find(c => c.ctrl === 'p1' || c.ctrl === 'net-me' || c.ctrl === 'p1both'); winner = me ? me.team : 0; rankedFinish(); screen = 'over'; netReset(); return; } netReset(); RK.online = false; RK.screen = 'home'; RK.err = why; screen = 'ranked'; Sound.playSong(SONGS.soccerMenu); return; }
+  netReset(); NET.error = why; NET.screen = 'menu'; screen = 'online'; Sound.playSong(SONGS.soccerMenu);
+}
+function hostRoom(code) {
   netReset(); NET.error = ''; NET.role = 'host'; NET.screen = 'connecting';
-  NET.code = Array.from({ length: 5 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
+  NET.code = code || Array.from({ length: 5 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
   NET.names = [myName(), '']; NET.own = [OWN(), false];
   NET.tr = NetTransport.host(NET.code, {
-    ready: () => { NET.screen = 'lobby'; NetTransport.announce('soccer', NET.code); },
+    ready: () => { NET.screen = 'lobby'; if (!RK.online) NetTransport.announce('soccer', NET.code); },
     join: id => { if (NET.guest && NET.guest !== id) { NET.tr.send(id, { t: 'full' }); return; } NET.guest = id; },
     leave: id => { if (id !== NET.guest) return; NET.guest = null; NET.names[1] = ''; if (screen === 'play') netLost('The other player left.'); else lobbySync(); },
     msg: (id, d) => {
       if (id !== NET.guest) return;
-      if (d.t === 'hello') { NET.names[1] = String(d.name || 'Guest').slice(0, 16); NET.own[1] = !!d.own; lobbySync(); }
+      if (d.t === 'hello') { NET.names[1] = String(d.name || 'Guest').slice(0, 16); NET.own[1] = !!d.own; lobbySync(); if (RK.online && screen !== 'play' && !RK.started) { RK.started = true; setTimeout(() => hostStart(), 800); } }
       else if (d.t === 'in') { const c = cars.find(x => x.ctrl === 'net'); if (c) { c.in.th = clamp(+d.th || 0, -1, 1); c.in.st = clamp(+d.st || 0, -1, 1); c.in.bo = !!d.bo; if (d.fn !== NET.lastFn) { NET.lastFn = d.fn; c.in.fl = true; } } }
       else if (d.t === 'bye') netLost('The other player left.');
     },
@@ -468,14 +530,14 @@ function joinRoom(code) {
   netReset(); NET.error = ''; NET.role = 'client'; NET.code = code.toUpperCase(); NET.screen = 'connecting'; screen = 'online';
   NET.tr = NetTransport.join(NET.code, {
     ready: () => {
-      NetTransport.announce('soccer', NET.code);
+      if (!RK.online) NetTransport.announce('soccer', NET.code);
       const hello = () => netSend({ t: 'hello', name: myName(), own: OWN() }); hello();
       let n = 0; const tr = NET.tr; const iv = setInterval(() => { if (NET.tr !== tr || NET.screen === 'lobby' || screen === 'play' || ++n > 10) { clearInterval(iv); if (NET.tr === tr && NET.screen !== 'lobby' && screen !== 'play') netLost('The room did not answer.'); return; } hello(); }, 1500);
     },
     leave: () => netLost('Lost connection to the host.'),
     msg: (id, d) => {
       if (d.t === 'lobby') { NET.screen = 'lobby'; NET.names = d.names; NET.own = d.own; NET.size = d.size; NET.cpu = d.cpu; }
-      else if (d.t === 'start') { startMatch({ mode: 'online', size: d.size, cpu: d.cpu, time: d.time, humans: d.humans.map(h => Object.assign({}, h, { ctrl: h.team === 1 && h.slot === 0 ? 'net-me' : 'remote' })) }); NET.snaps = []; }
+      else if (d.t === 'start') { if (d.ranked) { RK.matchId = d.matchId; RK.result = null; RK.started = true; } startMatch({ mode: 'online', ranked: d.ranked ? 'online' : null, size: d.size, cpu: d.cpu, time: d.time, humans: d.humans.map(h => Object.assign({}, h, { ctrl: h.team === 1 && h.slot === 0 ? 'net-me' : 'remote' })) }); NET.snaps = []; }
       else if (d.t === 'S') applySnap(d);
       else if (d.t === 'closed' || d.t === 'bye') netLost('The host left.');
       else if (d.t === 'full') netLost('That room is full.');
@@ -486,8 +548,9 @@ function joinRoom(code) {
 function lobbySync() { if (NET.role === 'host') netSend({ t: 'lobby', names: NET.names, own: NET.own, size: save.set.size, cpu: save.set.cpu }); }
 function hostStart() {
   const humans = [{ team: 0, slot: 0, ctrl: 'p1both', name: NET.names[0], own: NET.own[0] }, { team: 1, slot: 0, ctrl: 'net', name: NET.names[1], own: NET.own[1] }];
-  const m = { mode: 'online', size: save.set.size, cpu: save.set.cpu, time: save.set.time, humans };
-  netSend({ t: 'start', size: m.size, cpu: m.cpu, time: m.time, humans: humans.map(h => ({ team: h.team, slot: h.slot, name: h.name, own: h.own })) });
+  const m = { mode: 'online', size: RK.online ? 1 : save.set.size, cpu: save.set.cpu, time: RK.online ? 180 : save.set.time, humans, ranked: RK.online ? 'online' : null };
+  if (RK.online) { RK.matchId = NET.code + '-' + Date.now().toString(36); RK.result = null; }
+  netSend({ t: 'start', ranked: !!RK.online, matchId: RK.matchId, size: m.size, cpu: m.cpu, time: m.time, humans: humans.map(h => ({ team: h.team, slot: h.slot, name: h.name, own: h.own })) });
   startMatch(m);
 }
 let sendT = 0;
@@ -501,6 +564,7 @@ function netSendState(force) {
 function applySnap(d) {
   const prevPhase = phase;
   score = d.s; timeLeft = d.tl; overtime = d.ot; phase = d.ph; phaseT = d.pt; lastTouch = d.lt; winner = d.w; goalFx = d.g;
+  if (d.sc === 'over' && match && match.ranked) rankedFinish();
   d.c.forEach((a, i) => { const c = cars[i]; if (!c) return; c.tx = a[0]; c.ty = a[1]; c.ta = a[2]; c.vx = a[3]; c.vy = a[4]; c.boost = a[5]; c.boosting = !!a[6]; c.flipT = a[7]; c.goals = a[8]; if (c.x === 0 && c.y === 0 || Math.hypot(c.x - c.tx, c.y - c.ty) > 150) { c.x = c.tx; c.y = c.ty; c.a = c.ta; } });
   ball.tx = d.b[0]; ball.ty = d.b[1]; ball.vx = d.b[2]; ball.vy = d.b[3]; if (Math.hypot(ball.x - ball.tx, ball.y - ball.ty) > 150) { ball.x = ball.tx; ball.y = ball.ty; }
   [...d.p].forEach((ch, i) => { if (pads[i]) pads[i].t = ch === '1' ? 1 : 0; });
@@ -537,7 +601,8 @@ function drawTitle(dt) {
   const bx = W / 2 - 200, bw = 400;
   if (U.button('cpu', bx, 320, bw, 62, 'PLAY VS COMPUTER', { color: '#fbbf24', size: 20, light: true })) { screen = 'setup'; NET.setupFor = 'cpu'; }
   if (U.button('local', bx, 396, bw, 56, '2 PLAYERS (SAME KEYBOARD)', { ghost: true, size: 16 })) { screen = 'setup'; NET.setupFor = 'local'; }
-  if (U.button('online', bx, 466, bw, 56, 'PLAY ONLINE', { color: '#3b82f6', size: 16 })) { screen = 'online'; NET.screen = 'menu'; NET.error = ''; }
+  if (U.button('online', bx, 466, 196, 56, 'PLAY ONLINE', { color: '#3b82f6', size: 15 })) { screen = 'online'; NET.screen = 'menu'; NET.error = ''; }
+  if (U.button('ranked', bx + 204, 466, 196, 56, 'RANKED', { color: '#f59e0b', size: 15 })) openRanked();
   U.txt(`Wins ${save.wins}   Losses ${save.losses}   Goals ${save.goals}`, W / 2, 548, 14, '#94a3b8', 'center', { weight: 600 });
   U.txt('P1: WASD drive · L-Shift boost · Space dodge        P2: Arrows · R-Shift boost · / dodge', W / 2, H - 46, 13, '#64748b', 'center', { weight: 600 });
 }
@@ -603,6 +668,13 @@ function drawOver() {
     const y = 316 + Math.floor(i / 2) * 36, x = c.team === 0 ? W / 2 - 290 : W / 2 + 20;
     U.txt(c.name, x, y, 16, TEAM[c.team].light, 'left'); U.txt(`${c.goals} goals  ·  ${c.shots} shots`, x + 270, y, 14, '#cbd5e1', 'right', { weight: 600 });
   });
+  if (match.ranked) {
+    const r = RK.result;
+    if (r) { if (r.pending) U.txt('Updating rank…', W / 2, 430, 16, '#94a3b8', 'center', { weight: 700 }); else { const d = r.after - r.before; U.txt(`${d >= 0 ? '+' : ''}${d} Elo  →  ${r.after}  ${Ranked.rankOf(r.after).name}`, W / 2, 426, 20, d >= 0 ? '#4ade80' : '#f87171', 'center', { weight: 800 }); if (r.err) U.txt(r.err, W / 2, 452, 12, '#f87171', 'center'); } }
+    if (U.button('again', W / 2 - 320, 470, 300, 60, match.ranked === 'cpu' ? 'NEXT MATCH' : 'FIND ANOTHER', { color: '#f59e0b', size: 18 })) { const k = match.ranked; if (k === 'online') { netSend({ t: 'bye' }); netReset(); openRanked(); findRanked(); } else startRankedCpu(); }
+    if (U.button('menu', W / 2 + 20, 470, 300, 60, 'RANKED MENU', { ghost: true, size: 18, sfx: 'back' })) { if (match.mode === 'online') { netSend({ t: 'bye' }); netReset(); } RK.online = false; menuDemo = null; openRanked(); }
+    return;
+  }
   if (match.mode === 'online' && NET.role === 'client') U.txt('Waiting for the host...', W / 2 - 165, 486, 16, '#94a3b8', 'center');
   else if (U.button('again', W / 2 - 320, 470, 300, 60, 'REMATCH', { color: '#22c55e', size: 18 })) {
     if (match.mode === 'online') hostStart(); else startMatch(match);
@@ -615,7 +687,7 @@ function drawPause() {
   U.panel(W / 2 - 220, 220, 440, 260);
   U.txt(match.mode === 'online' ? 'MENU' : 'PAUSED', W / 2, 250, 36, '#ffffff', 'center', { head: true, weight: 800 });
   if (U.button('resume', W / 2 - 170, 320, 340, 56, 'RESUME', { color: '#22c55e', size: 18 })) paused = false;
-  if (U.button('quit', W / 2 - 170, 392, 340, 56, 'QUIT MATCH', { ghost: true, size: 16, sfx: 'back' })) { paused = false; if (match.mode === 'online') { netSend({ t: 'bye' }); netReset(); } menuDemo = null; screen = 'title'; }
+  if (U.button('quit', W / 2 - 170, 392, 340, 56, match.ranked ? 'FORFEIT' : 'QUIT MATCH', { ghost: true, size: 16, sfx: 'back' })) { paused = false; if (match.ranked && !RK.result) { const me = cars.find(c => c.ctrl === 'p1' || c.ctrl === 'net-me' || c.ctrl === 'p1both'); winner = me ? 1 - me.team : 1; rankedFinish(); } if (match.mode === 'online') { netSend({ t: 'bye' }); netReset(); } menuDemo = null; screen = 'title'; }
 }
 
 // ------------------------------------------------------------ main loop
@@ -626,6 +698,7 @@ function frame(now) {
   if (screen === 'title') drawTitle(dt);
   else if (screen === 'setup') drawSetup(dt);
   else if (screen === 'online') drawOnline(dt);
+  else if (screen === 'ranked') drawRanked(dt);
   else {
     if (screen === 'play' && !(paused && match.mode !== 'online')) {
       if (match.mode === 'online' && NET.role === 'client') clientFrame(dt);
@@ -645,7 +718,7 @@ function frame(now) {
     else if (paused) drawPause();
     if (match && match.mode === 'online' && screen === 'play') { const st = NetTransport.status; U.txt(`${st.ping ? st.ping + ' ms' : 'online'}${st.mode === 'relay' ? ' · relay' : ''}`, W - 20, H - 26, 12, '#4ade80', 'right', { weight: 700 }); }
   }
-  if (U.pressed.Escape) { if (screen === 'play') paused = !paused; else if (screen === 'setup' || screen === 'online') { if (screen === 'online') { netSend({ t: 'bye' }); netReset(); } screen = 'title'; } }
+  if (U.pressed.Escape) { if (screen === 'play') paused = !paused; else if (screen === 'ranked' && RK.screen === 'home') screen = 'title'; else if (screen === 'setup' || screen === 'online') { if (screen === 'online') { netSend({ t: 'bye' }); netReset(); } screen = 'title'; } }
   U.endFrame();
   requestAnimationFrame(frame);
 }
@@ -657,7 +730,7 @@ fontReady.then(() => {
 });
 
 // test hooks + owner cheats
-window.__rs = { get cars() { return cars; }, get ball() { return ball; }, get score() { return score; }, get screen() { return screen; }, get phase() { return phase; }, NET, hostRoom, joinRoom, hostStart, startMatch, step, save: () => save,
+window.__rs = { get match() { return match; }, endMatch, openRanked, startRankedCpu, findRanked, RK, set timeLeft(v) { timeLeft = v; }, get cars() { return cars; }, get ball() { return ball; }, get score() { return score; }, get screen() { return screen; }, get phase() { return phase; }, NET, hostRoom, joinRoom, hostStart, startMatch, step, save: () => save,
   sim(dt, n) { for (let i = 0; i < n; i++) { if (screen !== 'play') return screen; step(dt); } return screen; } };
 const inMatch = () => screen === 'play' && (!NET.role || NET.role === 'host') ? '' : 'Start a match (as host) first';
 window.__cheats = [

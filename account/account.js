@@ -38,6 +38,8 @@
     { id: 'ski_best', game: 'Powder Peak', name: 'Best run score', key: 'cnatt_ski', get: s => s.best },
     { id: 'ski_elo', game: 'Powder Peak', name: 'Ranked Elo', key: null },
     { id: 'tag_elo', game: '2 Player Tag', name: 'Ranked Elo', key: null },
+    { id: 'soccer_elo', game: 'Rocket Soccer', name: 'Ranked Elo', key: null },
+    { id: 'kart_elo', game: 'Turbo Karts', name: 'Ranked Elo', key: null },
   ];
   const sentScore = {};
   function scoresFromSave(key, data) {
