@@ -22,6 +22,10 @@ const BOT_NAMES = ['noodle', 'zigzag', 'Slinky', 'viper_x', 'Mamba', 'wormy', 'S
 // ------------------------------------------------------------ save
 const SAVE_KEY = 'cnatt_snake';
 let save = { best: 0, kills: 0, games: 0, skin: 0, name: '' };
+// shop skins (Arcade cosmetics) live after the 10 free ones, in a fixed order so online players agree
+const BASE_SKINS = SKINS.length, SHOP_SKINS = window.Arcade ? Arcade.CATALOG.filter(i => i.game === 'snake') : [];
+SHOP_SKINS.forEach(i => SKINS.push([i.c1, i.c2]));
+const mySkin = () => { const it = window.Arcade && Arcade.equipped('snake', 'skin'); const k = it ? SHOP_SKINS.indexOf(SHOP_SKINS.find(x => x.id === it.id)) : -1; return k >= 0 ? BASE_SKINS + k : save.skin; };
 try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if (s) save = Object.assign(save, s); } catch (e) {}
 const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {} };
 const myName = () => (window.Account && Account.user && Account.user.username) || save.name || 'You';
@@ -62,7 +66,7 @@ function resetWorld() {
   for (let i = 0; i < BOT_N; i++) { const b = makeSnake({ mass: rand(8, 60) }); snakes.push(b); }
 }
 function spawnPlayer(o) {
-  const s = makeSnake(Object.assign({ bot: false, name: myName(), skin: save.skin, mass: 12, own: OWN() }, o));
+  const s = makeSnake(Object.assign({ bot: false, name: myName(), skin: mySkin(), mass: 12, own: OWN() }, o));
   // spawn away from big snakes
   for (let k = 0; k < 20; k++) { if (!snakes.some(o2 => o2.alive && Math.hypot(o2.x - s.x, o2.y - s.y) < 400)) break; const a = rand(0, 6.28), d = rand(0, R * 0.7); s.x = Math.cos(a) * d; s.y = Math.sin(a) * d; s.path = s.path.map((p, i) => ({ x: s.x - Math.cos(s.a) * i * spacing, y: s.y - Math.sin(s.a) * i * spacing })); }
   snakes.push(s); return s;
@@ -94,6 +98,7 @@ function hitBody(x, y, r, self) {
 // ------------------------------------------------------------ simulation
 function killSnake(s, killer) {
   s.alive = false; s.diedAt = t;
+  if (s === me && window.Arcade) Arcade.event('snake', 'death', { len: Math.round(s.mass), kills: s.kills });
   // body turns into food
   const n = Math.min(160, Math.floor(s.mass * 0.9));
   for (let i = 0; i < n; i++) { const p = s.path[Math.floor(i / n * s.path.length)]; if (p) addFood(p.x + rand(-10, 10), p.y + rand(-10, 10), rand(1.2, 2.6), SKINS[s.skin][0]); }
@@ -250,6 +255,11 @@ function drawSnake(s) {
     ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x, y, r * 0.34, 0, 7); ctx.fill();
     ctx.fillStyle = '#0b0b10'; ctx.beginPath(); ctx.arc(x + Math.cos(s.want) * r * 0.12, y + Math.sin(s.want) * r * 0.12, r * 0.18, 0, 7); ctx.fill();
   });
+  if (SHOP_SKINS[s.skin - BASE_SKINS] && SHOP_SKINS[s.skin - BASE_SKINS].fx === 'crown') {
+    const cx2 = s.x - ex * r * 0.2, cy2 = s.y - ey * r * 0.2 - r * 0.9, w = r * 1.1;
+    ctx.fillStyle = '#ffd400'; ctx.strokeStyle = '#92400e'; ctx.lineWidth = Math.max(1, r * 0.08);
+    ctx.beginPath(); ctx.moveTo(cx2 - w / 2, cy2); ctx.lineTo(cx2 - w / 2, cy2 - r * 0.5); ctx.lineTo(cx2 - w / 4, cy2 - r * 0.22); ctx.lineTo(cx2, cy2 - r * 0.62); ctx.lineTo(cx2 + w / 4, cy2 - r * 0.22); ctx.lineTo(cx2 + w / 2, cy2 - r * 0.5); ctx.lineTo(cx2 + w / 2, cy2); ctx.closePath(); ctx.fill(); ctx.stroke();
+  }
   if (s.mass > 30 || s !== me) {
     const nm = s.name; ctx.font = `700 ${clamp(12 / cam.z, 12, 28)}px ${U.FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
     ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillText(nm, s.x + 1, s.y - r - 8 + 1); ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.fillText(nm, s.x, s.y - r - 8);
@@ -322,7 +332,7 @@ function hostRoom() {
 function joinRoom(code) {
   netReset(); NET.error = ''; NET.role = 'client'; NET.code = code.toUpperCase(); NET.screen = 'connecting'; screen = 'online'; mode = 'online';
   NET.tr = NetTransport.join(NET.code, {
-    ready: () => { NetTransport.announce('snake', NET.code); netSend({ t: 'hello', name: myName(), skin: save.skin, own: OWN() }); },
+    ready: () => { NetTransport.announce('snake', NET.code); netSend({ t: 'hello', name: myName(), skin: mySkin(), own: OWN() }); },
     leave: () => netLost('Lost connection to the host.'),
     msg: (id, d) => {
       if (d.t === 'you') { NET.myId = d.id; food = d.food.map(f => ({ id: f[0], x: f[1], y: f[2], v: f[3], c: f[4], p: rand(0, 6) })); snakes = []; me = null; deadInfo = null; screen = 'play'; Sound.playSong(SONGS.snake); }
@@ -381,7 +391,7 @@ function drawTitle(dt) {
   U.txt('Eat. Grow. Make them crash into you.', W / 2, 300, 18, '#cbd5e1', 'center', { weight: 600 });
   // skin picker
   U.txt('YOUR COLOR', W / 2, 344, 12, '#94a3b8', 'center');
-  SKINS.forEach((sk, i) => { const x = W / 2 - SKINS.length * 22 + i * 44 + 22, y = 384; ctx.drawImage(ballSprite(sk[0], sk[1]), x - 16, y - 16, 32, 32); if (save.skin === i) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, 21, 0, 7); ctx.stroke(); } if (U.click && Math.hypot(U.click.x - x, U.click.y - y) < 18) { U.click = null; save.skin = i; store(); Sound.play('tab'); } });
+  SKINS.slice(0, BASE_SKINS).forEach((sk, i) => { const x = W / 2 - BASE_SKINS * 22 + i * 44 + 22, y = 384; ctx.drawImage(ballSprite(sk[0], sk[1]), x - 16, y - 16, 32, 32); if (save.skin === i) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, 21, 0, 7); ctx.stroke(); } if (U.click && Math.hypot(U.click.x - x, U.click.y - y) < 18) { U.click = null; save.skin = i; store(); Sound.play('tab'); } });
   if (U.button('play', W / 2 - 200, 430, 400, 64, 'PLAY', { color: '#4ade80', size: 22, light: true })) { mode = 'solo'; me = spawnPlayer(); deadInfo = null; screen = 'play'; Sound.playSong(SONGS.snake); }
   if (U.button('online', W / 2 - 200, 508, 400, 56, 'PLAY WITH FRIENDS ONLINE', { color: '#3b82f6', size: 16 })) { screen = 'online'; NET.screen = 'menu'; NET.error = ''; }
   U.txt(`Best length ${save.best}   ·   Snakes eaten ${save.kills}`, W / 2, 586, 14, '#94a3b8', 'center', { weight: 600 });
@@ -409,7 +419,7 @@ function drawDead() {
   U.txt(`into ${deadInfo.by}`, W / 2, 286, 16, '#cbd5e1', 'center', { weight: 600 });
   U.txt(`Length ${deadInfo.len}  ·  Rank ${deadInfo.rank}  ·  ${deadInfo.kills} eaten`, W / 2, 326, 18, '#ffffff', 'center');
   if (U.button('again', W / 2 - 230, 400, 220, 60, 'PLAY AGAIN', { color: '#4ade80', size: 18, light: true })) {
-    deadInfo = null; if (mode === 'online' && NET.role === 'client') netSend({ t: 'respawn', name: myName(), skin: save.skin, own: OWN() }); else me = spawnPlayer();
+    deadInfo = null; if (mode === 'online' && NET.role === 'client') netSend({ t: 'respawn', name: myName(), skin: mySkin(), own: OWN() }); else me = spawnPlayer();
   }
   if (U.button('menu', W / 2 + 10, 400, 220, 60, 'MENU', { ghost: true, size: 18, sfx: 'back' })) { if (mode === 'online') { netSend({ t: 'bye' }); netReset(); } mode = 'solo'; screen = 'title'; me = null; deadInfo = null; demoReady = false; Sound.playSong(SONGS.snake); }
 }

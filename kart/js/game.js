@@ -38,6 +38,14 @@ const myName = () => (window.Account && Account.user && Account.user.username) |
 const OWN = () => !!(window.Account && Account.isOwnerMe && Account.isOwnerMe());
 const ADMIN_ON = () => OWN() && save.adminKart !== false;   // on by default for the owner
 // the admin kart keeps the picked racer's id (so points/standings still work) but gets max stats and its own body
+// shop paint jobs (Arcade cosmetics)
+const myPaint = () => { const it = window.Arcade && Arcade.equipped('kart', 'paint'); return it ? it.id : null; };
+function paintize(k, id) {
+  const it = window.Arcade && Arcade.CATALOG.find(x => x.id === id && x.game === 'kart'); if (!it) return;
+  const key = 'kart_' + id + '_' + (k.adm ? 'admin' : k.racer.id);
+  if (!MESH[key]) { const ri = RACERS.findIndex(r => r.id === k.racer.id), kb = buildKart(Object.assign({}, k.adm ? ADMIN_KART : k.racer, { body: it.body, trim: it.trim }), k.adm ? 9 : ri + 1); MESH[key] = R.mesh(kb.mb); }
+  k.mesh = key;
+}
 function adminize(k) { k.racer = Object.assign({}, ADMIN_KART, { id: k.racer.id }); k.mesh = 'kart_admin'; k.adm = true; }
 const ownOK = (n, f) => !!(window.Account && Account.ownerOK && Account.ownerOK(n, f));
 const ownTag = (x, y, h, align) => (window.Account && Account.drawOwnerTag ? Account.drawOwnerTag(ctx, x, y, h, align) : 0);
@@ -158,20 +166,21 @@ function startRace(mode, ti, opts = {}) {
   karts = []; objs = []; parts = []; skids = []; toasts = [];
   // build the grid: a list of { racer, human, owner, name }
   let grid;
-  if (on) grid = on.grid.map(gq => ({ racer: RACERS.find(r => r.id === gq.racer), human: gq.owner === net.myId ? 0 : -1, owner: gq.owner, name: gq.name, own: !!gq.own, adm: !!gq.adm }));
+  if (on) grid = on.grid.map(gq => ({ racer: RACERS.find(r => r.id === gq.racer), human: gq.owner === net.myId ? 0 : -1, owner: gq.owner, name: gq.name, own: !!gq.own, adm: !!gq.adm, paint: typeof gq.paint === 'string' ? gq.paint : null }));
   else {
     const picks = [RACERS.find(r => r.id === save.p1)];
     if (humans === 2) picks.push(RACERS.find(r => r.id === save.p2) || RACERS[1]);
     let others = RACERS.filter(r => !picks.includes(r)).sort(() => Math.random() - 0.5);
     if (mode === 'quick' || mode === 'vs') others = others.slice(0, Math.max(0, Math.min(others.length, SET().ai)));
     const order = mode === 'tt' ? [picks[0]] : (opts.gridOrder || [...others, ...picks]);
-    grid = order.map(r => ({ racer: r, human: picks.indexOf(r), owner: picks.includes(r) ? 'me' : 'ai', name: r.name, own: picks.indexOf(r) === 0 && OWN(), adm: picks.indexOf(r) === 0 && ADMIN_ON() }));
+    grid = order.map(r => ({ racer: r, human: picks.indexOf(r), owner: picks.includes(r) ? 'me' : 'ai', name: r.name, own: picks.indexOf(r) === 0 && OWN(), adm: picks.indexOf(r) === 0 && ADMIN_ON(), paint: picks.indexOf(r) === 0 ? myPaint() : null }));
   }
   const P = world.P, N = world.N;
   grid.forEach((gq, slot) => {
     const k = makeKart(gq.racer, gq.human, slot);
     k.owner = gq.owner; k.name = gq.name || gq.racer.name; k.own = !!gq.own;
     if (gq.adm && gq.own) adminize(k);
+    if (gq.paint) paintize(k, gq.paint);
     if (on && gq.owner !== 'ai' && gq.owner !== net.myId) k.remote = true;        // another player's kart
     if (on && net.role === 'client' && gq.owner === 'ai') k.remote = true;          // the host drives the AI
     const row = Math.floor(slot / 2), side = slot % 2 ? 1 : -1, back = 4 + row * 3.5;
@@ -547,6 +556,7 @@ function endRace() {
   const gp = race.gp;
   if (gp) { race.finishOrder.forEach((k, i) => { gp.points[k.racer.id] = (gp.points[k.racer.id] || 0) + GP_POINTS[i]; }); gp.results.push(race.finishOrder.map(k => k.racer.id)); saveGP(); }
   const best = karts.filter(k => k.human >= 0).map(k => k.place).sort((a, b) => a - b)[0];
+  const mk = karts.find(k => k.human === 0); if (window.Arcade && mk && race.mode !== 'tt' && karts.length > 1) Arcade.event('kart', 'race', { place: mk.place, of: karts.length });
   Sound.playSong(best <= 3 ? SONGS.kwin : SONGS.klose);
 }
 
@@ -560,7 +570,7 @@ function hostRoom() {
   net.role = 'host'; net.myId = 'host'; net.screen = 'connecting'; net.error = '';
   net.code = Array.from({ length: 5 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
   net.tr = NetTransport.host(net.code, {
-    ready: () => { NetTransport.announce('kart', net.code); net.screen = 'lobby'; net.players = [{ id: 'host', name: myName(), racer: save.p1, own: OWN(), adm: ADMIN_ON() }]; netLobby(); },
+    ready: () => { NetTransport.announce('kart', net.code); net.screen = 'lobby'; net.players = [{ id: 'host', name: myName(), racer: save.p1, own: OWN(), adm: ADMIN_ON(), paint: myPaint() }]; netLobby(); },
     join: () => {},
     leave: id => netPlayerLeft(id),
     msg: (from, d) => hostMsg(from, d),
@@ -573,7 +583,7 @@ function joinRoom(code) {
   net.tr = NetTransport.join(net.code, {
     ready: id => {
       net.myId = id; NetTransport.announce('kart', net.code);
-      const hello = () => netSend('host', { t: 'hello', name: myName(), racer: save.p1, own: OWN(), adm: ADMIN_ON() });
+      const hello = () => netSend('host', { t: 'hello', name: myName(), racer: save.p1, own: OWN(), adm: ADMIN_ON(), paint: myPaint() });
       hello(); let n = 0; const tr = net.tr;
       const iv = setInterval(() => { if (net.tr !== tr || net.screen === 'lobby' || ++n > 10) { clearInterval(iv); if (net.tr === tr && net.screen !== 'lobby') netLost('The room did not answer. Try again.'); return; } hello(); }, 1500);
     },
@@ -606,7 +616,7 @@ function freeRacer(want, id) {
 function hostMsg(from, d) {
   if (d.t === 'hello') {
     if (net.players.length >= 8) { netSend(from, { t: 'full' }); return; }
-    if (!net.players.some(p => p.id === from)) net.players.push({ id: from, name: String(d.name || 'Racer').slice(0, 16), racer: freeRacer(d.racer, from), own: !!d.own, adm: !!d.adm && !!d.own });
+    if (!net.players.some(p => p.id === from)) net.players.push({ id: from, name: String(d.name || 'Racer').slice(0, 16), racer: freeRacer(d.racer, from), own: !!d.own, adm: !!d.adm && !!d.own, paint: typeof d.paint === 'string' ? d.paint : null });
     netLobby();
   } else if (d.t === 'pick') { const p = net.players.find(q => q.id === from); if (p) { p.racer = freeRacer(d.racer, from); netLobby(); } }
   else if (d.t === 'bye') netPlayerLeft(from);
@@ -636,7 +646,7 @@ function hostStart() {
   const c = net.cfg, humans = net.players.slice(0, 8);
   const used = new Set(humans.map(p => p.racer));
   const ai = c.ai ? RACERS.filter(r => !used.has(r.id)).slice(0, 8 - humans.length).map(r => ({ racer: r.id, owner: 'ai', name: r.name })) : [];
-  const grid = [...ai.sort(() => Math.random() - 0.5), ...humans.map(p => ({ racer: p.racer, owner: p.id, name: p.name, own: !!p.own, adm: !!p.adm }))];
+  const grid = [...ai.sort(() => Math.random() - 0.5), ...humans.map(p => ({ racer: p.racer, owner: p.id, name: p.name, own: !!p.own, adm: !!p.adm, paint: p.paint || null }))];
   const msg = { t: 'start', grid, ti: c.ti, mirror: c.mirror, laps: c.laps, items: c.items, cls: c.cls };
   net.inRace = true; netBroadcast(msg); netLobby();
   startRace('online', c.ti, { online: msg });
@@ -963,7 +973,7 @@ function showroom(dt, racer, right) {
   let k = karts.find(x => x.showroom);
   if (!k) { k = makeKart(racer, -1, 0); k.showroom = true; karts.push(k); }
   karts = [k]; k.racer = racer; k.mesh = 'kart_' + racer.id;
-  if (ADMIN_ON() && (state === 'chars' ? sel.pickFor !== 2 : true)) adminize(k);
+  if (state !== 'chars' || sel.pickFor !== 2) { if (ADMIN_ON()) adminize(k); if (myPaint()) paintize(k, myPaint()); }
   k.x = p.x; k.z = p.z; k.y = p.y; k.h = t * 0.6; k.i = Math.floor(world.N * 0.02); k.speed = 0; k.drift = 0; k.steerVis = Math.sin(t) * 0.5; k.wheelRot += dt * 2;
   const c = menuDemo.cam; c.eye = [p.x + p.tx * 8 - p.rx * 2.5, p.y + 2.8, p.z + p.tz * 8 - p.rz * 2.5]; c.at = [p.x + p.rx * 3.2, p.y + 1.2, p.z + p.rz * 3.2]; c.fov = 0.72; c.shake = 0;
   drawWorld({ x: 0, y: 0, w: W, h: H }, c);

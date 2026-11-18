@@ -208,15 +208,36 @@ let nextPower = 4, bomb = null, announce = null, winner = -1, confetti = [], mat
 const later = (fn, ms) => { const id = matchId; setTimeout(() => { if (id === matchId && (screen === 'play' || screen === 'pause')) fn(); }, ms); };
 const mode = () => MODES[settings.mode];
 
+const myCos = () => { const it = window.Arcade && Arcade.equipped('tag', 'skin'); return it ? it.id : null; };
+const cosOf = id => window.Arcade && id ? Arcade.CATALOG.find(x => x.id === id) : null;
 function makePlayer(i) {
   const sk = settings.skins[i], s = spawns[i], c = center(s.c, s.r);
+  const cos = cosOf(NET.role ? (NET.cos || [])[i] : i === 0 ? myCos() : null);
   return {
-    i, x: c.x, y: c.y, vx: 0, vy: 0, color: COLORS[sk.color], face: FACES[sk.face],
+    i, x: c.x, y: c.y, vx: 0, vy: 0, color: cos ? cos.col : COLORS[sk.color], fx: cos ? cos.fx : null, face: FACES[sk.face],
     name: NET.role ? NET.names[i] : i === 1 && oppLvl() > 0 ? (NET.cpuRanked ? 'PRO CPU' : 'CPU') : 'P' + (i + 1), cpu: !NET.role && i === 1 && oppLvl() > 0, own: NET.role ? NET.own[i] : i === 0 && !!(window.Account && Account.isOwnerMe && Account.isOwnerMe()),
     frozen: 0, ghost: 0, shield: 0, speed: 0, shrink: 0, dashCd: 0, dashT: 0, portalCd: 0, stun: 0,
     inBush: false, trail: [], look: { x: i === 0 ? 1 : -1, y: 0 }, squash: 0,
     ai: { next: 0, path: [], goal: null }, stats: { tags: 0, dashes: 0, powers: 0, coins: 0 },
   };
+}
+function hslHex(h, s, l) {
+  s /= 100; l /= 100; const k = n => (n + h / 30) % 12, a = s * Math.min(l, 1 - l), f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  return '#' + [f(0), f(8), f(4)].map(v => Math.round(v * 255).toString(16).padStart(2, '0')).join('');
+}
+// shop skins (Arcade cosmetics): shine, stars, lava, rainbow, crown
+function drawSkinFx(p, x, y, bw, bh, R, s) {
+  ctx.save(); rr(x - bw / 2, y - bh / 2, bw, bh, R); ctx.clip();
+  if (p.fx === 'shine' || p.fx === 'crown') { const gx = x - bw + ((t * 0.7 + p.i * 0.3) % 1.6) * bw * 2; const g = ctx.createLinearGradient(gx - 10, 0, gx + 10, 0); g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.5, p.fx === 'crown' ? 'rgba(255,212,0,0.55)' : 'rgba(255,255,255,0.65)'); g.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = g; ctx.fillRect(x - bw / 2, y - bh / 2, bw, bh); }
+  if (p.fx === 'stars') for (let k = 0; k < 7; k++) { const a = 0.4 + 0.6 * Math.abs(Math.sin(t * 2 + k * 1.7)); ctx.fillStyle = `rgba(255,255,255,${a})`; const sx = x - bw / 2 + ((k * 37) % 100) / 100 * bw, sy = y - bh / 2 + ((k * 61 + 13) % 100) / 100 * bh; ctx.beginPath(); ctx.arc(sx, sy, 1 + (k % 3) * 0.6, 0, 7); ctx.fill(); }
+  if (p.fx === 'lava') for (let k = 0; k < 4; k++) { const bx = x + Math.sin(t * 1.3 + k * 2) * bw * 0.3, by = y + Math.cos(t * 1.1 + k * 1.4) * bh * 0.3, g = ctx.createRadialGradient(bx, by, 0, bx, by, s * 0.32); g.addColorStop(0, 'rgba(255,230,120,0.75)'); g.addColorStop(1, 'rgba(255,120,0,0)'); ctx.fillStyle = g; ctx.fillRect(x - bw / 2, y - bh / 2, bw, bh); }
+  ctx.restore();
+  if (p.fx === 'crown') {   // owner crown floating above the head
+    const cy = y - bh / 2 - 6 + Math.sin(t * 3) * 1.5, cw = s * 0.62;
+    ctx.fillStyle = '#ffd400'; ctx.strokeStyle = '#a16207'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(x - cw / 2, cy); ctx.lineTo(x - cw / 2, cy - s * 0.26); ctx.lineTo(x - cw / 4, cy - s * 0.12); ctx.lineTo(x, cy - s * 0.32); ctx.lineTo(x + cw / 4, cy - s * 0.12); ctx.lineTo(x + cw / 2, cy - s * 0.26); ctx.lineTo(x + cw / 2, cy); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.arc(x, cy - s * 0.08, 2.2, 0, 7); ctx.fill();
+  }
 }
 function sizeOf(p) { let s = p.i === itIdx ? 32 : 26; if (p.shrink > 0) s *= 0.6; return s; }
 
@@ -459,6 +480,7 @@ function endMatch(w) {
   winner = w; screen = 'over'; matchT = 0;
   if (NET.ranked && NET.role === 'host') reportRanked(w === NET.me);
   if (NET.cpuRanked) reportCpuRanked(w === 0);
+  if (window.Arcade) Arcade.event('tag', 'match', { won: NET.role ? w === NET.me : settings.opp > 0 || NET.cpuRanked ? w === 0 : false, pro: !!NET.cpuRanked, ranked: !!NET.ranked });
   if (w >= 0 && !NET.role) wins[w]++; saveSettings();
   sfx.win(); Sound.playSong(SONGS.tag_win);
   confetti = Array.from({ length: 160 }, () => ({ x: rand(0, W), y: rand(-H, 0), vx: rand(-60, 60), vy: rand(80, 240), r: rand(0, 6), vr: rand(-8, 8), col: pick(COLORS), s: rand(6, 12) }));
@@ -565,8 +587,9 @@ function drawPlayer(p, x = p.x, y = p.y, scale = 1, forMenu = false) {
   if (!forMenu && p.inBush) alpha = 0.18;
   if (!forMenu && p.ghost > 0) alpha *= 0.5;
   ctx.save(); ctx.globalAlpha = alpha;
+  const pcol = p.fx === 'rainbow' ? hslHex((t * 110 + p.i * 180) % 360, 85, 58) : p.color;
   // trail
-  if (!forMenu) p.trail.forEach((q, k) => { ctx.globalAlpha = alpha * (k / p.trail.length) * 0.3; ctx.fillStyle = p.color; rr(q.x - q.s / 2, q.y - q.s / 2, q.s, q.s, q.s * 0.3); ctx.fill(); });
+  if (!forMenu) p.trail.forEach((q, k) => { ctx.globalAlpha = alpha * (k / p.trail.length) * (p.fx ? 0.5 : 0.3); ctx.fillStyle = p.fx === 'rainbow' ? hslHex((t * 110 + k * 25) % 360, 85, 60) : p.fx === 'crown' ? '#ffd400' : pcol; rr(q.x - q.s / 2, q.y - q.s / 2, q.s, q.s, q.s * 0.3); ctx.fill(); });
   ctx.globalAlpha = alpha;
   // IT aura
   if (isIt) {
@@ -579,9 +602,10 @@ function drawPlayer(p, x = p.x, y = p.y, scale = 1, forMenu = false) {
   const bw = s * (1 + (Math.abs(p.vx) > Math.abs(p.vy) ? sq : -sq * 0.6)), bh = s * (1 + (Math.abs(p.vy) >= Math.abs(p.vx) ? sq : -sq * 0.6));
   const R = Math.min(bw, bh) * 0.32;
   ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(x, y + bh / 2 + 2, bw * 0.5, bh * 0.14, 0, 0, 6.3); ctx.fill();
-  const bg = ctx.createLinearGradient(0, y - bh / 2, 0, y + bh / 2); bg.addColorStop(0, shade(p.color, 0.22)); bg.addColorStop(0.55, p.color); bg.addColorStop(1, shade(p.color, -0.25));
+  const bg = ctx.createLinearGradient(0, y - bh / 2, 0, y + bh / 2); bg.addColorStop(0, shade(pcol, 0.22)); bg.addColorStop(0.55, pcol); bg.addColorStop(1, shade(pcol, -0.25));
   rr(x - bw / 2, y - bh / 2, bw, bh, R); ctx.fillStyle = bg; ctx.fill();
-  ctx.strokeStyle = shade(p.color, -0.45); ctx.lineWidth = Math.max(1.5, s * 0.06); ctx.stroke();
+  if (p.fx) drawSkinFx(p, x, y, bw, bh, R, s);
+  ctx.strokeStyle = p.fx === 'crown' ? '#ffd400' : shade(pcol, -0.45); ctx.lineWidth = Math.max(1.5, s * 0.06); rr(x - bw / 2, y - bh / 2, bw, bh, R); ctx.stroke();
   ctx.fillStyle = 'rgba(255,255,255,0.28)'; rr(x - bw / 2 + bw * 0.14, y - bh / 2 + bh * 0.08, bw * 0.34, bh * 0.12, bh * 0.06); ctx.fill();
   // face
   const ink = '#141621';
@@ -786,7 +810,8 @@ function drawMenu() {
   [0, 1].forEach(i => {
     const x = col2, y = 132 + i * 200, sk = settings.skins[i];
     box(x, y, w, 180, '#11131e', COLORS[sk.color]);
-    const fake = { i, color: COLORS[sk.color], face: FACES[sk.face], look: { x: Math.sin(t + i), y: 0 }, vx: 0, vy: 0, squash: 0, trail: [] };
+    const fcos = i === 0 ? cosOf(myCos()) : null;
+    const fake = { i, color: fcos ? fcos.col : COLORS[sk.color], fx: fcos ? fcos.fx : null, face: FACES[sk.face], look: { x: Math.sin(t + i), y: 0 }, vx: 0, vy: 0, squash: 0, trail: [] };
     ctx.save(); drawPlayer(fake, x + 70, y + 90, 2.4, true); ctx.restore();
     text(i === 1 && settings.opp > 0 ? 'CPU' : 'PLAYER ' + (i + 1), x + 150, y + 22, 16, COLORS[sk.color]);
     text(i === 0 ? 'WASD + SHIFT/SPACE dash' : (settings.opp > 0 ? OPP[settings.opp][1] : 'ARROWS + R-SHIFT/ENTER dash'), x + 150, y + 50, 8, '#a1a7bb');
@@ -961,7 +986,7 @@ function netLost(why) { const r = NET.ranked; netReset(); NET.ranked = false; NE
 function hostRoom(opts = {}) {
   netReset(); NET.error = '';
   screen = 'online'; NET.role = 'host'; NET.me = 0; NET.code = opts.code || Array.from({ length: 5 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
-  NET.screen = 'connecting'; NET.names = [myName(), '...']; NET.own = [OWN2(), false];
+  NET.screen = 'connecting'; NET.names = [myName(), '...']; NET.own = [OWN2(), false]; NET.cos = [myCos(), null];
   NET.tr = NetTransport.host(NET.code, {
     ready: () => { NET.screen = 'lobby'; NetTransport.announce('tag', NET.code); },
     join: id => { if (NET.guestId && NET.guestId !== id) { NET.tr.send(id, { t: 'full' }); return; } NET.guestId = id; },
@@ -969,7 +994,7 @@ function hostRoom(opts = {}) {
       if (screen === 'play' || screen === 'over') { if (NET.ranked && screen === 'play') { winByForfeit(); } else { netLost('The other player left.'); } } },
     msg: (id, d) => {
       if (id !== NET.guestId) return;
-      if (d.t === 'hello') { NET.names[1] = String(d.name || 'P2').slice(0, 16); NET.own[1] = !!d.own; NET.oppUser = d.uid || null; NET.oppElo = d.elo || 1000; netLobby(); if (NET.ranked && NET.autoStart) setTimeout(() => { if (NET.role === 'host' && NET.guestId) netStart(); }, 1200); }
+      if (d.t === 'hello') { NET.names[1] = String(d.name || 'P2').slice(0, 16); NET.own[1] = !!d.own; NET.cos[1] = typeof d.cos === 'string' ? d.cos : null; NET.oppUser = d.uid || null; NET.oppElo = d.elo || 1000; netLobby(); if (NET.ranked && NET.autoStart) setTimeout(() => { if (NET.role === 'host' && NET.guestId) netStart(); }, 1200); }
       else if (d.t === 'in') NET.remote = d;
       else if (d.t === 'bye') { NET.tr.kick && NET.tr.kick(id); NET.guestId = null; if (NET.ranked && screen === 'play') winByForfeit(); else netLost('The other player left.'); }
     },
@@ -982,13 +1007,13 @@ function joinRoom(code) {
   NET.tr = NetTransport.join(NET.code, {
     ready: () => {
       NetTransport.announce('tag', NET.code);
-      const hello = () => netSend({ t: 'hello', name: myName(), own: OWN2(), uid: window.Account && Account.user ? Account.user.id : null, elo: NET.myElo || 1000 });
+      const hello = () => netSend({ t: 'hello', name: myName(), own: OWN2(), cos: myCos(), uid: window.Account && Account.user ? Account.user.id : null, elo: NET.myElo || 1000 });
       hello(); let n = 0; const tr = NET.tr;
       const iv = setInterval(() => { if (NET.tr !== tr || NET.screen === 'lobby' || screen === 'play' || ++n > 10) { clearInterval(iv); if (NET.tr === tr && NET.screen !== 'lobby' && screen !== 'play') netLost('The room did not answer.'); return; } hello(); }, 1500);
     },
     leave: () => { if (NET.ranked && screen === 'play') { NET.forfeitWin = true; reportRanked(true); screen = 'over'; winner = NET.me; } else netLost('Lost connection to the host.'); },
     msg: (id, d) => {
-      if (d.t === 'lobby') { NET.screen = 'lobby'; NET.names = d.names; NET.own = d.own; NET.oppUser = d.uid; NET.oppElo = d.elo || 1000; NET.matchId = d.matchId || NET.matchId; NET.ranked = !!d.ranked || NET.ranked; }
+      if (d.t === 'lobby') { NET.screen = 'lobby'; NET.names = d.names; NET.own = d.own; NET.cos = d.cos || []; NET.oppUser = d.uid; NET.oppElo = d.elo || 1000; NET.matchId = d.matchId || NET.matchId; NET.ranked = !!d.ranked || NET.ranked; }
       else if (d.t === 'state') applySnap(d);
       else if (d.t === 'closed' || d.t === 'bye') { if (NET.ranked && screen === 'play') { reportRanked(true); winner = NET.me; screen = 'over'; } else netLost('The host closed the room.'); }
       else if (d.t === 'full') netLost('That room is full.');
@@ -996,7 +1021,7 @@ function joinRoom(code) {
     error: e => netLost(String(e)),
   });
 }
-function netLobby() { if (NET.role === 'host') netSend({ t: 'lobby', names: NET.names, own: NET.own, uid: window.Account && Account.user ? Account.user.id : null, elo: NET.myElo || 1000, ranked: NET.ranked, matchId: NET.matchId }); }
+function netLobby() { if (NET.role === 'host') netSend({ t: 'lobby', names: NET.names, own: NET.own, cos: NET.cos, uid: window.Account && Account.user ? Account.user.id : null, elo: NET.myElo || 1000, ranked: NET.ranked, matchId: NET.matchId }); }
 function netStart() {
   if (NET.cpuRanked) endCpuRanked(false);
   if (NET.ranked) { settings.mode = 0; settings.target = 5; settings.arena = Math.floor(Math.random() * ARENAS.length); NET.matchId = NET.code + '-' + Date.now().toString(36); NET.reported = false; netLobby(); }
@@ -1038,6 +1063,7 @@ function endMatchClient(w) {
   winner = w; screen = 'over'; matchT = 0; sfxRaw.win(); Sound.playSong(SONGS.tag_win);
   confetti = Array.from({ length: 160 }, () => ({ x: rand(0, W), y: rand(-H, 0), vx: rand(-60, 60), vy: rand(80, 240), r: rand(0, 6), vr: rand(-8, 8), col: pick(COLORS), s: rand(6, 12) }));
   if (NET.ranked) reportRanked(w === NET.me);
+  if (window.Arcade) Arcade.event('tag', 'match', { won: w === NET.me, ranked: !!NET.ranked });
 }
 let inT = 0;
 function netClientFrame(dt) {

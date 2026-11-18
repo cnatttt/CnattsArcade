@@ -1980,6 +1980,7 @@ function drawPause() {
 }
 let deathT = 0;
 function die() {
+  if (window.Arcade) Arcade.event('dungeon', 'run', { floor: run.fi + 1 });
   clearRunSave();
   screen = 'dead'; deathT = 0; P.hp = 0;
   const souls = run.souls; save.souls += souls;
@@ -1987,6 +1988,7 @@ function die() {
   store(); Sound.playSong(SONGS.death); SND.kill(true);
 }
 function victory() {
+  if (window.Arcade) Arcade.event('dungeon', 'run', { floor: run.fi + 1, won: true });
   clearRunSave();
   screen = 'victory'; deathT = 0;
   save.wins++; save.souls += run.souls + 100; run.souls += 100;

@@ -157,6 +157,7 @@
       el('div', { class: 'row', style: 'gap:18px;margin-bottom:18px' }, avatar(me, true), el('div', {}, el('h3', { style: 'margin:0 0 6px;font-size:16px' }, me.username), el('p', { style: 'margin:0' }, 'Signed in. Your name is used in online games.'))),
       me.banned ? el('p', { style: 'color:#ff9ab0;font-weight:700' }, 'This account is banned from the leaderboards and friends. Your saves still work.') : null,
       me.admin ? el('a', { class: 'btn', href: 'admin.html', style: 'display:inline-block;text-decoration:none;margin-bottom:8px' }, '🛡 OPEN ADMIN PANEL') : null,
+      window.Arcade ? (() => { const d = Arcade.daily(); return el('div', { class: 'stat', style: 'margin-bottom:14px' }, el('span', {}, '🔥 Daily streak'), el('span', {}, `${d.streak} day${d.streak === 1 ? '' : 's'} (best ${Math.max(d.best, d.streak)})`), el('span', {}, '🪙 Coins'), el('span', {}, Arcade.coins().toLocaleString()), el('span', {}, "Today's challenge"), el('span', {}, d.done ? '✓ done' : d.challenge.text)); })() : null,
       el('label', {}, 'COLOUR'), sw,
       el('label', {}, 'YOUR RECORDS'), stats,
       el('label', {}, 'CLOUD SAVES'),

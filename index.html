@@ -107,6 +107,47 @@
   @keyframes fill { to { width: 100%; } }
 
   /* ---------------- stats strip ---------------- */
+
+  /* ---------- coins, daily challenge, shop */
+  .pill.coins { color: #fde68a; border-color: #facc1540; font-weight: 800; }
+  .coin { display: inline-block; width: 14px; height: 14px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #fff3b0, #facc15 45%, #b45309); box-shadow: 0 0 0 1px #0004; flex: none; }
+  #today { display: grid; grid-template-columns: 1.6fr 1fr; gap: 14px; margin: 0 0 34px; }
+  @media (max-width: 760px) { #today { grid-template-columns: 1fr; } }
+  .tcard { position: relative; border: 1px solid var(--line); border-radius: 16px; background: #ffffff07; padding: 18px 20px; overflow: hidden; display: flex; gap: 16px; align-items: center; }
+  .tcard h4 { margin: 0 0 2px; font: 700 12px var(--ui); letter-spacing: 1.4px; text-transform: uppercase; color: var(--muted); }
+  .tcard .big { font: 800 19px var(--head); color: var(--text); letter-spacing: -.2px; margin: 2px 0 8px; }
+  .tcard .sub { font: 600 13px var(--ui); color: var(--muted); display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .tcard .thumb { width: 118px; height: 66px; border-radius: 10px; object-fit: cover; flex: none; border: 1px solid var(--line); }
+  .tcard .bar { height: 6px; border-radius: 4px; background: #ffffff14; overflow: hidden; margin: 2px 0 8px; max-width: 320px; }
+  .tcard .bar i { display: block; height: 100%; background: linear-gradient(90deg, #fb923c, #facc15); }
+  .tcard .done { color: #4ade80; font-weight: 800; }
+  .tcard .flame { font: 800 15px var(--head); color: #fb923c; }
+  .tcard .btn { margin-left: auto; height: 38px; padding: 0 16px; border-radius: 10px; border: 0; background: var(--text); color: var(--bg); font: 700 13px var(--ui); cursor: pointer; flex: none; }
+  .tcard .btn.gold { background: linear-gradient(180deg, #fde047, #f59e0b); color: #1c1917; }
+  #shop { position: fixed; inset: 0; z-index: 60; background: #000a; backdrop-filter: blur(6px); display: none; align-items: center; justify-content: center; padding: 20px; }
+  #shop.show { display: flex; }
+  #shop .box { width: min(980px, 100%); max-height: 88vh; overflow: auto; background: #0e1018; border: 1px solid var(--line2); border-radius: 20px; padding: 22px 24px; box-shadow: 0 30px 80px #0009; }
+  #shop .top { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  #shop h2 { margin: 0; font: 800 26px var(--head); letter-spacing: -.4px; }
+  #shop .bal { margin-left: auto; display: flex; align-items: center; gap: 8px; font: 800 20px var(--head); color: #fde68a; }
+  #shop .x { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--line); background: #ffffff08; color: var(--text); cursor: pointer; font-size: 16px; }
+  #shop .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+  #shop .tabs button { height: 34px; padding: 0 14px; border-radius: 99px; border: 1px solid var(--line); background: transparent; color: var(--muted); font: 600 13px var(--ui); cursor: pointer; }
+  #shop .tabs button.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+  #shop .items { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+  .item { border: 1px solid var(--line); border-radius: 14px; padding: 14px; background: #ffffff05; display: flex; flex-direction: column; gap: 10px; }
+  .item.eq { border-color: #4ade80aa; box-shadow: 0 0 0 1px #4ade8055 inset; }
+  .item.adm { border-color: #facc1588; background: linear-gradient(180deg, #facc1512, transparent); }
+  .item .sw { height: 74px; border-radius: 10px; display: flex; align-items: center; justify-content: center; gap: 8px; position: relative; overflow: hidden; }
+  .item .nm { font: 700 15px var(--ui); color: var(--text); display: flex; align-items: center; gap: 8px; }
+  .item .tag { font: 800 10px var(--ui); letter-spacing: 1px; padding: 2px 7px; border-radius: 6px; background: #facc15; color: #1c1917; }
+  .item .gm { font: 600 12px var(--ui); color: var(--muted); margin-top: -6px; }
+  .item button { height: 36px; border-radius: 10px; border: 0; font: 700 13px var(--ui); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .item button.buy { background: linear-gradient(180deg, #fde047, #f59e0b); color: #1c1917; }
+  .item button.buy:disabled { background: #ffffff10; color: var(--dim); cursor: default; }
+  .item button.equip { background: #ffffff12; color: var(--text); }
+  .item button.on { background: #16a34a; color: #fff; }
+  .shopnote { margin-top: 16px; font: 500 13px var(--ui); color: var(--muted); }
   #stats { display: flex; gap: 28px; flex-wrap: wrap; padding: 0 4px 34px; color: var(--muted); font-size: 14px; }
   .stat { display: flex; align-items: baseline; gap: 7px; }
   .stat b { font: 800 20px var(--head); color: var(--text); letter-spacing: -.3px; }
@@ -243,6 +284,7 @@
   <input id="search" type="search" placeholder="Search games" autocomplete="off" spellcheck="false">
   <button class="pill" id="musicBtn" title="Music">♪ <span class="lbl">Music</span></button>
   <button class="pill" id="sfxBtn" title="Sound effects">🔊 <span class="lbl">Sound</span></button>
+  <button class="pill coins" id="coinBtn" title="Coins & shop"><span class="coin"></span><span id="coinN">0</span></button>
   <a class="pill admin" id="adminBtn" href="admin.html" hidden title="Admin controls">🛡 <span class="lbl">Admin</span></a>
   <div id="acctSlot"></div>
 </nav>
@@ -257,6 +299,8 @@
     <div class="stat"><b id="statPlayers">–</b><span>players</span></div>
     <div class="stat online"><b id="statOnline">–</b><span>online now</span></div>
   </section>
+
+  <section id="today"></section>
 
   <section id="recentWrap" hidden>
     <div class="sechead"><h3>Jump back in</h3></div>
@@ -283,6 +327,7 @@
 
 <div id="soundHint">Click anywhere for sound</div>
 <div id="toast"></div>
+<div id="shop"><div class="box"><div class="top"><h2>Shop</h2><div class="bal"><span class="coin" style="width:20px;height:20px"></span><span id="shopBal">0</span></div><button class="x" id="shopX">✕</button></div><div class="tabs" id="shopTabs"></div><div class="items" id="shopItems"></div><div class="shopnote">Earn coins by playing any game: win matches, finish runs, catch fish. Items show up in their game once equipped.</div></div></div>
 <div id="maint"><div class="box"><img src="assets/icon.svg" alt=""><h2>BE RIGHT BACK</h2><p id="maintText"></p><p class="small">The arcade is closed for maintenance.</p></div></div>
 <canvas id="rain"></canvas>
 <div id="secretBox"><div class="box">
@@ -307,7 +352,7 @@
 <script src="games.js"></script>
 <script>window.ACCOUNT_HUB = true;</script>
 <script src="account/config.js"></script>
-<script src="account/account.js"></script>
+<script src="account/account.js"></script><script src="account/arcade.js"></script>
 <script src="account/ui.js"></script>
 <script>
   const $ = id => document.getElementById(id);
@@ -323,6 +368,71 @@
   $('acctSlot').appendChild($('acctBtn'));
   const go = id => { Sound.play('click2'); setTimeout(() => { location.hash = id; }, 110); };
   const badgesHTML = g => (g.isNew ? '<span class="badge new">NEW</span>' : '') + (g.online ? '<span class="badge online">ONLINE</span>' : '');
+
+
+  // ---------------- coins, daily challenge and shop
+  function drawToday() {
+    if (!window.Arcade) return;
+    const st = Arcade.daily(), c = st.challenge, g = LIST.find(x => x.id === c.game), coins = Arcade.coins();
+    $('coinN').textContent = coins.toLocaleString();
+    const pct = Math.min(100, Math.round(st.prog / st.count * 100));
+    $('today').innerHTML = `
+      <div class="tcard">
+        ${g ? `<img class="thumb" src="${esc(g.thumbnail)}" alt="">` : ''}
+        <div style="min-width:0">
+          <h4>Daily challenge</h4>
+          <div class="big">${esc(c.text)}</div>
+          ${st.count > 1 && !st.done ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ''}
+          <div class="sub">${st.done ? '<span class="done">✓ Done for today</span>' : `<span><span class="coin" style="vertical-align:-2px;margin-right:5px"></span>${c.reward}+ coins</span>`}
+            <span class="flame">🔥 ${st.streak} day streak</span>${st.best > 1 ? `<span>best ${st.best}</span>` : ''}${st.count > 1 && !st.done ? `<span>${st.prog} / ${st.count}</span>` : ''}</div>
+        </div>
+        ${g && !st.done ? `<button class="btn" id="dailyGo">Play</button>` : ''}
+      </div>
+      <div class="tcard">
+        <div><h4>Your coins</h4><div class="big" style="display:flex;align-items:center;gap:8px"><span class="coin" style="width:20px;height:20px"></span>${coins.toLocaleString()}</div>
+        <div class="sub">Skins, paint jobs and outfits for your games</div></div>
+        <button class="btn gold" id="shopGo">Shop</button>
+      </div>`;
+    const dg = $('dailyGo'); if (dg) dg.onclick = () => go(c.game);
+    $('shopGo').onclick = () => openShop();
+  }
+  let shopTab = 'tag';
+  const SHOP_GAMES = ['tag', 'kart', 'ski', 'snake', 'soccer'];
+  function swatch(it) {
+    if (it.game === 'kart') return `background:linear-gradient(135deg, ${it.body} 0 62%, ${it.trim} 62% 72%, ${it.body} 72%)`;
+    if (it.game === 'ski') return `background:linear-gradient(90deg, ${it.jacket} 0 40%, ${it.pants} 40% 65%, ${it.helmet} 65% 82%, ${it.deck} 82%)`;
+    if (it.game === 'snake') return `background:repeating-linear-gradient(90deg, ${it.c1} 0 22px, ${it.c2} 22px 30px)`;
+    if (it.fx === 'rainbow') return 'background:linear-gradient(90deg,#ff4d6d,#ffb020,#4ade80,#38bdf8,#a78bfa)';
+    if (it.fx === 'stars') return `background:radial-gradient(circle at 20% 30%, #fff 1px, transparent 2px), radial-gradient(circle at 70% 60%, #fff 1px, transparent 2px), radial-gradient(circle at 45% 80%, #fff 1px, transparent 2px), ${it.col}`;
+    if (it.fx === 'lava') return 'background:radial-gradient(circle at 30% 40%, #fde68a, #f97316 40%, #7c2d12)';
+    return `background:linear-gradient(135deg, ${it.col}, #00000055)`;
+  }
+  function drawShop() {
+    $('shopBal').textContent = Arcade.coins().toLocaleString();
+    $('shopTabs').innerHTML = SHOP_GAMES.map(g => `<button data-g="${g}" class="${g === shopTab ? 'on' : ''}">${esc(Arcade.GAME_NAMES[g])}</button>`).join('');
+    $('shopTabs').querySelectorAll('button').forEach(b => b.onclick = () => { shopTab = b.dataset.g; Sound.play('tab'); drawShop(); });
+    const coins = Arcade.coins();
+    $('shopItems').innerHTML = Arcade.items(shopTab).map(it => {
+      const own = Arcade.owned(it.id), eq = Arcade.equipped(it.game, it.slot), on = eq && eq.id === it.id;
+      const crown = it.fx === 'crown' ? '<span style="font-size:30px;filter:drop-shadow(0 2px 4px #0008)">👑</span>' : '';
+      return `<div class="item${on ? ' eq' : ''}${it.admin ? ' adm' : ''}">
+        <div class="sw" style="${swatch(it)}">${crown}</div>
+        <div class="nm">${esc(it.name)}${it.admin ? '<span class="tag">OWNER</span>' : ''}</div>
+        <div class="gm">${esc(Arcade.GAME_NAMES[it.game])} · ${it.slot}</div>
+        ${own ? `<button class="equip${on ? ' on' : ''}" data-eq="${it.id}">${on ? '✓ Equipped' : 'Equip'}</button>`
+              : `<button class="buy" data-buy="${it.id}" ${coins < it.price ? 'disabled' : ''}><span class="coin"></span>${it.price.toLocaleString()}</button>`}
+      </div>`;
+    }).join('');
+    $('shopItems').querySelectorAll('[data-buy]').forEach(b => b.onclick = () => { if (Arcade.buy(b.dataset.buy)) { Sound.play('win'); toast('Unlocked! It is equipped now.'); } drawShop(); drawToday(); });
+    $('shopItems').querySelectorAll('[data-eq]').forEach(b => b.onclick = () => { Arcade.equip(b.dataset.eq); Sound.play('tab'); drawShop(); });
+  }
+  function openShop(game) { if (!window.Arcade) return; if (game) shopTab = game; $('shop').classList.add('show'); drawShop(); Sound.play('click2'); }
+  $('shopX').onclick = () => $('shop').classList.remove('show');
+  $('shop').onclick = e => { if (e.target === $('shop')) $('shop').classList.remove('show'); };
+  $('coinBtn').onclick = () => openShop();
+  window.addEventListener('storage', e => { if (e.key === 'cnatt_arcade') { drawToday(); if ($('shop').classList.contains('show')) drawShop(); } });
+  if (window.Arcade) Arcade.onChange(() => drawToday());
+  setInterval(drawToday, 30000);
 
   // ---------------- recently played
   const RECENT = 'cnatt_arcade_recent';
@@ -441,7 +551,7 @@
     if (closed) $('maintText').textContent = m.text || "We're working on something. Check back soon!";
     $('adminNote').hidden = !(m && m.on && Account.user && Account.user.admin);
   }
-  function buildAll() { applySite(); buildHero(); buildCards(); buildFilters(); filter(); buildAnnouncement(); buildMaintenance(); drawRecent(); $('siteFooter').innerHTML = `<b>${esc(SITE.footer)}</b> · ${LIST.length} games · play free in your browser`; $('statGames').textContent = LIST.length; }
+  function buildAll() { applySite(); buildHero(); buildCards(); buildFilters(); filter(); buildAnnouncement(); buildMaintenance(); drawRecent(); drawToday(); $('siteFooter').innerHTML = `<b>${esc(SITE.footer)}</b> · ${LIST.length} games · play free in your browser`; $('statGames').textContent = LIST.length; }
 
   // ---------------- live numbers + hall of fame
   function countUp(el, to) {
@@ -490,7 +600,7 @@
       Sound.playSong(SONGS.arcade);
       frame.src = 'about:blank';
       document.title = titleCase(SITE.title);
-      drawRecent(); bg.run = true;
+      drawRecent(); drawToday(); bg.run = true;
       if (Account.user) { Account.setPlaying(null); Account.flush(); }
       return;
     }

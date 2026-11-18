@@ -229,6 +229,7 @@ function endMatch() {
       store();
     }
   }
+  { const me = cars.find(c => c.ctrl === 'p1' || c.ctrl === 'net-me'); if (window.Arcade && me && match.mode !== 'local') Arcade.event('soccer', 'match', { won: me.team === winner, goals: me.goals || 0, cpu: match.cpu }); }
   if (NET.role === 'host') netSendState(true);
 }
 
@@ -351,10 +352,13 @@ function drawCar(c, x, y, a, sc = 1) {
   // wheels
   ctx.fillStyle = '#0b0b0f'; [[-17, -16], [11, -16], [-17, 11], [11, 11]].forEach(([wx, wy]) => { rr(wx, wy, 12, 5, 2); ctx.fill(); });
   // body
-  const g = ctx.createLinearGradient(0, -14, 0, 14); g.addColorStop(0, T.light); g.addColorStop(0.45, T.col); g.addColorStop(1, T.dark);
+  // your shop paint (the stripe keeps your team colour so teams stay readable)
+  const cos = (c.ctrl === 'p1' || c.ctrl === 'net-me') && window.Arcade ? Arcade.equipped('soccer', 'car') : null;
+  const body = cos ? cos.col : T.col;
+  const g = ctx.createLinearGradient(0, -14, 0, 14); g.addColorStop(0, cos ? shade(body, 0.35) : T.light); g.addColorStop(0.45, body); g.addColorStop(1, cos ? shade(body, -0.45) : T.dark);
   rr(-28, -14, 56, 28, 10); ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 1.5; ctx.stroke();
   // stripe + spoiler
-  ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.fillRect(-28, -2.5, 56, 5);
+  ctx.fillStyle = cos ? T.light : 'rgba(255,255,255,0.85)'; ctx.fillRect(-28, -2.5, 56, 5);
   ctx.fillStyle = shade(T.col, -0.5); rr(-30, -13, 5, 26, 2); ctx.fill();
   // cabin
   const cg = ctx.createLinearGradient(-10, -10, 10, 10); cg.addColorStop(0, '#93c5fd'); cg.addColorStop(1, '#0f172a');
@@ -364,6 +368,7 @@ function drawCar(c, x, y, a, sc = 1) {
   // headlights
   ctx.fillStyle = '#fef9c3'; ctx.fillRect(24, -11, 3, 5); ctx.fillRect(24, 6, 3, 5);
   ctx.fillStyle = '#ef4444'; ctx.fillRect(-28, -11, 2, 4); ctx.fillRect(-28, 7, 2, 4);
+  if (cos && cos.fx === 'crown') { ctx.fillStyle = '#ffd400'; ctx.strokeStyle = '#92400e'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(-24, -7); ctx.lineTo(-24, 7); ctx.lineTo(-19, 7); ctx.lineTo(-16, 4); ctx.lineTo(-19, 0); ctx.lineTo(-16, -4); ctx.lineTo(-19, -7); ctx.closePath(); ctx.fill(); ctx.stroke(); }
   ctx.restore();
 }
 function drawBall() {

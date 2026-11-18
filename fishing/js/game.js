@@ -458,6 +458,7 @@ function winFight() {
     save.dex[f.id] = { n: (prev ? prev.n : 0) + 1, best: Math.max(size, prev ? prev.best : 0) };
     save.bucket.push({ id: f.id, size, value });
     save.caught++;
+    if (window.Arcade) Arcade.event('fishing', 'catch', { rarity: f.tier || 0 });
     if (F.perfect) save.perfects++;
     progressJobs(f, size);
     if (f.tier >= 2) award('rare'); if (f.tier >= 3) award('legend'); if (f.tier >= 4) award('mythic');

@@ -608,6 +608,7 @@ function hurtPlayer(d, src = '?') {
   }
 }
 function die() {
+  if (window.Arcade && state !== 'dead') Arcade.event('horde', 'run', { wave: run.wave });
   P.hp = 0; state = 'dead'; endT = 0; toastQ = []; clearRunSave(); bankCoins();
   Sound.playSong(SONGS.zlose); SND.death();
   for (let k = 0; k < 60; k++) parts.push({ x: P.x, y: P.y - 6, vx: rand(-90, 90), vy: rand(-120, 20), life: rand(0.5, 1.2), t: 0, col: pick(['#c83a3a', '#8a1a1a', '#2a6ad0']), s: 2, g: 200 });
@@ -1288,6 +1289,7 @@ function drawEnd(won) {
   }
 }
 function win() {
+  if (window.Arcade) Arcade.event('horde', 'run', { wave: Math.max(run.wave, 20), won: true });
   toastQ = []; clearRunSave(); state = 'win'; endT = 0; addCoins(500); bankCoins(); Sound.playSong(SONGS.zwin); SND.pick(true);
   if (!save.won) { save.won = 1; store(); }
 }

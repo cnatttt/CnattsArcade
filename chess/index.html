@@ -224,7 +224,7 @@ details summary{cursor:pointer;color:var(--dim);font-size:13px;margin-top:14px}
 <div id="loader"><div class="spin"></div><div id="loadmsg">Summoning the night&hellip;</div></div>
 <div id="fatal" class="hidden"><h2>This browser could not start the game</h2><p class="note">Nightfall Chess needs WebGL 2. Try a recent Chrome, Edge, Firefox or Safari with hardware acceleration turned on.</p><pre id="fatalMsg"></pre></div>
 
-<script src="../account/config.js"></script><script src="../account/account.js"></script><script src="../account/cheats.js" defer></script>
+<script src="../account/config.js"></script><script src="../account/account.js"></script><script src="../account/arcade.js"></script><script src="../account/cheats.js" defer></script>
 <script>
 
 </script>
@@ -6127,6 +6127,7 @@ class NGame extends BGame {
         const v = this.vic = { t: 0, mate, win, onTime: /on time/.test(b), whiteWon, draw: !win && b.indexOf('left') < 0, left: b.indexOf('left') >= 0, crumble: [], nextRocket: 3.4, exploded: false, cardShown: false, titleShown: false, winnerKing: null, moves: Math.ceil(this.moveLog.length / 2) };
         this.lastRecord = this.record();
         this.wasOnline = this.online;
+        if (window.Arcade && (this.online || this.aiLevel > 0)) Arcade.event('chess', 'game', { won: win && whiteWon === this.humanWhite });
         if (this.onlineGame) v.rating = this.rateGame(v);
         if (mate) {
             this.mateTimer = 2.6;

@@ -980,6 +980,7 @@ function drawPerks() {
   if (button('back', W - 330, 640, 220, 48, 'BACK', { color: '#3a2a1e', size: 12, sfx: 'back' })) screen = 'menu';
 }
 function win() {
+  if (window.Arcade) Arcade.event('siege', 'run', { wave: G.wave, won: true });
   clearRunSave();
   G.won = true;
   const stars = G.lives >= G.maxLives * 0.9 ? 3 : G.lives >= G.maxLives * 0.5 ? 2 : 1;
@@ -988,6 +989,7 @@ function win() {
   screen = 'win'; endT = 0; Sound.playSong(SONGS.swin); Sound.play('catch', 4);
 }
 function lose() {
+  if (window.Arcade) Arcade.event('siege', 'run', { wave: G.wave - 1 });
   clearRunSave();
   if (G.endless) { save.best[G.M.id] = Math.max(save.best[G.M.id] || 0, G.wave - 1); store(); }
   screen = 'lose'; endT = 0; Sound.playSong(SONGS.slose); SND.leak();

@@ -102,7 +102,7 @@ function stepMatch(dt, inp) {
         // spin the wheel for the next game
         let left = S.order.filter(id => !S.played.includes(id)); if (!left.length) { S.played = [S.game]; left = GAME_IDS.filter(id => id !== S.game); }
         S.spin = { pick: pick(left), t: 0 }; S.scr = 'spin'; S.timer = 3; ev(S, 'spin');
-      } else { S.scr = 'final'; S.timer = 0; S.matchWinner = S.mode === 'party' ? (S.crowns[0] > S.crowns[1] ? 0 : 1) : S.winner; ev(S, 'final', { p: S.matchWinner }); if (!net.role) { save.stats.matches++; save.stats.wins[S.matchWinner]++; store(); } }
+      } else { S.scr = 'final'; S.timer = 0; S.matchWinner = S.mode === 'party' ? (S.crowns[0] > S.crowns[1] ? 0 : 1) : S.winner; ev(S, 'final', { p: S.matchWinner }); if (window.Arcade && (net.role || S.cpu >= 0)) Arcade.event('party', 'match', { won: S.matchWinner === (net.role === 'client' ? 1 : 0) }); if (!net.role) { save.stats.matches++; save.stats.wins[S.matchWinner]++; store(); } }
     }
     return;
   }

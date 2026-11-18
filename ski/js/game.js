@@ -30,7 +30,8 @@ if (!(save.course >= 0 && save.course < COURSES.length)) save.course = 0;
 if (typeof save.jacket !== 'number' || save.jacket >= JACKETS.length) save.jacket = 5;
 ['cbest', 'medal', 'ch'].forEach(k => { if (!save[k] || typeof save[k] !== 'object') save[k] = {}; });
 const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {} };
-const look = () => ({ board: save.board, jacket: JACKETS[save.jacket], pants: PANTS[save.pants] || PANTS[0], helmet: HELMETS[save.helmet] || HELMETS[0], deck: DECKS[save.deck] || DECKS[0] });
+const outfit = () => window.Arcade && Arcade.equipped('ski', 'outfit');
+const look = () => { const o = outfit(); return { board: save.board, jacket: o ? o.jacket : JACKETS[save.jacket], pants: o ? o.pants : PANTS[save.pants] || PANTS[0], helmet: o ? o.helmet : HELMETS[save.helmet] || HELMETS[0], deck: o ? o.deck : DECKS[save.deck] || DECKS[0] }; };
 
 // ------------------------------------------------------------ audio
 SONGS.ski = { seed: 2024, bpm: 100, root: 62, scale: 'lydian', prog: [0, 4, 5, 3, 0, 4, 1, 3], density: 0.5, swing: 0.06,
@@ -451,6 +452,7 @@ function finishRun() {
   if (run.medal > (save.medal[C.id] || 0)) save.medal[C.id] = run.medal;
   save.best = Math.max(save.best || 0, ...Object.values(save.cbest));
   store();
+  if (window.Arcade && !run.heat) Arcade.event('ski', 'run', { score: run.total, mode: run.mode });
   if (run.medal) setTimeout(() => sfx.medal(), 900);
   if (!run.heat) setTimeout(() => { if (run && run.done && screen === 'play' && !run.heat) screen = 'results'; }, run.mode === 'bigair' ? 600 : 1800);
 }
@@ -617,6 +619,7 @@ function closeHeat(forfeitWin) {
   const h = run.heat; if (h.closed) return; h.closed = true;
   const st = standings(), place = st.findIndex(x => x.o.me) + 1;
   h.place = forfeitWin ? 1 : place; h.forfeit = forfeitWin;
+  if (window.Arcade) Arcade.event('ski', 'heat', { place: h.place, score: run.score, online: h.kind === 'online' });
   const before = h.startElo;
   h.result = { before, after: null, place: h.place };
   if (h.kind === 'cpu') {
@@ -1023,6 +1026,7 @@ function riderScreen(dt) {
       if (save[key] === i) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(sx, sy, 18, 0, 7); ctx.stroke(); }
       if (U.click && Math.hypot(U.click.x - sx, U.click.y - sy) < 17) { U.click = null; save[key] = i; rebuild(); Sound.play('tab'); } });
   };
+  if (outfit()) U.txt(`Shop outfit on: ${outfit().name} (change it in the arcade shop)`, x, 186, 12, '#fde047', 'left', { weight: 700 });
   swatches('JACKET', 204, JACKETS, 'jacket'); swatches('PANTS', 284, PANTS, 'pants'); swatches('HELMET', 364, HELMETS, 'helmet'); swatches(save.board ? 'BOARD' : 'SKIS', 444, DECKS, 'deck');
   if (U.button('cam', x, 538, 414, 48, `Camera: ${save.cam ? 'Close' : 'Normal'}`, { ghost: true, size: 15, sfx: 'tab' })) { save.cam = save.cam ? 0 : 1; store(); }
   if (U.button('done', x, 606, 414, 58, 'DONE', { color: '#3b82f6', size: 18 }) || U.pressed.Escape || U.pressed.Enter) { screen = 'title'; P = null; }
