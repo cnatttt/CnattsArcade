@@ -45,8 +45,8 @@ const GAMES = [
     folder: "ski",
     thumbnail: "assets/thumb_ski.png",
     tag: "3D Sports",
-    description: "3D freeride skiing and snowboarding. Hit kickers and rails, spin, flip and grab, then land clean.",
-    players: "1", isNew: true, cats: ["Sports", "Action"],
+    description: "3D skiing and snowboarding: kickers, rails, cliff drops and a superpipe. Ranked heats vs pro CPUs or players online.",
+    players: "1-2", online: true, isNew: true, cats: ["Sports", "Online", "Action"],
     accent: "#7dd3fc"
   },
   {

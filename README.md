@@ -15,7 +15,7 @@ A menu page for all my games. Each game lives in its own folder:
 | `tag/`     | 2 Player Tag (arenas in `tag/js/arenas.js`), online + ranked |
 | `soccer/`  | Rocket Soccer (car soccer, CPU / 2P / online) |
 | `snake/`   | Snake Arena (io-style, bots / online rooms) |
-| `ski/`     | Powder Peak (3D ski + snowboard tricks, uses `kart/js/engine.js`) |
+| `ski/`     | Powder Peak (3D ski + snowboard: park, freeride, superpipe, big air, ranked heats vs CPUs or players) |
 
 ## Updating a game
 1. On GitHub, open the game's folder (for example `mush/`).

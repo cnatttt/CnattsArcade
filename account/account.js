@@ -36,6 +36,7 @@
     { id: 'snake_best', game: 'Snake Arena', name: 'Longest snake', key: 'cnatt_snake', get: s => s.best },
     { id: 'snake_kills', game: 'Snake Arena', name: 'Total kills', key: 'cnatt_snake', get: s => s.kills },
     { id: 'ski_best', game: 'Powder Peak', name: 'Best run score', key: 'cnatt_ski', get: s => s.best },
+    { id: 'ski_elo', game: 'Powder Peak', name: 'Ranked Elo', key: null },
     { id: 'tag_elo', game: '2 Player Tag', name: 'Ranked Elo', key: null },
   ];
   const sentScore = {};

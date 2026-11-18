@@ -284,3 +284,107 @@ create policy "admins edit ranked" on public.ranked for all using (public.is_adm
 -- admins can edit leaderboard scores
 drop policy if exists "admins edit scores" on public.scores;
 create policy "admins edit scores" on public.scores for update using (public.is_admin()) with check (public.is_admin());
+
+-- =====================================================================
+--  RANKED FOR OTHER GAMES (Powder Peak, ...) - one ladder per game.
+--  Matches against real players need both reports to agree; matches
+--  against CPU riders are reported by the player (rate limited).
+-- =====================================================================
+create table if not exists public.ranked_game (
+  user_id uuid not null references public.profiles on delete cascade,
+  game text not null check (game ~ '^[a-z0-9_]{2,20}$'),
+  elo int not null default 1000,
+  wins int not null default 0,
+  losses int not null default 0,
+  streak int not null default 0,
+  peak int not null default 1000,
+  updated_at timestamptz not null default now() - interval '1 hour',
+  primary key (user_id, game)
+);
+alter table public.ranked_game enable row level security;
+drop policy if exists "ranked_game is public" on public.ranked_game;
+create policy "ranked_game is public" on public.ranked_game for select using (true);
+drop policy if exists "admins edit ranked_game" on public.ranked_game;
+create policy "admins edit ranked_game" on public.ranked_game for all using (public.is_admin()) with check (public.is_admin());
+
+create table if not exists public.ranked_game_matches (
+  id text primary key, game text not null, a uuid not null, b uuid not null,
+  a_won boolean, b_won boolean, done boolean not null default false, created_at timestamptz not null default now()
+);
+alter table public.ranked_game_matches enable row level security;
+drop policy if exists "see own game matches" on public.ranked_game_matches;
+create policy "see own game matches" on public.ranked_game_matches for select using (auth.uid() in (a, b));
+
+create or replace function public.ranked_game_set(p_game text, p_user uuid, p_delta int, p_won boolean) returns int
+language plpgsql security definer set search_path = public as $$
+declare e int;
+begin
+  insert into public.ranked_game (user_id, game) values (p_user, p_game) on conflict do nothing;
+  update public.ranked_game set elo = greatest(0, elo + p_delta), wins = wins + (case when p_won then 1 else 0 end), losses = losses + (case when p_won then 0 else 1 end),
+    streak = case when p_won then greatest(streak, 0) + 1 else least(streak, 0) - 1 end, peak = greatest(peak, elo + p_delta), updated_at = now()
+    where user_id = p_user and game = p_game returning elo into e;
+  insert into public.scores (user_id, board, score) values (p_user, p_game || '_elo', e)
+    on conflict (user_id, board) do update set score = excluded.score, updated_at = now();
+  return e;
+end $$;
+revoke all on function public.ranked_game_set(text, uuid, int, boolean) from public, anon, authenticated;
+
+create or replace function public.ranked_game_apply(p_game text, p_winner uuid, p_loser uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare ew int; el int; d int;
+begin
+  insert into public.ranked_game (user_id, game) values (p_winner, p_game), (p_loser, p_game) on conflict do nothing;
+  select elo into ew from public.ranked_game where user_id = p_winner and game = p_game;
+  select elo into el from public.ranked_game where user_id = p_loser and game = p_game;
+  d := greatest(1, round(32 * (1 - 1 / (1 + power(10, (el - ew) / 400.0)))));
+  perform public.ranked_game_set(p_game, p_winner, d, true);
+  perform public.ranked_game_set(p_game, p_loser, -d, false);
+end $$;
+revoke all on function public.ranked_game_apply(text, uuid, uuid) from public, anon, authenticated;
+
+create or replace function public.ranked_game_report(p_game text, p_match text, p_opp uuid, p_won boolean) returns json
+language plpgsql security definer set search_path = public as $$
+declare me uuid := auth.uid(); m public.ranked_game_matches;
+begin
+  if me is null or p_opp is null or me = p_opp then return json_build_object('ok', false); end if;
+  -- matches only one side reported: after 3 minutes that report counts
+  for m in select * from public.ranked_game_matches where not done and created_at < now() - interval '3 minutes' and ((a_won is null) <> (b_won is null)) loop
+    if coalesce(m.a_won, not m.b_won) then perform public.ranked_game_apply(m.game, m.a, m.b); else perform public.ranked_game_apply(m.game, m.b, m.a); end if;
+    update public.ranked_game_matches set done = true where id = m.id;
+  end loop;
+  -- both players may report at the same moment: create the row once, then lock it
+  insert into public.ranked_game_matches (id, game, a, b) values (p_match, p_game, me, p_opp) on conflict (id) do nothing;
+  select * into m from public.ranked_game_matches where id = p_match for update;
+  if m.done then return json_build_object('ok', true, 'done', true); end if;
+  if m.a = me and m.b = p_opp then update public.ranked_game_matches set a_won = p_won where id = p_match;
+  elsif m.b = me and m.a = p_opp then update public.ranked_game_matches set b_won = p_won where id = p_match;
+  else return json_build_object('ok', false); end if;
+  select * into m from public.ranked_game_matches where id = p_match;
+  if m.a_won is not null and m.b_won is not null then
+    if m.a_won <> m.b_won then
+      if m.a_won then perform public.ranked_game_apply(m.game, m.a, m.b); else perform public.ranked_game_apply(m.game, m.b, m.a); end if;
+    end if;
+    update public.ranked_game_matches set done = true where id = p_match;
+    return json_build_object('ok', true, 'done', true);
+  end if;
+  return json_build_object('ok', true, 'waiting', true);
+end $$;
+revoke all on function public.ranked_game_report(text, text, uuid, boolean) from public, anon;
+grant execute on function public.ranked_game_report(text, text, uuid, boolean) to authenticated;
+
+-- a heat against CPU riders: p_score = share of CPUs beaten (0..1)
+create or replace function public.ranked_game_cpu(p_game text, p_cpu_elo int, p_score float8) returns json
+language plpgsql security definer set search_path = public as $$
+declare me uuid := auth.uid(); r public.ranked_game; ce int; d int; e int;
+begin
+  if me is null then return json_build_object('ok', false); end if;
+  insert into public.ranked_game (user_id, game) values (me, p_game) on conflict do nothing;
+  select * into r from public.ranked_game where user_id = me and game = p_game;
+  if r.updated_at > now() - interval '25 seconds' then return json_build_object('ok', false, 'elo', r.elo, 'reason', 'too soon'); end if;
+  ce := least(greatest(p_cpu_elo, r.elo - 200), r.elo + 600);
+  d := round(32 * (least(greatest(p_score, 0), 1) - 1 / (1 + power(10, (ce - r.elo) / 400.0))));
+  e := public.ranked_game_set(p_game, me, d, p_score >= 0.5);
+  return json_build_object('ok', true, 'elo', e, 'delta', d);
+end $$;
+revoke all on function public.ranked_game_cpu(text, int, float8) from public, anon;
+grant execute on function public.ranked_game_cpu(text, int, float8) to authenticated;

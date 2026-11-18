@@ -332,8 +332,21 @@ const Sound = (() => {
   // custom one-off sounds for games (respects the SFX mute)
   function blip(freq, dur, o = {}) { if (!ctx || !sfxOn) return; tone(now() + (o.delay || 0), freq, dur, o); }
   function hiss(dur, o = {}) { if (!ctx || !sfxOn) return; noise(now() + (o.delay || 0), dur, o); }
+  // continuous filtered noise (wind, carving, grinding). Returns null until audio has started.
+  function loop(o = {}) {
+    if (!ctx) return null;
+    if (!noiseBuf) { noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+    const src = ctx.createBufferSource(); src.buffer = noiseBuf; src.loop = true; src.playbackRate.value = o.rate || 1;
+    const f = ctx.createBiquadFilter(); f.type = o.filter || 'bandpass'; f.frequency.value = o.freq || 800; f.Q.value = o.q || 0.8;
+    const g = ctx.createGain(); g.gain.value = 0;
+    src.connect(f); f.connect(g); g.connect(sfxBus); src.start();
+    return {
+      set(vol, freq) { const t = ctx.currentTime; g.gain.setTargetAtTime(sfxOn ? Math.max(0, vol) : 0, t, 0.06); if (freq) f.frequency.setTargetAtTime(freq, t, 0.08); },
+      stop() { try { g.gain.setTargetAtTime(0, ctx.currentTime, 0.05); src.stop(ctx.currentTime + 0.3); } catch (e) {} },
+    };
+  }
   return {
-    init, play, level, blip, hiss, playSong, stopSong, setMusic, setSfx, compose,
+    init, play, level, blip, hiss, loop, playSong, stopSong, setMusic, setSfx, compose,
     get musicOn() { return musicOn; }, get sfxOn() { return sfxOn; },
     get ready() { return !!ctx && ctx.state === 'running'; },
   };

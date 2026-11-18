@@ -155,7 +155,7 @@ async function dash(v) {
     try {
       const rr = await A.sb.from('profiles').select('id,username,color,room,last_seen').not('room', 'is', null).gt('last_seen', new Date(Date.now() - 150000).toISOString()).limit(50);
       const byRoom = {}; (rr.data || []).forEach(p => { (byRoom[p.room] = byRoom[p.room] || []).push(p); });
-      const names = { party: 'Party Clash', kart: 'Turbo Karts', tag: '2 Player Tag', soccer: 'Rocket Soccer', snake: 'Snake Arena' };
+      const names = { party: 'Party Clash', kart: 'Turbo Karts', tag: '2 Player Tag', soccer: 'Rocket Soccer', snake: 'Snake Arena', ski: 'Powder Peak' };
       document.getElementById('rooms').innerHTML = Object.entries(byRoom).map(([room, ps]) => { const [g, code] = room.split(':'); return `<div class="row" style="padding:6px 0"><b>${esc(names[g] || g)}</b> <span class="tag on">${esc(code)}</span> ${ps.map(p => av(p) + ' ' + esc(p.username)).join(' ')} <a class="pill" href="./#${esc(g)}&join=${esc(code)}">Join ›</a></div>`; }).join('') || 'No live rooms.';
     } catch (e) { document.getElementById('rooms').textContent = 'Needs the latest setup.sql.'; }
     const r = await A.sb.from('profiles').select('username,color,created_at,last_seen,playing').order('created_at', { ascending: false }).limit(8);
