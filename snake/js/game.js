@@ -181,6 +181,7 @@ function playerInput() {
   let want = me.want, boost = U.down || U.keys.Space || U.keys.ShiftLeft || U.keys.ShiftRight;
   const k = U.keys, kx = (k.KeyD || k.ArrowRight ? 1 : 0) - (k.KeyA || k.ArrowLeft ? 1 : 0), ky = (k.KeyS || k.ArrowDown ? 1 : 0) - (k.KeyW || k.ArrowUp ? 1 : 0);
   if (kx || ky) { pointerAim = false; want = Math.atan2(ky, kx); }
+  const TS = window.TouchPad && TouchPad.stick; if (TS && TS.on && Math.hypot(TS.x, TS.y) > 0.25) { pointerAim = false; want = Math.atan2(TS.y, TS.x); U.lastMx = U.mx; U.lastMy = U.my; }
   if (U.mx !== U.lastMx || U.my !== U.lastMy) pointerAim = true;
   U.lastMx = U.mx; U.lastMy = U.my;
   if (pointerAim && U.mx >= 0) { const sx = W / 2 + (me.x - cam.x) * cam.z, sy = H / 2 + (me.y - cam.y) * cam.z; want = Math.atan2(U.my - sy, U.mx - sx); }
@@ -467,4 +468,7 @@ window.__cheats = [
 // invincibility: skip deaths for the owner
 const _kill = killSnake;
 killSnake = (s, k) => { if (s.god) { if (Math.hypot(s.x, s.y) > R - 40) { s.a += Math.PI; s.want = s.a; } return; } _kill(s, k); };
+// touch controls for phones / tablets
+if (window.TouchPad) TouchPad.setup({ active: () => screen === 'play' && !deadInfo && !paused, stick: 'analog', pause: 'Escape',
+  buttons: [{ label: 'BOOST', code: 'Space', hold: true, color: 'rgba(34,197,94,0.55)' }] });
 })();

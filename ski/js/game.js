@@ -1259,4 +1259,7 @@ window.__cheats = [
   { name: 'Unlock all medals', icon: '🏅', run() { COURSES.forEach(c => save.medal[c.id] = 3); store(); } },
 ];
 setInterval(() => { if (window.__moon && P && !P.ground && !P.rail) P.v[1] += 7 * 0.05; }, 50);
+// touch controls for phones / tablets
+if (window.TouchPad) TouchPad.setup({ active: () => screen === 'play' && !paused && !!P, stick: { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD' }, pause: 'Escape',
+  buttons: [{ label: 'JUMP', code: 'Space', hold: true, color: 'rgba(59,130,246,0.6)' }, { label: 'GRAB', code: 'ShiftLeft', hold: true, color: 'rgba(245,158,11,0.5)' }, { label: 'GRAB 2', code: 'KeyK', hold: true }] });
 })();

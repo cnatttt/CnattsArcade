@@ -740,4 +740,7 @@ window.__cheats = [
   { name: '+5 minutes on the clock', icon: '⏱', need: inMatch, run() { timeLeft += 300; } },
 ];
 setInterval(() => { if (NET.infBoost) cars.filter(c => c.team === 0).forEach(c => c.boost = 100); cars.forEach(c => { if (c.freeze > 0) { c.freeze -= 0.05; c.vx = c.vy = 0; c.in.th = 0; } }); }, 50);
+// touch controls for phones / tablets
+if (window.TouchPad) TouchPad.setup({ active: () => screen === 'play' && !paused, stick: { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD' }, pause: 'Escape',
+  buttons: [{ label: 'BOOST', code: 'ShiftLeft', hold: true, color: 'rgba(245,158,11,0.6)' }, { label: 'FLIP', code: 'Space', color: 'rgba(59,130,246,0.55)' }] });
 })();

@@ -582,4 +582,8 @@ window.__cheats = [
   { name: 'Win this mini-game', icon: '👑', need: inGame, run() { S.gs.score[me()] = Math.max(S.gs.score[me()], (S.gs.target || 3) - 1); givePoint(S.gs, S, me(), 'OWNER POWER!'); } },
 ];
 
+// touch controls for phones / tablets
+if (window.TouchPad) TouchPad.setup({ active: () => ui === 'game' && !paused, pause: 'Escape',
+  stick: { up: () => save.binds[0].up, down: () => save.binds[0].down, left: () => save.binds[0].left, right: () => save.binds[0].right },
+  buttons: [{ label: 'ACTION', code: () => save.binds[0].act, hold: true, color: 'rgba(236,72,153,0.6)' }] });
 })();
