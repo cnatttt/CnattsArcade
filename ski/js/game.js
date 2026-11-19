@@ -71,7 +71,8 @@ const sfx = new Proxy(sfxRaw, { get: (o, k) => quiet ? () => {} : o[k] });
 let loops = null;
 function ensureLoops() {
   if (loops || !Sound.ready || !Sound.loop) return;
-  loops = { wind: Sound.loop({ filter: 'bandpass', freq: 500, q: 0.6 }), carve: Sound.loop({ filter: 'highpass', freq: 2500, q: 0.4 }), grind: Sound.loop({ filter: 'bandpass', freq: 3200, q: 6, rate: 0.6 }) };
+  loops = { wind: Sound.loop({ filter: 'bandpass', freq: 500, q: 0.6 }), carve: Sound.loop({ filter: 'highpass', freq: 2500, q: 0.4 }), grind: Sound.loop({ filter: 'bandpass', freq: 3200, q: 6, rate: 0.6 }),
+    snow: Sound.loop({ filter: 'lowpass', freq: 900, q: 0.9, rate: 0.5 }), rumble: Sound.loop({ filter: 'lowpass', freq: 140, q: 1.2, rate: 0.25 }) };
   if (!loops.wind) loops = null;
 }
 
@@ -1070,6 +1071,7 @@ function riderPose(P, board = save.board) {
     crouch: P.crash > 0 ? 0.8 : clamp((ground ? 0.22 + Math.abs(P.lean) * 0.22 : 0.42) + P.charge * 0.6 + P.squash * 0.5 + (P.rail ? 0.15 : 0), 0, 1),
     lean: P.rail ? P.bal * 0.6 : 0, tuck: ground ? P.tuck : 0, arms: P.crash > 0 ? 1 : P.rail ? 0.9 : ground ? 0.12 : 0.55,
     grab: P.grab || (P.grabK > 0.05 ? P.lastGrab : null), grabK: P.grabK, tweak: P.grabK * Math.sin(t * 3), tuckLegs: !ground && !P.rail && P.crash <= 0 ? 0.3 : 0, plant: 0,
+    twist: (P.twist || 0) + (board ? 0.25 : 0),
     ...(window.__poseOv || {}) };
 }
 function buildTracks() {
@@ -1595,11 +1597,22 @@ function effects(dt) {
   if (P.ground && !P.rail) P.upN = v3.norm(v3.lerp(P.upN, P.n, Math.min(1, dt * 10)));
   if (P.rail) P.upN = v3.norm(v3.lerp(P.upN, [0, 1, 0], Math.min(1, dt * 10)));
   if (P.grab) P.lastGrab = P.grab;
+  // upper-body twist: wind up against the spin, lead into it in the air, face down the hill in carves
+  const air = !P.ground && !P.rail && P.crash <= 0;
+  const twT = P.crash > 0 ? 0 : air ? clamp((P.spinV || 0) * 0.06, -0.55, 0.55) : P.rail ? 0 : -(P.wind || 0) * 0.75 - P.lean * 0.18;
+  P.twist = (P.twist || 0) + (twT - (P.twist || 0)) * Math.min(1, dt * (air ? 5 : 9));
 }
 function sounds(on) {
   if (!loops) return;
-  if (!on || !P || P.crash > 0) { loops.wind.set(on ? 0.03 : 0.015); loops.carve.set(0); loops.grind.set(0); return; }
-  const sp = v3.len(P.v);
+  if (!on || !P || P.crash > 0) { loops.wind.set(on ? 0.03 : 0.015); loops.carve.set(0); loops.grind.set(0); loops.snow.set(0); loops.rumble.set(0); return; }
+  const sp = v3.len(P.v), gnd = P.ground && !P.rail, deep = Math.abs(P.p[0] - cx(P.p[2])) > 40 || W0.roughAt(P.p[2]) > 0.7;
+  // snow under the skis: crunchy on the groomer, soft and muffled in powder, with a low rumble at speed
+  loops.snow.set(gnd ? clamp(sp / 18, 0, 1) * (deep ? 0.09 : 0.13) * (0.7 + Math.random() * 0.6) : 0, deep ? 520 + sp * 8 : 900 + sp * 26);
+  loops.rumble.set(gnd ? clamp((sp - 8) / 25, 0, 1) * 0.35 : 0, 110 + sp * 2);
+  // whoosh for every half turn spun in the air
+  if (!P.ground && !P.rail) { const d = Math.abs(P.spin - (P._lsp || 0)) + Math.abs(P.flip - (P._lfl || 0)); P._acc = (P._acc || 0) + d; if (P._acc > Math.PI) { P._acc -= Math.PI; Sound.hiss(0.22, { filter: 'bandpass', freq: 700, sweep: 2600, q: 1.4, vol: 0.09 }); } }
+  else P._acc = 0;
+  P._lsp = P.spin; P._lfl = P.flip;
   loops.wind.set(0.03 + clamp(sp / 32, 0, 1) * 0.2 + (C.wind || 0) * 0.1, 300 + sp * 28);
   loops.carve.set(P.ground && !P.rail ? clamp(sp / 25, 0, 1) * 0.05 + clamp(P.slip / 6, 0, 1) * 0.15 : 0, 1800 + sp * 60);
   loops.grind.set(P.rail ? 0.12 : 0, P.rail && P.rail.kind === 'log' ? 900 : 3200);

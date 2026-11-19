@@ -46,7 +46,7 @@ const Rider = (() => {
     const F = [];
     const pv = V.norm(V.lerp([0, 1, 0], J.up, 0.4));
     F[BI.pelvis] = frame(J.pel, pv, [1, 0, 0]);
-    F[BI.chest] = frame(J.pel, J.up, [1, 0, 0]);
+    F[BI.chest] = frame(J.pel, J.up, J.tw || [1, 0, 0]);
     F[BI.thighL] = frame(J.HL, V.sub(J.KL, J.HL), [1, 0, 0]); F[BI.shinL] = frame(J.KL, V.sub(J.AL, J.KL), [1, 0, 0]);
     F[BI.thighR] = frame(J.HR, V.sub(J.KR, J.HR), [1, 0, 0]); F[BI.shinR] = frame(J.KR, V.sub(J.AR, J.KR), [1, 0, 0]);
     // arms: twist reference is the plane the elbow bends in, so sleeves don't corkscrew
@@ -258,25 +258,27 @@ const Rider = (() => {
     const fwdLean = 0.18 + 0.55 * c + 0.45 * st.tuck + 0.25 * g;
     const up = [st.lean * 0.18, Math.cos(fwdLean), Math.sin(fwdLean)];
     const chest = V.add(pel, V.mul(V.norm(up), 0.56));
+    // upper-body twist (wind-up before spins, leading into the rotation, counter-rotating in carves)
+    const tw = st.twist || 0, ct = Math.cos(tw), stw = Math.sin(tw), rot = v => [v[0] * ct + v[2] * stw, v[1], -v[0] * stw + v[2] * ct], sideT = rot([1, 0, 0]);
     const head = V.add(chest, V.mul(V.norm(V.add(up, [0, 0.6, -0.15])), 0.06));
-    out.push(['head', seg(head, V.add(head, V.mul(V.norm(V.add(up, [0, 0.5, -0.1])), 1)), 1, 1)]);
+    out.push(['head', seg(head, V.add(head, V.mul(V.norm(V.add(up, [0, 0.5, -0.1])), 1)), 1, 1, sideT)]);
     // arms
-    const sh = s => V.add(chest, [s * 0.22, -0.06, -0.02]);
+    const sh = s => V.add(chest, rot([s * 0.22, -0.06, -0.02]));
     const SL = sh(1), SR = sh(-1);
     const a = st.arms || 0, sw = Math.sin((st.t || 0) * 2) * 0.03;
-    const relaxed = s => V.add(pel, [s * (0.36 + 0.3 * a), 0.12 + 0.28 * a + sw * s, 0.32 - 0.22 * a]);
-    const tuck = s => V.add(pel, [s * 0.14, 0.14, 0.5]);
+    const relaxed = s => V.add(pel, rot([s * (0.36 + 0.3 * a), 0.12 + 0.28 * a + sw * s, 0.32 - 0.22 * a]));
+    const tuck = s => V.add(pel, rot([s * 0.14, 0.14, 0.5]));
     let HnL = V.lerp(relaxed(1), tuck(1), st.tuck), HnR = V.lerp(relaxed(-1), tuck(-1), st.tuck);
     if (st.grab) {
       const G = (B ? GRABS_BOARD : GRABS_SKI)[st.grab];
       if (G) { const tgt = [G.p[0], AL2[1] - 0.04 + G.p[1], G.p[2]]; if (G.hand === 'L') HnL = V.lerp(HnL, tgt, g); else HnR = V.lerp(HnR, tgt, g); }
     }
-    const elbowPole = s => [s * 1, -0.6, -0.5];
+    const elbowPole = s => rot([s * 1, -0.6, -0.5]);
     const [EL, HnL2] = ik(SL, HnL, 0.31, 0.3, elbowPole(1)), [ER, HnR2] = ik(SR, HnR, 0.31, 0.3, elbowPole(-1));
     // mittens point along the forearm
     const glove = (E, Hn, s) => { const Z = V.norm(V.sub(Hn, E)); let X = V.sub([s, 0, 0], V.mul(Z, Z[0] * s)); if (V.len(X) < 0.1) X = [0, 1, 0]; X = V.norm(X); const Y = V.cross(Z, X); return basis(V.mul(X, 0.12 * s), V.mul(Y, 0.12), V.mul(Z, 0.12), V.add(Hn, V.mul(Z, 0.02))); };
     out.push(['glove', glove(EL, HnL2, 1)], ['glove', glove(ER, HnR2, -1)]);
-    out.J = { pel, chest, up: V.norm(up), HL, KL, AL: AL2, HR, KR, AR: AR2, SL, EL, HnL: HnL2, SR, ER, HnR: HnR2 };
+    out.J = { tw: sideT, pel, chest, up: V.norm(up), HL, KL, AL: AL2, HR, KR, AR: AR2, SL, EL, HnL: HnL2, SR, ER, HnR: HnR2 };
     // board / skis + poles
     if (B) {
       const tw = st.tweak || 0;
@@ -298,7 +300,7 @@ const Rider = (() => {
     const base = body ? M4.mul(root, body) : root;
     const list = parts(st);
     if (M.skin) {
-      const key = [st.crouch, st.lean, st.tuck, st.arms, st.grab, st.grabK, st.tweak, st.tuckLegs, st.plant, st.t].join();
+      const key = [st.twist, st.crouch, st.lean, st.tuck, st.arms, st.grab, st.grabK, st.tweak, st.tuckLegs, st.plant, st.t].join();
       if (key !== M.skin.key) { skinPose(R3, M.skin, list.J); M.skin.key = key; }
       if (shadow) R3.shadowDraw(M.skin.m, base); else R3.draw(M.skin.m, base, null, 0, false, { spec: (spec || 0) * 0.6 });
     }
