@@ -411,9 +411,11 @@ function step(dt) {
   if (!P || !run || screen !== 'play') return;
   if (run.startT > 0) { run.startT -= dt; P.v = [0, 0, 0.5]; P.p[1] = heightAt(P.p[0], P.p[2]); return; }
   if (!run.done) run.time += dt;
+  run.raceT = (run.raceT || 0) + dt;
   riderPhys(dt);
-  for (const k of W0.tokens) { if (k.got || Math.abs(k.z - P.p[2]) > 2) continue; if (Math.hypot(k.x - P.p[0], k.y - (P.p[1] + 0.9), k.z - P.p[2]) < 1.9) { k.got = true; run.tokens++; run.score += 25 * run.combo; run.attemptScore += 25; sfx.token(); checkCh('tokens', run.tokens); } }
-  if (run.mode === 'slope' && !run.done && P.p[2] >= C.len) finishRun();
+  if (run.mode !== 'race') for (const k of W0.tokens) { if (k.got || Math.abs(k.z - P.p[2]) > 2) continue; if (Math.hypot(k.x - P.p[0], k.y - (P.p[1] + 0.9), k.z - P.p[2]) < 1.9) { k.got = true; run.tokens++; run.score += 25 * run.combo; run.attemptScore += 25; sfx.token(); checkCh('tokens', run.tokens); } }
+  if (run.mode === 'race' && run.gate) gateCheck(P, run.gate, true);
+  if ((run.mode === 'slope' || run.mode === 'race') && !run.done && P.p[2] >= C.len) finishRun();
   if (run.done && P.ground) { const sp = v3.len(P.v); if (sp > 0.5) P.v = v3.mul(P.v, Math.max(0, sp - 9 * dt) / sp); }
   if (run.mode === 'bigair' && !run.done) {
     if (run.landedAt && t - run.landedAt > 1.8) nextAttempt();
@@ -423,7 +425,8 @@ function step(dt) {
   if (run.heat) for (const o of run.heat.riders) if (o.cpu && !o.fin) {
     const sp = P, sr = run; P = o.P; run = o.run; quiet = true; brain = o.brain;
     try { riderPhys(dt); o.P = P; } finally { P = sp; run = sr; quiet = false; brain = null; }
-    if (o.P.p[2] >= C.len) { o.fin = true; o.finT = run.time; }
+    if (o.gate) gateCheck(o.P, o.gate, false);
+    if (o.P.p[2] >= C.len) { o.fin = true; o.finT = run.raceT; }
   }
 }
 function tryRailGround() {
@@ -443,6 +446,7 @@ function nextAttempt() {
 function finishRun() {
   if (run.done) return;
   run.done = true;
+  if (run.mode === 'race') { run.total = run.time + run.gate.pen; return; }
   if (run.mode === 'bigair') { if (run.attempt < 3) run.attempts[run.attempt] = run.attemptScore; const a = [...run.attempts].sort((p, q) => q - p); run.total = a[0] + a[1]; }
   else run.total = run.score;
   const m = C.medals; run.medal = run.total >= m[2] ? 3 : run.total >= m[1] ? 2 : run.total >= m[0] ? 1 : 0;
@@ -537,6 +541,158 @@ function makeBrain(skill, R) {
   };
 }
 
+// ------------------------------------------------------------ race mode: downhill through gates vs 3 CPU racers
+const RACE = { gates: null, diff: 1 };
+const fmtRace = s => { const m = Math.floor(s / 60), r = s - m * 60; return `${m}:${r < 10 ? '0' : ''}${r.toFixed(2)}`; };
+function buildGates(ci) {
+  const R = rng(ci * 131 + 7), g = []; let side = R() < 0.5 ? 1 : -1;
+  for (let z = 70; z < C.len - 30; z += 30 + R() * 12) {
+    if (W0.feats.some(f => z > f.z0 - 8 && z < f.z1 + 10) || W0.rails.some(r => z > r.pts[0][2] - 8 && z < r.pts[r.pts.length - 1][2] + 8)) continue;
+    const clear = x => ![...W0.trees, ...(W0.rocks || [])].some(o => o.z > z - 14 && o.z < z + 5 && Math.abs(o.x - x) < 6.5 + (o.s || 1) * 1.5);
+    const want = side * (3 + R() * 4.5), x = [want, want * 0.5, 0, -want * 0.5, -want].map(o => cx(z) + o).find(clear);
+    if (x === undefined) continue;
+    g.push({ z, x, w: 7, y: heightAt(x, z), red: side > 0 }); side = -side;
+  }
+  return g;
+}
+function gateCheck(Q, G, me) {
+  const gates = RACE.gates; if (!gates) return;
+  while (G.gi < gates.length && Q.p[2] >= gates[G.gi].z) {
+    const g = gates[G.gi++];
+    if (Math.abs(Q.p[0] - g.x) > g.w / 2 + 0.3) { G.pen += 2; G.missed++; if (me) { popMsg('MISSED GATE', '#f87171', '+2.00 s'); Sound.play('error'); } }
+    else if (me) { G.lastOK = t; Sound.play('tab'); }
+  }
+}
+function makeRaceBrain(skill, R) {
+  const B = { gi: 0, wob: R() * 10 };
+  return Q => {
+    const I = { left: false, right: false, up: false, down: false, jump: false, g1: false, g2: false, g3: false, g4: false };
+    if (Q.crash > 0) return I;
+    if (Q.rail) { const u = Q.bal + Q.balV * 0.45; I.left = u > 0.02; I.right = u < -0.02; return I; }
+    if (!Q.ground) return I;   // racers keep it clean in the air
+    const z = Q.p[2], x = Q.p[0], sp = v3.len(Q.v), gates = RACE.gates;
+    while (B.gi < gates.length && gates[B.gi].z < z + 2.5) B.gi++;
+    const g = gates[B.gi];
+    let tx = g ? g.x : cx(z + 30), tz = g ? g.z : z + 30;
+    // a slightly sloppy line for the weaker racers
+    tx += Math.sin(t * 0.8 + B.wob) * (1 - skill) * 5;
+    // trees
+    const k0 = Math.floor(z / 4), reach = 4 + sp * 0.9, slope = Q.v[0] / Math.max(1, Q.v[2]);
+    let best = null;
+    for (let j = k0; j <= k0 + Math.ceil(reach / 4) + 1; j++) for (const tr of treeGrid.get(j) || []) {
+      const dz = tr.z - z; if (dz < 0.5 || dz > reach) continue;
+      const px = x + slope * dz; if (Math.abs(tr.x - px) < 1.4 * tr.s + 1.4 && (!best || dz < best.dz)) best = { tr, dz, px };
+    }
+    if (best) { const s = Math.sign(best.px - best.tr.x) || 1; tx = best.tr.x + s * (1.8 * best.tr.s + 2.5); tz = best.tr.z; }
+    const des = Math.atan2(tx - x, Math.max(5, Math.min(tz - z, sp * 1.4 + 6)));
+    const e = angW(des - Q.yaw);
+    I.left = e > 0.03; I.right = e < -0.03;
+    I.up = Math.abs(e) < 0.12 + skill * 0.16 && (skill > 0.95 || Math.sin(t * 1.3 + B.wob) < skill * 1.6 - 0.6);
+    I.down = sp > 34 + skill * 14;   // weaker racers scrub a little speed
+    return I;
+  };
+}
+function raceTotal(o) { return o.me ? (run.done ? run.time + run.gate.pen : null) : o.fin ? o.finT + o.gate.pen : null; }
+function raceStandings() {
+  const L = run.heat.riders.map(o => ({ o, s: raceTotal(o), z: o.me ? P.p[2] : o.P.p[2] }));
+  return L.sort((a, b) => (a.s != null) !== (b.s != null) ? (a.s != null ? -1 : 1) : a.s != null ? a.s - b.s : b.z - a.z);
+}
+function closeRace() {
+  const h = run.heat; if (h.closed) return; h.closed = true;
+  // anyone still on the hill gets a projected time
+  h.riders.forEach(o => { if (!o.me && !o.fin) { const sp = Math.max(8, v3.len(o.P.v)); o.fin = true; o.finT = run.raceT + Math.max(0, C.len - o.P.p[2]) / sp + 3; o.dnf = true; } });
+  const st = raceStandings(); h.place = st.findIndex(x => x.o.me) + 1;
+  const tot = run.time + run.gate.pen; save.rbest = save.rbest || {};
+  h.newBest = !save.rbest[C.id] || tot < save.rbest[C.id]; if (h.newBest) save.rbest[C.id] = tot;
+  if (h.place === 1) { save.rwins = save.rwins || {}; save.rwins[C.id] = Math.max(save.rwins[C.id] || 0, h.diff + 1); }
+  store();
+  if (window.Arcade) Arcade.event('ski', 'race', { place: h.place, time: tot, diff: h.diff });
+  if (h.place === 1) setTimeout(() => sfx.medal(), 500);
+  setTimeout(() => { if (run && run.heat === h) screen = 'raceres'; }, 600);
+}
+function drawRaceTop() {
+  const st = raceStandings(), pl = st.findIndex(x => x.o.me) + 1, G = run.gate, n = RACE.gates.length;
+  const w = U.txt(['', '1st', '2nd', '3rd', '4th'][pl], 34, 18, 46, pl === 1 ? '#fde047' : '#ffffff', 'left', { head: true, weight: 800 });
+  U.txt(`/ ${st.length}`, 44 + w, 40, 18, '#cbd5e1', 'left', { weight: 700 });
+  U.txt(`GATE ${Math.min(n, G.gi + 1)} / ${n}`, 36, 78, 15, '#e2e8f0', 'left', { weight: 800 });
+  if (G.pen) U.txt(`+${G.pen.toFixed(0)} s penalty`, 36, 100, 14, '#f87171', 'left', { weight: 800 });
+  // marker over the next gate
+  const g = RACE.gates[G.gi];
+  if (g && !run.done && run.startT <= 0) {
+    const q = R3.project([g.x, g.y + 2.7, g.z], { x: 0, y: 0, w: W, h: H });
+    if (q && q[1] > 0 && q[1] < H) { ctx.fillStyle = g.red ? '#ef4444' : '#3b82f6'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(q[0] - 10, q[1] - 16); ctx.lineTo(q[0] + 10, q[1] - 16); ctx.lineTo(q[0], q[1] - 2); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  }
+}
+let gateMeshes = null;
+function drawGates(camZ) {
+  if (!gateMeshes) gateMeshes = [[0.9, 0.16, 0.2], [0.16, 0.42, 0.95]].map(c => {
+    const m = new MB();
+    [-1, 1].forEach(s => {
+      m.tube(M4.compose(s * 3.5, 0.6, 0, 0, 0.07, 3.2, 0.07), 8, [0.96, 0.96, 0.98, 0]);
+      m.tube(M4.compose(s * 2.4, 0.5, 0, 0, 0.06, 2.8, 0.06), 8, [0.96, 0.96, 0.98, 0]);
+      m.box(M4.compose(s * 2.95, 1.35, 0, 0, 1.1, 0.8, 0.04), [...c, 0]);
+      m.box(M4.compose(s * 2.95, 1.35, 0, 0, 1.12, 0.1, 0.05), [1, 1, 1, 0]);
+    });
+    return R3.mesh(m);
+  });
+  for (const g of RACE.gates) { if (g.z < camZ - 6 || g.z > camZ + 320) continue; R3.draw(gateMeshes[g.red ? 0 : 1], M4.compose(g.x, g.y, g.z, 0), null, 0, false); }
+}
+function raceSelect(dt) {
+  flyover(dt); updateCam(dt); render3D(dt);
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(8,12,28,0.55)'; ctx.fillRect(0, 0, W, H);
+  U.txt('Race', 70, 46, 40, '#fff', 'left', { head: true, weight: 800 });
+  U.txt('Downhill against three computer racers. Ride through every gate: a missed gate costs 2 seconds.', 72, 98, 15, '#cbd5e1', 'left', { weight: 600 });
+  save.rbest = save.rbest || {}; save.rwins = save.rwins || {};
+  if (sel > 2) sel = 0;
+  [0, 1, 2].forEach(ci => {
+    const c = COURSES[ci], x = 70 + ci * 380, y = 140, w = 360, h = 220, on = sel === ci;
+    U.panel(x, y, w, h, { fill: on ? 'rgba(16,185,129,0.3)' : 'rgba(14,15,22,0.78)', stroke: on ? '#6ee7b7' : 'rgba(255,255,255,0.09)' });
+    const sk = ctx.createLinearGradient(0, y + 16, 0, y + 90); sk.addColorStop(0, c.sky[0]); sk.addColorStop(1, c.sky[1]);
+    ctx.save(); U.rr(x + 16, y + 16, w - 32, 74, 12); ctx.clip(); ctx.fillStyle = sk; ctx.fillRect(x + 16, y + 16, w - 32, 74);
+    ctx.fillStyle = 'rgba(255,255,255,0.92)'; ctx.beginPath(); ctx.moveTo(x + 16, y + 92); ctx.lineTo(x + 90, y + 46); ctx.lineTo(x + 150, y + 66); ctx.lineTo(x + 230, y + 30); ctx.lineTo(x + 290, y + 60); ctx.lineTo(x + w - 16, y + 44); ctx.lineTo(x + w - 16, y + 92); ctx.fill(); ctx.restore();
+    U.txt(c.name, x + 18, y + 104, 21, '#fff', 'left', { weight: 800 });
+    U.txt(`${(c.len / 1000).toFixed(2)} km`, x + w - 18, y + 108, 14, '#94a3b8', 'right', { weight: 700 });
+    U.txt('Best time', x + 18, y + 146, 13, '#94a3b8', 'left', { weight: 700 });
+    U.txt(save.rbest[c.id] ? fmtRace(save.rbest[c.id]) : '—', x + 18, y + 166, 22, '#fff', 'left', { weight: 800 });
+    const wn = save.rwins[c.id] || 0;
+    ['Easy', 'Medium', 'Hard'].forEach((d, k) => { const got = wn > k; U.txt((got ? '✓ ' : '') + d, x + w - 18, y + 140 + k * 22, 13, got ? '#6ee7b7' : 'rgba(255,255,255,0.35)', 'right', { weight: 700 }); });
+    if (U.click && U.click.x > x && U.click.x < x + w && U.click.y > y && U.click.y < y + h) { U.click = null; if (sel !== ci) { sel = ci; Sound.play('tab'); } }
+  });
+  if (U.pressed.ArrowRight || U.pressed.KeyD) { sel = (sel + 1) % 3; Sound.play('tab'); }
+  if (U.pressed.ArrowLeft || U.pressed.KeyA) { sel = (sel + 2) % 3; Sound.play('tab'); }
+  U.panel(70, 390, 740, 150);
+  U.txt('Racers', 94, 410, 18, '#fff', 'left', { weight: 800 });
+  ['EASY', 'MEDIUM', 'HARD'].forEach((d, k) => { const on = RACE.diff === k; if (U.button('df' + k, 94 + k * 236, 450, 220, 56, d, on ? { color: ['#22c55e', '#f59e0b', '#ef4444'][k], size: 16, sfx: 'tab' } : { ghost: true, size: 16, sfx: 'tab' })) RACE.diff = k; });
+  U.panel(830, 390, 380, 150);
+  U.txt('Tips', 854, 410, 18, '#fff', 'left', { weight: 800 });
+  wrap('Hold W to tuck on the straights. Carve early so you are already lined up for the next gate. The arrow marks the next one.', 854, 444, 330, 13, '#cbd5e1', 19);
+  if (U.button('go', 940, 638, 270, 58, 'START RACE', { color: '#10b981', size: 20 }) || U.pressed.Enter) startHeat(sel, 'race', { diff: RACE.diff });
+  else if (U.button('back', 70, 638, 160, 58, 'BACK', { ghost: true, size: 16, sfx: 'back' }) || U.pressed.Escape) screen = 'title';
+}
+function raceResults() {
+  const h = run.heat; if (!h) return;
+  ctx.fillStyle = 'rgba(8,12,28,0.6)'; ctx.fillRect(0, 0, W, H);
+  U.panel(W / 2 - 380, 60, 760, 600);
+  const place = h.place;
+  U.txt(place === 1 ? 'YOU WIN!' : `${['', '1st', '2nd', '3rd', '4th'][place]} place`, W / 2, 86, 46, place === 1 ? '#fde047' : '#fff', 'center', { head: true, weight: 800 });
+  U.txt(`${C.name}  ·  ${['Easy', 'Medium', 'Hard'][h.diff]} racers${h.newBest ? '  ·  NEW BEST TIME' : ''}`, W / 2, 148, 15, h.newBest ? '#6ee7b7' : '#94a3b8', 'center', { weight: 700 });
+  const st = raceStandings(), win = st[0].s;
+  st.forEach(({ o, s }, i) => {
+    const y = 190 + i * 56, G = o.me ? run.gate : o.gate;
+    U.rr(W / 2 - 320, y, 640, 48, 12); ctx.fillStyle = o.me ? 'rgba(16,185,129,0.35)' : 'rgba(255,255,255,0.05)'; ctx.fill();
+    U.txt(String(i + 1), W / 2 - 290, y + 24, 20, i === 0 ? '#fde047' : '#e2e8f0', 'center', { base: 'middle', weight: 800, shadow: false });
+    ctx.fillStyle = o.me ? look().jacket : o.look.jacket; ctx.beginPath(); ctx.arc(W / 2 - 252, y + 24, 8, 0, 7); ctx.fill();
+    U.txt(o.name, W / 2 - 232, y + 24, 18, '#fff', 'left', { base: 'middle', weight: 800, shadow: false });
+    U.txt(o.dnf ? 'still on the hill (projected)' : G.missed ? `${G.missed} missed gate${G.missed > 1 ? 's' : ''}` : 'clean run', W / 2 - 40, y + 24, 13, G.missed || o.dnf ? '#fca5a5' : '#94a3b8', 'left', { base: 'middle', weight: 600, shadow: false });
+    U.txt(fmtRace(s), W / 2 + 200, y + 24, 18, '#fde047', 'right', { base: 'middle', weight: 800, shadow: false });
+    if (i) U.txt(`+${(s - win).toFixed(2)}`, W / 2 + 300, y + 24, 14, '#94a3b8', 'right', { base: 'middle', weight: 700, shadow: false });
+  });
+  U.txt(`Your best on this course: ${fmtRace(save.rbest[C.id])}`, W / 2, 440, 15, '#cbd5e1', 'center', { weight: 600 });
+  if (U.button('again', W / 2 - 330, 586, 320, 58, 'RACE AGAIN', { color: '#10b981', size: 18 }) || U.pressed.Enter) startHeat(built, 'race', { diff: h.diff });
+  else if (U.button('menu', W / 2 + 10, 586, 320, 58, 'RACE MENU', { ghost: true, size: 18, sfx: 'back' }) || U.pressed.Escape) { run.heat = null; P = null; screen = 'racesel'; Sound.playSong(SONGS.skiMenu); }
+}
+
 // ------------------------------------------------------------ ranked
 const RANKS = [[0, 'Bronze', '#cd7f32'], [900, 'Silver', '#cbd5e1'], [1100, 'Gold', '#facc15'], [1300, 'Platinum', '#5eead4'], [1500, 'Diamond', '#60a5fa'], [1700, 'Master', '#c084fc'], [1900, 'Champion', '#f87171']];
 function rankOf(elo) {
@@ -583,6 +739,19 @@ function startHeat(ci, kind, opts = {}) {
   cpuMeshes.forEach(m => { for (const k in m) R3.free(m[k]); }); cpuMeshes = [];
   const heat = { kind, riders: [{ me: true, name: myName() }], startElo: myElo(), rated: true, endT: null, matchId: opts.matchId || null };
   run.heat = heat;
+  if (kind === 'race') {
+    heat.rated = false; heat.diff = opts.diff == null ? 1 : opts.diff; run.mode = 'race'; run.gate = { gi: 0, pen: 0, missed: 0 };
+    RACE.gates = buildGates(ci);
+    const R = rng((Date.now() & 0xffff) + ci * 91), names = [...CPU_NAMES].sort(() => R() - 0.5);
+    const SK = [[0.62, 0.56, 0.5], [0.82, 0.77, 0.72], [1.0, 0.96, 0.92]][heat.diff];
+    [-5, 5, -2.5].forEach((off, i) => {
+      const lk = { board: R() < 0.45, jacket: JACKETS[Math.floor(R() * JACKETS.length)], pants: PANTS[Math.floor(R() * PANTS.length)], helmet: HELMETS[Math.floor(R() * HELMETS.length)], deck: DECKS[Math.floor(R() * DECKS.length)] };
+      const Q = freshRider(10); Q.p[0] += off; Q.p[1] = heightAt(Q.p[0], Q.p[2]);
+      const mesh = Rider.build(R3, lk); cpuMeshes.push(mesh);
+      heat.riders.push({ cpu: true, name: names[i], look: lk, mesh, P: Q, brain: makeRaceBrain(SK[i], R), fin: false, gate: { gi: 0, pen: 0, missed: 0 },
+        run: { mode: 'slope', score: 0, combo: 1, comboT: 0, tricks: [], used: {}, attemptScore: 0, chNew: [], rails: 0, drops: new Set(), maxSpeed: 0, crashes: 0, best: null, tokens: 0 } });
+    });
+  }
   if (kind === 'cpu') {
     const R = rng((Date.now() & 0xffff) + ci * 77), names = [...CPU_NAMES].sort(() => R() - 0.5);
     const base = Math.max(1150, heat.startElo + 120);
@@ -606,7 +775,10 @@ function startHeat(ci, kind, opts = {}) {
 }
 function others() { return run && run.heat ? run.heat.riders.filter(o => !o.me) : []; }
 function heatScore(o) { return o.me ? run.score : o.cpu ? o.run.score : o.score; }
-function standings() { return run.heat.riders.map(o => ({ o, s: heatScore(o) })).sort((a, b) => b.s - a.s); }
+function standings() {
+  if (run.heat.kind === 'race') return raceStandings();
+  return run.heat.riders.map(o => ({ o, s: heatScore(o) })).sort((a, b) => b.s - a.s);
+}
 function heatTick(dt) {
   const h = run && run.heat; if (!h || screen !== 'play') return;
   if (h.kind === 'online') netHeatFrame(dt);
@@ -616,7 +788,7 @@ function heatTick(dt) {
   if (all || t - h.endT > (h.kind === 'online' ? 50 : 25)) closeHeat(false);
 }
 function closeHeat(forfeitWin) {
-  const h = run.heat; if (h.closed) return; h.closed = true;
+  const h = run.heat; if (h.closed) return; if (h.kind === 'race') { closeRace(); return; } h.closed = true;
   const st = standings(), place = st.findIndex(x => x.o.me) + 1;
   h.place = forfeitWin ? 1 : place; h.forfeit = forfeitWin;
   if (window.Arcade) Arcade.event('ski', 'heat', { place: h.place, score: run.score, online: h.kind === 'online' });
@@ -832,7 +1004,8 @@ function render3D(dt) {
   MESH.chunks.forEach(c => { if (c.z0 > camZ - 200 && c.z0 < camZ + 1000) R3.draw(c.m, null, null, 0, false, { snow: 1 }); });
   R3.draw(MESH.feats, null, null, 0, false, { snow: 1 });
   R3.draw(MESH.rails, null, null, 0, false, { spec: 0.5 });
-  for (const k of W0.tokens) { if (k.got || k.z < camZ - 5 || k.z > camZ + 160) continue; R3.draw(MESH.token, M4.compose(k.x, k.y + Math.sin(t * 2.5 + k.z) * 0.15, k.z, t * 1.8 + k.z), null, 0, false, { spec: 1 }); }
+  if (run && run.mode === 'race' && RACE.gates) drawGates(camZ);
+  for (const k of W0.tokens) { if (run && run.mode === 'race') break; if (k.got || k.z < camZ - 5 || k.z > camZ + 160) continue; R3.draw(MESH.token, M4.compose(k.x, k.y + Math.sin(t * 2.5 + k.z) * 0.15, k.z, t * 1.8 + k.z), null, 0, false, { spec: 1 }); }
   // chairlift: chairs go up one cable and down the other
   const L = W0.lift;
   if (L.length > 1) {
@@ -870,17 +1043,18 @@ function fmtTime(s) { const m = Math.floor(s / 60), r = s - m * 60; return `${m}
 function drawHUD(dt) {
   ctx.clearRect(0, 0, W, H);
   const hg = ctx.createLinearGradient(0, 0, 0, 150); hg.addColorStop(0, 'rgba(10,15,30,0.42)'); hg.addColorStop(1, 'rgba(10,15,30,0)'); ctx.fillStyle = hg; ctx.fillRect(0, 0, W, 150);
-  U.txt(run.score.toLocaleString(), 34, 22, 44, '#ffffff', 'left', { head: true, weight: 800 });
-  if (run.combo > 1) {
+  if (run.mode === 'race') drawRaceTop();
+  else U.txt(run.score.toLocaleString(), 34, 22, 44, '#ffffff', 'left', { head: true, weight: 800 });
+  if (run.combo > 1 && run.mode !== 'race') {
     U.txt(`×${run.combo}`, 36, 78, 22, '#fde047', 'left', { weight: 800, head: true });
     U.rr(84, 88, 120, 6, 3); ctx.fillStyle = 'rgba(255,255,255,0.2)'; ctx.fill();
     U.rr(84, 88, Math.max(6, 120 * clamp(run.comboT / 3.2, 0, 1)), 6, 3); ctx.fillStyle = '#fde047'; ctx.fill();
   }
-  if (run.mode === 'slope') {
+  if (run.mode !== 'bigair') {
     const prog = clamp(P.p[2] / C.len, 0, 1);
     U.rr(W / 2 - 200, 20, 400, 6, 3); ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fill();
     U.rr(W / 2 - 200, 20, Math.max(6, 400 * prog), 6, 3); ctx.fillStyle = '#ffffff'; ctx.fill();
-    C.medals.forEach((m, i) => { ctx.fillStyle = run.score >= m ? medalCol(i + 1) : 'rgba(255,255,255,0.25)'; ctx.beginPath(); ctx.arc(W / 2 - 30 + i * 30, 46, 7, 0, 7); ctx.fill(); });
+    if (run.mode === 'slope') C.medals.forEach((m, i) => { ctx.fillStyle = run.score >= m ? medalCol(i + 1) : 'rgba(255,255,255,0.25)'; ctx.beginPath(); ctx.arc(W / 2 - 30 + i * 30, 46, 7, 0, 7); ctx.fill(); });
   } else {
     U.txt(`JUMP ${Math.min(3, run.attempt + 1)} / 3`, W / 2, 18, 16, '#ffffff', 'center', { weight: 800 });
     run.attempts.forEach((s, i) => U.txt(i < run.attempt ? s.toLocaleString() : '–', W / 2 - 110 + i * 110, 44, 14, i < run.attempt ? '#e2e8f0' : 'rgba(255,255,255,0.35)', 'center', { weight: 700 }));
@@ -888,7 +1062,7 @@ function drawHUD(dt) {
   U.txt(`${Math.round(v3.len(P.v) * 3.6)}`, W - 82, 20, 40, '#ffffff', 'right', { head: true, weight: 800 });
   U.txt('km/h', W - 34, 40, 14, '#cbd5e1', 'right', { weight: 700 });
   U.txt(fmtTime(run.time), W - 34, 72, 16, '#e2e8f0', 'right', { weight: 700 });
-  U.txt(`❄ ${run.tokens}`, W - 34, 96, 15, '#7dd3fc', 'right', { weight: 800 });
+  if (run.mode !== 'race') U.txt(`❄ ${run.tokens}`, W - 34, 96, 15, '#7dd3fc', 'right', { weight: 800 });
   // trick popups, newest on top
   const show = pops.slice(-3);
   show.forEach((p, i) => {
@@ -922,9 +1096,9 @@ function drawHUD(dt) {
     U.rr(W / 2 - 60, H - 74, Math.max(8, 120 * k), 8, 4); ctx.fillStyle = P.queuedPop ? '#7dd3fc' : '#fde047'; ctx.fill();
     if (P.queuedPop) U.txt('POP ON THE LIP', W / 2, H - 92, 12, '#7dd3fc', 'center', { weight: 800 });
   }
-  if (run.startT > 0 && run.mode === 'slope') { const n = Math.ceil(run.startT); U.txt(n <= 3 ? String(n) : '', W / 2, H / 2 - 110, 110, '#ffffff', 'center', { head: true, weight: 800 }); }
-  else if (run.mode === 'slope' && run.time < 0.9 && run.time > 0) U.txt('DROP IN!', W / 2, H / 2 - 110, 80, '#fde047', 'center', { head: true, weight: 800 });
-  if (run.done && run.mode === 'slope') U.txt('FINISH', W / 2, H / 2 - 120, 92, '#ffffff', 'center', { head: true, weight: 800 });
+  if (run.startT > 0 && run.mode !== 'bigair') { const n = Math.ceil(run.startT); U.txt(n <= 3 ? String(n) : '', W / 2, H / 2 - 110, 110, '#ffffff', 'center', { head: true, weight: 800 }); }
+  else if (run.mode !== 'bigair' && run.time < 0.9 && run.time > 0) U.txt(run.mode === 'race' ? 'GO!' : 'DROP IN!', W / 2, H / 2 - 110, 80, '#fde047', 'center', { head: true, weight: 800 });
+  if (run.done && run.mode !== 'bigair') U.txt('FINISH', W / 2, H / 2 - 120, 92, '#ffffff', 'center', { head: true, weight: 800 });
   if (run.heat) drawHeatHUD();
   drawTips();
   if (fade > 0) { ctx.fillStyle = `rgba(5,7,15,${fade})`; ctx.fillRect(0, 0, W, H); fade = Math.max(0, fade - dt * 1.6); }
@@ -962,7 +1136,8 @@ function title(dt) {
   U.txt('PEAK', 80, 172, 92, '#7dd3fc', 'left', { head: true, weight: 800 });
   U.txt('Freeride, park and big air on skis or a snowboard.', 84, 288, 18, '#e2e8f0', 'left', { weight: 600 });
   if (U.button('ride', 84, 340, 330, 64, 'RIDE', { color: '#3b82f6', size: 22 }) || U.pressed.Enter) screen = 'courses';
-  if (U.button('rk', 84, 418, 330, 58, 'RANKED', { color: '#f59e0b', size: 19 })) openRanked();
+  if (U.button('rk', 84, 418, 160, 58, 'RANKED', { color: '#f59e0b', size: 17 })) openRanked();
+  if (U.button('race', 254, 418, 160, 58, 'RACE', { color: '#10b981', size: 17 })) { screen = 'racesel'; if (sel > 2) sel = 0; }
   if (U.button('ba', 84, 488, 160, 50, 'BIG AIR', { color: '#e11d48', size: 15 })) newRun(3);
   if (U.button('rider', 254, 488, 160, 50, 'RIDER', { ghost: true, size: 15, sfx: 'tab' })) screen = 'rider';
   if (U.button('ctl', 84, 548, 330, 44, 'CONTROLS', { ghost: true, size: 14, sfx: 'tab' })) screen = 'controls';
@@ -1076,7 +1251,7 @@ function drawHeatHUD() {
     U.txt(String(i + 1), x + 22, y + 12, 15, i === 0 ? '#fde047' : '#e2e8f0', 'center', { base: 'middle', weight: 800, shadow: false });
     ctx.fillStyle = o.me ? JACKETS[save.jacket] : o.look.jacket; ctx.beginPath(); ctx.arc(x + 44, y + 12, 6, 0, 7); ctx.fill();
     U.txt(o.name + (o.fin && !o.me ? ' ✓' : ''), x + 58, y + 12, 14, '#fff', 'left', { base: 'middle', weight: 700, shadow: false });
-    U.txt(s.toLocaleString(), x + 210, y + 12, 14, '#fde047', 'right', { base: 'middle', weight: 800, shadow: false });
+    U.txt(h.kind === 'race' ? (s != null ? fmtRace(s) : '') : s.toLocaleString(), x + 210, y + 12, 14, '#fde047', 'right', { base: 'middle', weight: 800, shadow: false });
   });
   // name tags over the other riders
   others().forEach(o => {
@@ -1085,6 +1260,7 @@ function drawHeatHUD() {
     const d = Math.hypot(o.P.p[0] - cam.eye[0], o.P.p[2] - cam.eye[2]); if (d > 160) return;
     ctx.globalAlpha = clamp(1.4 - d / 120, 0.4, 1);
     pill(o.name, q[0], q[1], 12, '#fff', 'rgba(15,23,42,0.55)');
+    if (h.kind === 'race') { ctx.globalAlpha = 1; return; }
     const tr = o.cpu ? o.run.tricks[o.run.tricks.length - 1] : null, ttxt = o.cpu ? (tr && o.run.tricks.length !== o.seenT ? tr : null) : (o.lastTrick && t - o.lastTrickT < 2 ? o.lastTrick : null);
     if (o.cpu && tr && o.run.tricks.length !== o.seenT) { o.seenT = o.run.tricks.length; o.trickT = t; o.trickTxt = tr.name + '  +' + tr.pts.toLocaleString(); }
     const tt = o.cpu ? (o.trickT && t - o.trickT < 2 ? o.trickTxt : null) : ttxt;
@@ -1209,6 +1385,7 @@ function frame(now) {
   else if (screen === 'rider') { riderScreen(dt); sounds(0); }
   else if (screen === 'controls') { controlsScreen(dt); sounds(0); }
   else if (screen === 'ranked') { rankedScreen(dt); sounds(0); }
+  else if (screen === 'racesel') { raceSelect(dt); sounds(0); }
   else {
     if (screen === 'play' && !paused && !hold) {
       const n = Math.max(1, Math.ceil(dt / (1 / 240)));
@@ -1221,18 +1398,20 @@ function frame(now) {
     sounds(screen === 'play' && !paused ? 1 : 0);
     if (screen === 'results') results();
     if (screen === 'heatres') heatResults();
+    if (screen === 'raceres') raceResults();
     if (paused) {
       ctx.fillStyle = 'rgba(8,12,28,0.6)'; ctx.fillRect(0, 0, W, H); U.panel(W / 2 - 210, 220, 420, 280);
       U.txt('Paused', W / 2, 246, 36, '#fff', 'center', { head: true, weight: 800 });
       if (U.button('res', W / 2 - 170, 310, 340, 56, 'RESUME', { color: '#3b82f6' }) || U.pressed.Escape) paused = false;
-      else if (!run.heat && U.button('rst', W / 2 - 170, 378, 165, 48, 'RESTART', { ghost: true, size: 15 })) { paused = false; newRun(built); }
-      else if (run.heat) { if (U.button('quit', W / 2 + 5, 378, 165, 48, 'FORFEIT', { ghost: true, size: 15, sfx: 'back' })) { paused = false; forfeit(); } }
-      else if (U.button('quit', W / 2 + 5, 378, 165, 48, 'MENU', { ghost: true, size: 15, sfx: 'back' })) { paused = false; screen = 'title'; P = null; Sound.playSong(SONGS.skiMenu); }
+      else if ((!run.heat || run.heat.kind === 'race') && U.button('rst', W / 2 - 170, 378, 165, 48, 'RESTART', { ghost: true, size: 15 })) { paused = false; if (run.heat) startHeat(built, 'race', { diff: run.heat.diff }); else newRun(built); }
+      else if (run.heat && run.heat.kind !== 'race') { if (U.button('quit', W / 2 + 5, 378, 165, 48, 'FORFEIT', { ghost: true, size: 15, sfx: 'back' })) { paused = false; forfeit(); } }
+      else if (U.button('quit', W / 2 + 5, 378, 165, 48, 'MENU', { ghost: true, size: 15, sfx: 'back' })) { paused = false; const wasRace = run && run.mode === 'race'; if (run && run.heat) run.heat = null; screen = wasRace ? 'racesel' : 'title'; P = null; Sound.playSong(SONGS.skiMenu); }
       U.txt('C to change camera', W / 2, 450, 13, '#94a3b8', 'center', { weight: 600 });
     } else if (screen === 'play') {
       if (U.pressed.Escape) paused = true;
       if (paused && run.heat && run.heat.kind === 'online') { /* the other rider keeps going */ }
       if (U.pressed.KeyR && !run.heat) newRun(built);
+      if (U.pressed.KeyR && run.heat && run.heat.kind === 'race') startHeat(built, 'race', { diff: run.heat.diff });
     }
   }
   if (U.pressed.KeyC && screen === 'play') { save.cam = save.cam ? 0 : 1; store(); }
@@ -1247,7 +1426,7 @@ fontReady.then(() => requestAnimationFrame(n => { last = n; frame(n); }));
 window.__ski = {
   U, get P() { return P; }, set P(v) { P = v; }, get run() { return run; }, get screen() { return screen; }, set screen(v) { screen = v; }, newRun, step, takeoff,
   get C() { return C; }, get W0() { return W0; }, set bot(f) { botInput = f; }, snapCam() { updateCam(1, true); }, freeze(v) { hold = v; }, save: () => save, finishRun,
-  get pops() { return pops; }, makeBrain, startHeat, openRanked, standings: () => standings().map(x => [x.o.name, x.s, x.o.fin || false, x.o.cpu ? x.o.P.p[2].toFixed(0) : '', x.o.cpu ? x.o.run.crashes : '']), get RK() { return RK; },
+  get pops() { return pops; }, makeBrain, makeRaceBrain, startHeat, RACE, raceStandings, closeRace, get paused() { return paused; }, openRanked, standings: () => standings().map(x => [x.o.name, x.s, x.o.fin || false, x.o.cpu ? x.o.P.p[2].toFixed(0) : '', x.o.cpu ? x.o.run.crashes : '']), get RK() { return RK; },
   cpuTricks: () => run.heat.riders.filter(o => o.cpu).map(o => [o.name, o.run.tricks.map(t => t.name + ' ' + t.pts).join(' | ')]),
 };
 const inRun = () => screen === 'play' && P && run ? '' : 'Start a run first';
