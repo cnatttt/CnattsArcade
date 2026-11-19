@@ -13,7 +13,7 @@ Object.assign(SONGS, {
 // ------------------------------------------------------------ save
 const SAVE_KEY = 'cnatt_party';
 // signed-in arcade players play online under their account name
-const myName = () => (window.Account && Account.user && Account.user.username) || save.players[0].name;
+const myName = () => (window.Account && Account.user && Account.name()) || save.players[0].name;
 // the site owner gets a gold OWNER tag next to their name
 const OWN = () => !!(window.Account && Account.isOwnerMe && Account.isOwnerMe());
 const isOwner = p => !!(p && p.own && window.Account && (!S || !S.online || Account.ownerOK(p.name, p.own)));

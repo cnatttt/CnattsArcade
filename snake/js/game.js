@@ -28,7 +28,7 @@ SHOP_SKINS.forEach(i => SKINS.push([i.c1, i.c2]));
 const mySkin = () => { const it = window.Arcade && Arcade.equipped('snake', 'skin'); const k = it ? SHOP_SKINS.indexOf(SHOP_SKINS.find(x => x.id === it.id)) : -1; return k >= 0 ? BASE_SKINS + k : save.skin; };
 try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if (s) save = Object.assign(save, s); } catch (e) {}
 const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {} };
-const myName = () => (window.Account && Account.user && Account.user.username) || save.name || 'You';
+const myName = () => (window.Account && Account.user && Account.name()) || save.name || 'You';
 const OWN = () => !!(window.Account && Account.isOwnerMe && Account.isOwnerMe());
 
 SONGS.snake = { seed: 909, bpm: 100, root: 55, scale: 'minor', prog: [0, 5, 3, 4, 0, 5, 6, 4], density: 0.5, swing: 0.08,

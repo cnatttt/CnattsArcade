@@ -25,7 +25,7 @@ const SAVE_KEY = 'cnatt_soccer';
 let save = { wins: 0, losses: 0, goals: 0, matches: 0, bestWinHard: 0, set: { size: 1, cpu: 1, time: 180, name: '' }, colors: [0, 1] };
 try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if (s) save = Object.assign(save, s, { set: Object.assign(save.set, s.set || {}) }); } catch (e) {}
 const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {} };
-const myName = () => (window.Account && Account.user && Account.user.username) || 'Player';
+const myName = () => (window.Account && Account.user && Account.name()) || 'Player';
 const OWN = () => !!(window.Account && Account.isOwnerMe && Account.isOwnerMe());
 
 // ------------------------------------------------------------ audio
@@ -813,6 +813,10 @@ fontReady.then(() => {
 window.__rs = { TS, setScreen: v => { screen = v; }, get match() { return match; }, endMatch, openRanked, startRankedCpu, findRanked, RK, set timeLeft(v) { timeLeft = v; }, get cars() { return cars; }, get ball() { return ball; }, get score() { return score; }, get screen() { return screen; }, get phase() { return phase; }, NET, hostRoom, joinRoom, hostStart, startMatch, step, save: () => save,
   sim(dt, n) { for (let i = 0; i < n; i++) { if (screen !== 'play') return screen; step(dt); } return screen; } };
 const inMatch = () => screen === 'play' && (!NET.role || NET.role === 'host') ? '' : 'Start a match (as host) first';
+
+// opened from a friend's tournament invite: ?tourney=CODE
+(() => { const tq = /[?&#]tourney=([A-Za-z0-9]{4,6})/.exec(location.search + location.hash); if (!tq || !window.Tourney) return;
+  Promise.race([window.Account ? Account.init() : Promise.resolve(), new Promise(r => setTimeout(r, 4000))]).then(() => setTimeout(() => { screen = 'tourney'; if (!Tourney.inTourney) Tourney.join('soccer', tq[1], myName()); }, 400)); })();
 window.__cheats = [
   { name: 'Score a goal for blue', icon: '⚽', need: () => inMatch() || (phase !== 'live' ? 'Wait for the kickoff' : ''), run() { ball.x = FW + 40; ball.y = 0; scoreGoal(0); } },
   { name: 'Infinite boost (blue)', icon: '🔥', need: inMatch, toggle: () => !!NET.infBoost, run() { NET.infBoost = !NET.infBoost; } },

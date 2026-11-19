@@ -82,7 +82,7 @@ window.Ranked = (() => {
   const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
   function queue(game, onMatch) {
     if (!signedIn()) return null;
-    const a = A(), me = { id: a.user.id, name: a.user.username, elo: elo(game), at: Date.now() };
+    const a = A(), me = { id: a.user.id, name: a.name(), elo: elo(game), at: Date.now() };
     const ch = a.sb.channel(game + '-ranked-queue', { config: { presence: { key: me.id }, broadcast: { self: false } } });
     let matched = false, timer = null;
     const leave = () => { clearInterval(timer); try { ch.untrack(); a.sb.removeChannel(ch); } catch (e) {} };

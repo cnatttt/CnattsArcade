@@ -10,9 +10,9 @@
   'use strict';
   if (window.Arcade) return;
   const KEY = 'cnatt_arcade';
-  const fresh = () => ({ coins: 0, earned: 0, owned: {}, eq: {}, daily: { day: '', prog: 0, done: false, streak: 0, best: 0, last: '' } });
+  const fresh = () => ({ coins: 0, earned: 0, owned: {}, eq: {}, stats: {}, daily: { day: '', prog: 0, done: false, streak: 0, best: 0, last: '' } });
   function load() { try { const d = JSON.parse(localStorage.getItem(KEY)); if (d) return Object.assign(fresh(), d, { daily: Object.assign(fresh().daily, d.daily || {}) }); } catch (e) {} return fresh(); }
-  function store(d) { try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) {} listeners.forEach(f => { try { f(d); } catch (e) {} }); }
+  function store(d) { try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) {} listeners.forEach(f => { try { f(d); } catch (e) {} }); try { if (window.Account && Account.publishShowcase) Account.publishShowcase(); } catch (e) {} }
   const listeners = [];
   const isOwner = () => !!(window.Account && Account.isOwnerMe && Account.isOwnerMe());
 
@@ -166,6 +166,10 @@
     event(game, type, data) {
       data = data || {};
       try {
+        // lifetime counters, used for profile badges
+        const sd = load(); sd.stats = sd.stats || {}; const k = game + ':' + type;
+        sd.stats[k] = (sd.stats[k] || 0) + 1; if (data.won || data.place === 1) sd.stats[k + ':won'] = (sd.stats[k + ':won'] || 0) + 1;
+        store(sd);
         const f = REWARD[game] && REWARD[game][type]; if (f) A.earn(f(data), GAME_NAMES[game] || '');
         const st = dailyState(), c = st.challenge;
         if (!st.done && c.game === game && c.type === type && c.ok(data)) {

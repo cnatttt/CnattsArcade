@@ -715,7 +715,7 @@ function drawBadge(x, y, s, elo) {
 const RK = { screen: 'home', me: null, top: [], err: '', queue: null, net: null, result: null, loading: false };
 const ACC = () => window.Account;
 const signedIn = () => { const A = ACC(); return !!(A && A.configured && A.user && A.sb); };
-const myName = () => { const A = ACC(); return (A && A.user && A.user.username) || 'You'; };
+const myName = () => { const A = ACC(); return (A && A.user && A.name()) || 'You'; };
 function myElo() { return signedIn() ? (RK.me ? RK.me.elo : 1000) : (save.relo || 1000); }
 async function loadRanked() {
   const A = ACC(); RK.loading = true;
@@ -825,7 +825,7 @@ function findMatch() {
   if (!signedIn()) { RK.err = 'Sign in on the arcade to race other players.'; return; }
   const A = ACC(); RK.screen = 'queue'; RK.qT = 0; RK.err = '';
   const ch = A.sb.channel('ski-ranked-queue', { config: { presence: { key: A.user.id }, broadcast: { self: false } } });
-  const me = { id: A.user.id, name: A.user.username, elo: myElo(), at: Date.now() };
+  const me = { id: A.user.id, name: A.name(), elo: myElo(), at: Date.now() };
   let matched = false;
   const tryPair = () => {
     if (matched) return;

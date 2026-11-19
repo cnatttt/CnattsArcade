@@ -976,7 +976,7 @@ function drawRankBadge(x, y, s, elo) {
   for (let k = 0; k <= Math.min(r.tier, 6); k++) { const a = -Math.PI / 2 + (k - Math.min(r.tier, 6) / 2) * 0.42; ctx.beginPath(); ctx.arc(Math.cos(a) * 9, 6 + Math.sin(a) * 9 + 6, 2.6, 0, 6.3); ctx.fill(); }
   ctx.restore();
 }
-const myName = () => (window.Account && Account.user && Account.user.username) || ('P' + (Math.floor(Math.random() * 900) + 100));
+const myName = () => (window.Account && Account.user && Account.name()) || ('P' + (Math.floor(Math.random() * 900) + 100));
 const OWN2 = () => !!(window.Account && Account.isOwnerMe && Account.isOwnerMe());
 
 function netSend(m) { if (NET.tr) NET.tr.broadcast(m); }
@@ -1254,7 +1254,7 @@ function startQueue() {
   if (!A || !A.user || !A.sb) { NET.error = 'Sign in on the arcade to play ranked.'; return; }
   NET.rscreen = 'queue'; NET.queueT = 0; NET.error = '';
   const ch = A.sb.channel('tag-ranked-queue', { config: { presence: { key: A.user.id }, broadcast: { self: false } } });
-  const me = { id: A.user.id, name: A.user.username, elo: NET.myElo || 1000, at: Date.now() };
+  const me = { id: A.user.id, name: A.name(), elo: NET.myElo || 1000, at: Date.now() };
   let matched = false;
   const tryPair = () => {
     if (matched) return;
@@ -1387,6 +1387,10 @@ window.__tag = { NET, hostRoom, joinRoom, netStart, rankOf, endMatch, openRanked
 // ------------------------------------------------------------ owner cheats (only shown for the site admin, see account/cheats.js)
 const inMatch = () => screen === 'play' ? '' : 'Start a match first';
 window.__tag.TN = TN; window.__tag.setScreen = v => { screen = v; };
+
+// opened from a friend's tournament invite: ?tourney=CODE
+(() => { const tq = /[?&#]tourney=([A-Za-z0-9]{4,6})/.exec(location.search + location.hash); if (!tq || !window.Tourney) return;
+  Promise.race([window.Account ? Account.init() : Promise.resolve(), new Promise(r => setTimeout(r, 4000))]).then(() => setTimeout(() => { screen = 'tourney'; if (!Tourney.inTourney) Tourney.join('tag', tq[1], myName()); }, 400)); })();
 window.__cheats = [
   { name: '+1 point for Player 1', icon: '🏅', need: inMatch, run() { score[0]++; } },
   { name: 'Make Player 2 IT', icon: '👉', need: inMatch, run() { itIdx = 1; } },

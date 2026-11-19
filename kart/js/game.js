@@ -33,7 +33,7 @@ save.set = Object.assign({}, DEFAULT_SET, save.set || {});
 save.binds = { p1: Object.assign({}, DEFAULT_BINDS.p1, (save.binds || {}).p1), p2: Object.assign({}, DEFAULT_BINDS.p2, (save.binds || {}).p2) };
 if (!save.set.name) save.set.name = 'Racer' + Math.floor(100 + Math.random() * 900);
 // signed-in arcade players race under their account name
-const myName = () => (window.Account && Account.user && Account.user.username) || SET().name;
+const myName = () => (window.Account && Account.user && Account.name()) || SET().name;
 // the site owner gets a gold OWNER tag next to their name
 const OWN = () => !!(window.Account && Account.isOwnerMe && Account.isOwnerMe());
 const ADMIN_ON = () => OWN() && save.adminKart !== false;   // on by default for the owner

@@ -18,7 +18,7 @@ const SAVE_KEY = 'cnatt_golf';
 let save = { best: 0, bestPar: null, rounds: 0, aces: 0, wins: 0, holeBest: {}, guide: true };
 try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if (s) save = Object.assign(save, s); } catch (e) {}
 const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {} };
-const myName = () => (window.Account && Account.user && Account.user.username) || 'You';
+const myName = () => (window.Account && Account.user && Account.name()) || 'You';
 
 // ------------------------------------------------------------ sound
 SONGS.golf = { seed: 4242, bpm: 92, root: 60, scale: 'major', prog: [0, 5, 3, 4, 0, 5, 1, 4], density: 0.5, swing: 0.16,

@@ -135,18 +135,18 @@
   #shop .tabs button { height: 34px; padding: 0 14px; border-radius: 99px; border: 1px solid var(--line); background: transparent; color: var(--muted); font: 600 13px var(--ui); cursor: pointer; }
   #shop .tabs button.on { background: var(--text); color: var(--bg); border-color: var(--text); }
   #shop .items { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
-  .item { border: 1px solid var(--line); border-radius: 14px; padding: 14px; background: #ffffff05; display: flex; flex-direction: column; gap: 10px; }
-  .item.eq { border-color: #4ade80aa; box-shadow: 0 0 0 1px #4ade8055 inset; }
-  .item.adm { border-color: #facc1588; background: linear-gradient(180deg, #facc1512, transparent); }
-  .item .sw { height: 74px; border-radius: 10px; display: flex; align-items: center; justify-content: center; gap: 8px; position: relative; overflow: hidden; }
-  .item .nm { font: 700 15px var(--ui); color: var(--text); display: flex; align-items: center; gap: 8px; }
-  .item .tag { font: 800 10px var(--ui); letter-spacing: 1px; padding: 2px 7px; border-radius: 6px; background: #facc15; color: #1c1917; }
-  .item .gm { font: 600 12px var(--ui); color: var(--muted); margin-top: -6px; }
-  .item button { height: 36px; border-radius: 10px; border: 0; font: 700 13px var(--ui); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; }
-  .item button.buy { background: linear-gradient(180deg, #fde047, #f59e0b); color: #1c1917; }
-  .item button.buy:disabled { background: #ffffff10; color: var(--dim); cursor: default; }
-  .item button.equip { background: #ffffff12; color: var(--text); }
-  .item button.on { background: #16a34a; color: #fff; }
+  #shop .item { border: 1px solid var(--line); border-radius: 14px; padding: 14px; background: #ffffff05; display: flex; flex-direction: column; gap: 10px; }
+  #shop .item.eq { border-color: #4ade80aa; box-shadow: 0 0 0 1px #4ade8055 inset; }
+  #shop .item.adm { border-color: #facc1588; background: linear-gradient(180deg, #facc1512, transparent); }
+  #shop .item .sw { height: 74px; border-radius: 10px; display: flex; align-items: center; justify-content: center; gap: 8px; position: relative; overflow: hidden; }
+  #shop .item .nm { font: 700 15px var(--ui); color: var(--text); display: flex; align-items: center; gap: 8px; }
+  #shop .item .tag { font: 800 10px var(--ui); letter-spacing: 1px; padding: 2px 7px; border-radius: 6px; background: #facc15; color: #1c1917; }
+  #shop .item .gm { font: 600 12px var(--ui); color: var(--muted); margin-top: -6px; }
+  #shop .item button { height: 36px; border-radius: 10px; border: 0; font: 700 13px var(--ui); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; }
+  #shop .item button.buy { background: linear-gradient(180deg, #fde047, #f59e0b); color: #1c1917; }
+  #shop .item button.buy:disabled { background: #ffffff10; color: var(--dim); cursor: default; }
+  #shop .item button.equip { background: #ffffff12; color: var(--text); }
+  #shop .item button.on { background: #16a34a; color: #fff; }
   .shopnote { margin-top: 16px; font: 500 13px var(--ui); color: var(--muted); }
   #stats { display: flex; gap: 28px; flex-wrap: wrap; padding: 0 4px 34px; color: var(--muted); font-size: 14px; }
   .stat { display: flex; align-items: baseline; gap: 7px; }
@@ -268,6 +268,7 @@
   #bar button:hover, #bar a:hover { background: #ffffff12; }
   #bar img { width: 24px; height: 24px; border-radius: 7px; }
   #nowPlaying { flex: 1; text-align: center; font: 700 14px var(--head); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #invBtn.live { border-color: #4ade80 !important; color: #4ade80 !important; box-shadow: 0 0 14px #4ade8055; }
   #frame { flex: 1; width: 100%; border: 0; background: #000; }
 
   @media (max-width: 980px) { #heroWrap { grid-template-columns: 1fr; } #rail { flex-direction: row; overflow-x: auto; } .ri { flex: none; width: 240px; } }
@@ -342,6 +343,7 @@
     <button id="backBtn" title="Back to menu (Esc)">‹ Menu</button>
     <img src="assets/icon.svg" alt="" class="hide-sm">
     <div id="nowPlaying"></div>
+    <button id="invBtn" title="Invite friends into your game" hidden>👥 Invite</button>
     <button id="fsBtn" class="hide-sm" title="Fullscreen">⛶ Fullscreen</button>
     <a id="tabBtn" class="hide-sm" target="_blank" rel="noopener" title="Open in a new tab">↗ New tab</a>
   </div>
@@ -572,7 +574,8 @@
       const [id, ico, game, name] = FAME[i];
       const d = document.createElement('div'); d.className = 'fcard';
       d.innerHTML = `<div class="fh"><span class="fi">${ico}</span><div><b>${esc(game)}</b><small>${esc(name)}</small></div></div>` +
-        rows.map((r, k) => `<div class="fr r${k + 1}"><span class="medal">${k + 1}</span><span class="fav" style="background:${esc((r.profiles || {}).color || '#b07cff')}">${esc(((r.profiles || {}).username || '?')[0].toUpperCase())}</span><span class="fn">${esc((r.profiles || {}).username || '?')}</span><span class="fs">${Account.fmtScore(id, r.score)}</span></div>`).join('');
+        rows.map((r, k) => { const P = r.profiles || {}, nm = Account.nameOf(P), img = /^(https:\/\/[^'"()\s<>]+|data:image[^'"()\s<>]+)$/.test(P.avatar_url || '') ? `;background-image:url('${esc(P.avatar_url)}');background-size:cover` : ''; return `<div class="fr r${k + 1}" style="cursor:pointer" data-uid="${esc(r.user_id)}"><span class="medal">${k + 1}</span><span class="fav" style="background:${esc(P.color || '#b07cff')}${img}">${img ? '' : esc(nm[0].toUpperCase())}</span><span class="fn">${esc(nm)}</span><span class="fs">${Account.fmtScore(id, r.score)}</span></div>`; }).join('');
+      d.onclick = e => { const row = e.target.closest('[data-uid]'); if (row && Account.openProfile) Account.openProfile(row.dataset.uid); };
       box.appendChild(d);
     });
     $('fameWrap').hidden = !box.children.length;
@@ -592,7 +595,7 @@
   // ---------------- routing: yoursite.com/#fishing opens that game directly
   function route() {
     const [id, extra] = decodeURIComponent(location.hash.slice(1)).split('&');
-    const jm = extra && /^join=([A-Za-z0-9]{4,6})$/.exec(extra);
+    const jm = extra && /^join=([A-Za-z0-9]{4,6})$/.exec(extra), tq = extra && /^tourney=([A-Za-z0-9]{4,6})$/.exec(extra);
     const g = LIST.find(x => x.id === id);
     if (g && g.maintenance && !(Account.user && Account.user.admin)) { toast(`🛠 ${g.title} is down for maintenance${g.note ? ': ' + g.note : '.'}`); history.replaceState('', '', location.pathname + location.search); }
     if (!g || (g.maintenance && !(Account.user && Account.user.admin))) {
@@ -604,7 +607,7 @@
       if (Account.user) { Account.setPlaying(null); Account.flush(); }
       return;
     }
-    const url = g.folder.replace(/\/+$/, '') + '/index.html' + (jm ? '?join=' + jm[1].toUpperCase() : '');
+    const url = g.folder.replace(/\/+$/, '') + '/index.html' + (jm ? '?join=' + jm[1].toUpperCase() : tq ? '?tourney=' + tq[1].toUpperCase() : '');
     $('nowPlaying').textContent = g.title;
     $('tabBtn').href = url;
     document.title = g.title + ' | ' + titleCase(SITE.title);
@@ -659,6 +662,15 @@
 
   // friends list JOIN button
   Account.joinFriend = (game, code) => { frame.src = 'about:blank'; location.hash = game + '&join=' + code; };
+  Account.joinTourney = (game, code) => { frame.src = 'about:blank'; location.hash = game + '&tourney=' + code; };
+  // what the INVITE button would invite friends into: an open tournament lobby, or the online room you're in
+  Account.inviteTarget = () => {
+    try { const T = frame.contentWindow && frame.contentWindow.Tourney; if (T && T.inTourney && T.state.code && !(T.state.st && T.state.st.started)) return { game: T.state.game, code: T.state.code, kind: 'tourney' }; } catch (e) {}
+    const m = Account.room && /^([a-z0-9]+):([A-Za-z0-9]{4,6})$/.exec(Account.room);
+    return m ? { game: m[1], code: m[2], kind: 'room' } : null;
+  };
+  $('invBtn').onclick = () => { Sound.play('click'); Account.openInvite && Account.openInvite(); };
+  setInterval(() => { const b = $('invBtn'), on = !!(Account.user && player.classList.contains('open')); b.hidden = !on; b.classList.toggle('live', on && !!Account.inviteTarget()); }, 1000);
   window.addEventListener('hashchange', route);
   route();
   function toast(t) { const el = $('toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('show'), 3500); }

@@ -409,3 +409,91 @@ begin
 end $$;
 revoke all on function public.ranked_cpu(int, boolean) from public, anon;
 grant execute on function public.ranked_cpu(int, boolean) to authenticated;
+
+-- =====================================================================
+--  PROFILES 2: display names, profile pictures, banners, bios,
+--  badges showcase and game invites (added later - safe to re-run)
+-- =====================================================================
+alter table public.profiles add column if not exists display_name text;
+alter table public.profiles add column if not exists avatar_url text;
+alter table public.profiles add column if not exists banner_url text;
+alter table public.profiles add column if not exists bio text;
+alter table public.profiles add column if not exists showcase jsonb;
+alter table public.profiles drop constraint if exists profiles_display_name_ok;
+alter table public.profiles add constraint profiles_display_name_ok check (display_name is null or display_name ~ '^[A-Za-z0-9_.''!-]([A-Za-z0-9 _.''!-]{0,14}[A-Za-z0-9_.''!-])?$');
+alter table public.profiles drop constraint if exists profiles_media_ok;
+alter table public.profiles add constraint profiles_media_ok check (
+  (avatar_url is null or (char_length(avatar_url) < 400 and avatar_url ~ '^https://[^''"()\s<>]+/storage/v1/object/public/profile-media/[^''"()\s<>]+$')) and
+  (banner_url is null or (char_length(banner_url) < 400 and banner_url ~ '^https://[^''"()\s<>]+/storage/v1/object/public/profile-media/[^''"()\s<>]+$')));
+alter table public.profiles drop constraint if exists profiles_bio_ok;
+alter table public.profiles add constraint profiles_bio_ok check (bio is null or char_length(bio) <= 160);
+alter table public.profiles drop constraint if exists profiles_showcase_ok;
+alter table public.profiles add constraint profiles_showcase_ok check (showcase is null or pg_column_size(showcase) < 6000);
+grant update (display_name, avatar_url, banner_url, bio, showcase) on public.profiles to authenticated;
+
+-- nobody may look like someone else: a display name can't match another player's username or display name
+create unique index if not exists profiles_display_lower on public.profiles (lower(display_name)) where display_name is not null;
+create or replace function public.profiles_guard() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'UPDATE' and old.banned and not public.is_admin() then
+    -- banned players can't change how they look to others
+    new.display_name := old.display_name; new.avatar_url := old.avatar_url; new.banner_url := old.banner_url; new.bio := old.bio;
+  end if;
+  if new.display_name is not null and exists (select 1 from public.profiles p where p.id <> new.id and (p.username_lower = lower(new.display_name) or lower(p.display_name) = lower(new.display_name))) then
+    raise exception 'That name is already taken';
+  end if;
+  if tg_op = 'INSERT' and exists (select 1 from public.profiles p where lower(p.display_name) = lower(new.username)) then
+    raise exception 'That name is already taken';
+  end if;
+  return new;
+end $$;
+drop trigger if exists profiles_guard on public.profiles;
+create trigger profiles_guard before insert or update on public.profiles for each row execute function public.profiles_guard();
+
+-- admin: reset someone's name, picture, banner and bio
+create or replace function public.admin_clear_profile(p_user uuid) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'not allowed'; end if;
+  update public.profiles set display_name = null, avatar_url = null, banner_url = null, bio = null where id = p_user;
+  delete from storage.objects where bucket_id = 'profile-media' and (storage.foldername(name))[1] = p_user::text;
+end $$;
+revoke all on function public.admin_clear_profile(uuid) from public, anon;
+grant execute on function public.admin_clear_profile(uuid) to authenticated;
+
+-- picture storage: public to look at, each player can only write inside their own folder (2 MB, images only)
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('profile-media', 'profile-media', true, 2097152, array['image/png', 'image/jpeg', 'image/webp'])
+on conflict (id) do update set public = true, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
+drop policy if exists "profile media upload" on storage.objects;
+create policy "profile media upload" on storage.objects for insert to authenticated with check (
+  bucket_id = 'profile-media' and (storage.foldername(name))[1] = auth.uid()::text
+  and not exists (select 1 from public.profiles where id = auth.uid() and banned));
+drop policy if exists "profile media read own" on storage.objects;
+create policy "profile media read own" on storage.objects for select to authenticated using (bucket_id = 'profile-media' and (storage.foldername(name))[1] = auth.uid()::text);
+drop policy if exists "profile media delete" on storage.objects;
+create policy "profile media delete" on storage.objects for delete to authenticated using (bucket_id = 'profile-media' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- invites: "come join my game" sent to a friend (one live invite per pair, newest wins)
+create table if not exists public.invites (
+  sender uuid not null references public.profiles on delete cascade,
+  recipient uuid not null references public.profiles on delete cascade,
+  game text not null check (game ~ '^[a-z0-9]{2,20}$'),
+  code text not null check (code ~ '^[A-Za-z0-9]{4,6}$'),
+  kind text not null default 'room' check (kind in ('room', 'tourney')),
+  created_at timestamptz not null default now(),
+  primary key (sender, recipient),
+  check (sender <> recipient)
+);
+alter table public.invites enable row level security;
+drop policy if exists "see own invites" on public.invites;
+create policy "see own invites" on public.invites for select using (auth.uid() in (sender, recipient));
+drop policy if exists "invite friends" on public.invites;
+create policy "invite friends" on public.invites for insert with check (
+  auth.uid() = sender
+  and not exists (select 1 from public.profiles where id = auth.uid() and banned)
+  and exists (select 1 from public.friends f where f.status = 'accepted' and ((f.requester = sender and f.addressee = recipient) or (f.requester = recipient and f.addressee = sender))));
+drop policy if exists "update own invites" on public.invites;
+create policy "update own invites" on public.invites for update using (auth.uid() = sender) with check (auth.uid() = sender);
+drop policy if exists "remove invites" on public.invites;
+create policy "remove invites" on public.invites for delete using (auth.uid() in (sender, recipient));

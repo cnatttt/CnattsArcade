@@ -154,7 +154,9 @@
 
   // ------------------------------------------------------------ auth
   async function loadProfile(u) {
-    let r = await A.sb.from('profiles').select('id,username,color,banned').eq('id', u.id).maybeSingle();
+    let r = await A.sb.from('profiles').select('id,username,color,banned,display_name,avatar_url,banner_url,bio,showcase,created_at').eq('id', u.id).maybeSingle();
+    A.v2 = !r.error;   // false = the database hasn't had the PROFILES 2 part of setup.sql yet
+    if (r.error) r = await A.sb.from('profiles').select('id,username,color,banned').eq('id', u.id).maybeSingle();
     if (r.error) r = await A.sb.from('profiles').select('id,username,color').eq('id', u.id).maybeSingle();   // older database without the admin columns
     if (r.data) A.user = r.data;
     else A.user = { id: u.id, username: (u.user_metadata && u.user_metadata.username) || 'player', color: '#b07cff' };
@@ -225,7 +227,11 @@
   // ------------------------------------------------------------ the owner tag (shown next to admin names in multiplayer)
   A.adminNames = null;
   A.loadAdmins = async function () {
-    try { const r = await A.sb.from('admins').select('profiles(username)'); if (!r.error) A.adminNames = new Set(r.data.map(x => x.profiles && x.profiles.username.toLowerCase()).filter(Boolean)); } catch (e) {}
+    try {
+      let r = await A.sb.from('admins').select('profiles(username,display_name)');
+      if (r.error) r = await A.sb.from('admins').select('profiles(username)');
+      if (!r.error) A.adminNames = new Set(r.data.flatMap(x => x.profiles ? [x.profiles.username, x.profiles.display_name] : []).filter(Boolean).map(n => n.toLowerCase()));
+    } catch (e) {}
   };
   A.isOwnerMe = () => !!(A.user && A.user.admin);
   // a player shows the tag if their game says they're the owner AND the name really is an admin account
@@ -279,7 +285,9 @@
   // ------------------------------------------------------------ leaderboards
   A.leaderboard = async function (board, limit = 50) {
     const B = BOARDS.find(b => b.id === board);
-    const r = await A.sb.from('scores').select('score,user_id,profiles(username,color)').eq('board', board).order('score', { ascending: !!(B && B.lower) }).limit(limit);
+    const q = f => A.sb.from('scores').select(`score,user_id,profiles(${f})`).eq('board', board).order('score', { ascending: !!(B && B.lower) }).limit(limit);
+    let r = await q(A.v2 !== false ? 'username,color,display_name,avatar_url' : 'username,color');
+    if (r.error) r = await q('username,color');
     if (r.error) throw r.error;
     return r.data;
   };
@@ -298,8 +306,10 @@
   let PF = 'id,username,color,last_seen,playing,room';
   A.friends = async function () {
     const me = A.user.id;
+    if (A.v2 && !PF.includes('display_name')) PF += ',display_name,avatar_url';
     const q = () => A.sb.from('friends').select(`requester,addressee,status,a:profiles!friends_requester_fkey(${PF}),b:profiles!friends_addressee_fkey(${PF})`).or(`requester.eq.${me},addressee.eq.${me}`);
     let r = await q();
+    if (r.error && PF.includes('display_name')) { PF = 'id,username,color,last_seen,playing,room'; A.v2 = false; r = await q(); }
     if (r.error && PF.includes('room')) { PF = 'id,username,color,last_seen,playing'; r = await q(); }
     if (r.error) throw r.error;
     const out = { friends: [], incoming: [], outgoing: [] };
@@ -310,7 +320,7 @@
       else if (f.addressee === me) out.incoming.push(other);
       else out.outgoing.push(other);
     });
-    out.friends.sort((x, y) => (A.isOnline(y) - A.isOnline(x)) || x.username.localeCompare(y.username));
+    out.friends.sort((x, y) => (A.isOnline(y) - A.isOnline(x)) || A.nameOf(x).localeCompare(A.nameOf(y)));
     return out;
   };
   A.addFriend = async function (name) {
@@ -334,6 +344,138 @@
     const r = await A.sb.from('friends').delete().or(`and(requester.eq.${me},addressee.eq.${id}),and(requester.eq.${id},addressee.eq.${me})`);
     if (r.error) throw r.error;
   };
+
+  // ------------------------------------------------------------ profiles: display name, pictures, bio, badges
+  A.nameOf = p => (p && (p.display_name || p.username)) || 'Player';
+  A.name = () => A.user ? A.nameOf(A.user) : null;
+  A.checkDisplay = n => !n ? '' : /^[A-Za-z0-9_.'!-]([A-Za-z0-9 _.'!-]{0,14}[A-Za-z0-9_.'!-])?$/.test(n) ? '' : "Name: 1-16 letters, numbers, spaces or _ . ' ! - (no space at the ends)";
+  const needV2 = () => { if (!A.v2) throw new Error('The site owner needs to run the latest setup.sql in Supabase first.'); };
+  A.updateProfile = async function (fields) {
+    needV2();
+    const f = {};
+    if ('display_name' in fields) { let n = (fields.display_name || '').trim().replace(/\s+/g, ' '); if (n.toLowerCase() === A.user.username.toLowerCase()) n = ''; const bad = A.checkDisplay(n); if (bad) throw new Error(bad); f.display_name = n || null; }
+    if ('bio' in fields) f.bio = String(fields.bio || '').replace(/[\u0000-\u0008\u000b-\u001f]/g, '').trim().slice(0, 160) || null;
+    if ('showcase' in fields) f.showcase = fields.showcase;
+    const r = await A.sb.from('profiles').update(f).eq('id', A.user.id);
+    if (r.error) throw new Error(/taken|duplicate|unique/i.test(r.error.message) ? 'That name is already taken' : r.error.message);
+    Object.assign(A.user, f); emit();
+  };
+  // shrink/crop an image file in the browser so uploads stay small (avatar 256x256, banner 1200x400)
+  function crop(file, w, h) {
+    return new Promise((res, rej) => {
+      if (!/^image\//.test(file.type)) return rej(new Error('Pick an image file (PNG, JPG, GIF or WebP)'));
+      if (file.size > 15e6) return rej(new Error('That image is too big (15 MB max)'));
+      const url = URL.createObjectURL(file), img = new Image();
+      img.onload = () => {
+        const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d');
+        const k = Math.max(w / img.width, h / img.height), dw = img.width * k, dh = img.height * k;
+        x.imageSmoothingQuality = 'high'; x.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh); URL.revokeObjectURL(url);
+        c.toBlob(b => b ? res(b) : rej(new Error('Could not read that image')), 'image/webp', 0.86);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('Could not read that image')); };
+      img.src = url;
+    });
+  }
+  const mediaPath = u => { const m = /\/profile-media\/(.+)$/.exec(u || ''); return m ? decodeURIComponent(m[1].split('?')[0]) : null; };
+  A.uploadImage = async function (kind, file) {
+    needV2();
+    const [w, h] = kind === 'banner' ? [1200, 400] : [256, 256];
+    let blob = await crop(file, w, h);
+    const webp = blob.type === 'image/webp';
+    if (!webp) blob = await new Promise(r => { const i = new Image(); i.onload = () => { const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(i, 0, 0); c.toBlob(r, 'image/jpeg', 0.88); }; i.src = URL.createObjectURL(blob); });
+    const path = `${A.user.id}/${kind}-${Date.now().toString(36)}.${webp ? 'webp' : 'jpg'}`;
+    const up = await A.sb.storage.from('profile-media').upload(path, blob, { contentType: webp ? 'image/webp' : 'image/jpeg', cacheControl: '31536000' });
+    if (up.error) throw new Error(/bucket/i.test(up.error.message) ? 'Picture storage is not set up yet (run setup.sql).' : up.error.message);
+    const pub = A.sb.storage.from('profile-media').getPublicUrl(path).data.publicUrl;
+    const col = kind === 'banner' ? 'banner_url' : 'avatar_url', old = A.user[col];
+    const r = await A.sb.from('profiles').update({ [col]: pub }).eq('id', A.user.id);
+    if (r.error) { A.sb.storage.from('profile-media').remove([path]); throw r.error; }
+    A.user[col] = pub; emit();
+    if (mediaPath(old)) A.sb.storage.from('profile-media').remove([mediaPath(old)]).then(() => {}, () => {});
+  };
+  A.removeImage = async function (kind) {
+    needV2();
+    const col = kind === 'banner' ? 'banner_url' : 'avatar_url', old = A.user[col];
+    const r = await A.sb.from('profiles').update({ [col]: null }).eq('id', A.user.id); if (r.error) throw r.error;
+    A.user[col] = null; emit();
+    if (mediaPath(old)) A.sb.storage.from('profile-media').remove([mediaPath(old)]).then(() => {}, () => {});
+  };
+  // someone's public profile (by id or username)
+  A.getProfile = async function (who) {
+    const f = A.v2 !== false ? 'id,username,color,display_name,avatar_url,banner_url,bio,showcase,last_seen,playing,room,created_at,banned' : 'id,username,color,last_seen,playing,created_at';
+    const q = A.sb.from('profiles').select(f);
+    let r = await (/^[0-9a-f-]{36}$/.test(who) ? q.eq('id', who) : q.eq('username_lower', String(who).toLowerCase())).maybeSingle();
+    if (r.error) throw r.error;
+    if (!r.data) throw new Error('No player with that name');
+    const p = r.data;
+    const sc = await A.sb.from('scores').select('board,score').eq('user_id', p.id);
+    p.scores = sc.data || [];
+    try { const ad = await A.sb.from('admins').select('user_id').eq('user_id', p.id).maybeSingle(); p.admin = !!ad.data; } catch (e) {}
+    if (A.user && A.user.id !== p.id) {
+      const me = A.user.id, fr = await A.sb.from('friends').select('requester,status').or(`and(requester.eq.${me},addressee.eq.${p.id}),and(requester.eq.${p.id},addressee.eq.${me})`);
+      const f0 = fr.data && fr.data[0]; p.friend = !f0 ? 'none' : f0.status === 'accepted' ? 'friends' : f0.requester === me ? 'sent' : 'incoming';
+    }
+    return p;
+  };
+  A.adminClearProfile = async id => { const r = await A.sb.rpc('admin_clear_profile', { p_user: id }); if (r.error) throw r.error; };
+
+  // badges are worked out from this player's saves, then published on their profile
+  const RANKS = [[1100, 'Gold'], [1300, 'Platinum'], [1500, 'Diamond']];
+  A.BADGES = [
+    { id: 'owner', icon: '👑', name: 'Arcade Owner', desc: 'Runs the place', test: c => c.admin },
+    { id: 'ace', icon: '⛳', name: 'Hole in One', desc: 'Sink a hole in one in Putt Park', test: c => (c.golf.aces || 0) > 0 || c.st('golf:ace') > 0 },
+    { id: 'underpar', icon: '🏌️', name: 'Under Par', desc: 'Finish a Putt Park round under par', test: c => c.golf.bestPar != null && c.golf.bestPar < 0 },
+    { id: 'champ', icon: '🏆', name: 'Tournament Champion', desc: 'Win a friend tournament', test: c => c.st('tag:tourney:won') + c.st('soccer:tourney:won') > 0 },
+    { id: 'gold', icon: '🥇', name: 'Gold League', desc: 'Reach Gold in any ranked ladder', test: c => c.elo >= 1100 },
+    { id: 'diamond', icon: '💎', name: 'Diamond League', desc: 'Reach Diamond in any ranked ladder', test: c => c.elo >= 1500 },
+    { id: 'streak7', icon: '🔥', name: 'On Fire', desc: '7-day daily challenge streak', test: c => c.best >= 7 },
+    { id: 'streak30', icon: '☄️', name: 'Unstoppable', desc: '30-day daily challenge streak', test: c => c.best >= 30 },
+    { id: 'kartwin', icon: '🏁', name: 'Checkered Flag', desc: 'Win a Turbo Karts race', test: c => c.st('kart:race:won') > 0 || (c.kart.wins || 0) > 0 },
+    { id: 'skirace', icon: '🎿', name: 'Downhill King', desc: 'Win a Powder Peak race on Hard', test: c => Object.values(c.ski.rwins || {}).some(v => v >= 3) },
+    { id: 'collector', icon: '🛍️', name: 'Collector', desc: 'Own 10 shop items', test: c => c.owned >= 10 },
+    { id: 'rich', icon: '💰', name: 'Big Earner', desc: 'Earn 10,000 coins in total', test: c => c.earned >= 10000 },
+    { id: 'explorer', icon: '🧭', name: 'Explorer', desc: 'Finish a game in 8 different arcade games', test: c => c.games >= 8 },
+  ];
+  A.badgeContext = function (elo) {
+    const ar = window.Arcade ? Arcade.data() : { stats: {}, owned: {}, daily: {} }, st = ar.stats || {};
+    return {
+      admin: !!(A.user && A.user.admin), st: k => st[k] || 0, golf: J(ls.getItem('cnatt_golf')) || {}, kart: J(ls.getItem('cnatt_kart')) || {}, ski: J(ls.getItem('cnatt_ski')) || {},
+      elo: elo || 0, best: Math.max(ar.daily.best || 0, ar.daily.streak || 0), owned: Object.keys(ar.owned || {}).length, earned: ar.earned || 0,
+      games: new Set(Object.keys(st).map(k => k.split(':')[0])).size,
+    };
+  };
+  A.myBadges = elo => { const c = A.badgeContext(elo); return A.BADGES.filter(b => { try { return b.test(c); } catch (e) { return false; } }).map(b => b.id); };
+  // keep the public showcase (badges + equipped cosmetics) up to date
+  let showT = null;
+  A.publishShowcase = function () {
+    clearTimeout(showT);
+    showT = setTimeout(async () => {
+      if (!A.user || !A.v2) return;
+      try {
+        const sc = await A.myScores().catch(() => []);
+        const elo = Math.max(0, ...sc.filter(r => /_elo$/.test(r.board)).map(r => r.score));
+        const ar = window.Arcade, eq = ar ? Object.entries(ar.data().eq || {}).filter(([, id]) => id && ar.owned(id)).map(([, id]) => { const it = ar.CATALOG.find(i => i.id === id); return it && { g: it.game, n: it.name, c: it.col || it.body || it.jacket || it.c1 || '#888' }; }).filter(Boolean) : [];
+        const show = { badges: A.myBadges(elo), eq };
+        if (JSON.stringify(show) !== JSON.stringify(A.user.showcase || {})) await A.updateProfile({ showcase: show });
+      } catch (e) {}
+    }, 3000);
+  };
+  A.on(() => { if (A.user && A.v2 && !A._showOnce) { A._showOnce = true; A.publishShowcase(); } if (!A.user) A._showOnce = false; });
+
+  // ------------------------------------------------------------ invites ("come play with me")
+  A.invite = async function (friendId, game, code, kind) {
+    const row = { sender: A.user.id, recipient: friendId, game, code: String(code).toUpperCase(), kind: kind || 'room', created_at: new Date().toISOString() };
+    const r = await A.sb.from('invites').upsert(row, { onConflict: 'sender,recipient' });
+    if (r.error) throw new Error(/relation|does not exist/i.test(r.error.message) ? 'Invites are not set up yet (run setup.sql).' : r.error.message);
+  };
+  A.myInvites = async function () {
+    if (!A.user) return [];
+    const since = new Date(Date.now() - 3 * 60000).toISOString();
+    const f = A.v2 ? 'username,color,display_name,avatar_url' : 'username,color';
+    const r = await A.sb.from('invites').select(`sender,game,code,kind,created_at,p:profiles!invites_sender_fkey(${f})`).eq('recipient', A.user.id).gte('created_at', since).order('created_at', { ascending: false });
+    return r.error ? [] : r.data;
+  };
+  A.dismissInvite = async sender => { try { await A.sb.from('invites').delete().eq('sender', sender).eq('recipient', A.user.id); } catch (e) {} };
 
   // ------------------------------------------------------------ game pages opened on their own (not inside the arcade)
   if (!window.ACCOUNT_HUB) {
