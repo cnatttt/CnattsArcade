@@ -1147,8 +1147,9 @@ function render3D(dt) {
   if (sparks.length) R3.points(sparks, true);
   const sf = C.snowfall || 0;
   for (let i = 0; i < 260 * sf; i++) { const a = i * 12.9898, x = cam.eye[0] + ((((Math.sin(a) * 437.5 + t * (0.5 + i % 3 * 0.3)) % 50) + 50) % 50) - 25, z = cam.eye[2] + ((((Math.cos(a) * 913.1 - t * 1.5) % 50) + 50) % 50) - 12, y = cam.eye[1] + 10 - ((t * (1.1 + (i % 5) * 0.2) + i * 3.7) % 18); pts.push(x, y, z, 1, 1, 1, 0.85, 0.07); }
-  if (C.lights) W0.lights.forEach(Lg => { if (Math.abs(Lg.z - camZ) < 400) pts.push(Lg.x, Lg.y + 10, Lg.z, 1, 0.92, 0.75, 0.55, 6); });
   if (pts.length) R3.points(pts, false);
+  // lamp heads: small and very bright so the bloom makes the halo
+  if (C.lights) { const lp = []; W0.lights.forEach(Lg => { if (Math.abs(Lg.z - camZ) < 400) lp.push(Lg.x, Lg.y + 9.9, Lg.z, 5, 4.4, 3.4, 1, 1.3); }); if (lp.length) R3.points(lp, true); }
   postFX(dt);
   R3.end();
 }
@@ -1212,7 +1213,7 @@ const GRADE = {
   park: { cloud: 0.42, cloudC: [1.15, 1.15, 1.2], lift: [0.004, 0.01, 0.026], gain: [1.02, 1.0, 0.97], sat: 1.1, con: 1.05, shaft: 0.45 },
   pine: { cloud: 0.55, cloudC: [1.05, 1.07, 1.12], lift: [0.006, 0.012, 0.024], gain: [1.0, 1.0, 0.98], sat: 1.04, con: 1.05, shaft: 0.7 },
   summit: { cloud: 0.4, cloudC: [1.25, 1.0, 0.95], lift: [0.02, 0.008, 0.03], gain: [1.05, 0.99, 0.93], sat: 1.12, con: 1.06, shaft: 0.85 },
-  bigair: { cloud: 0.3, cloudC: [0.1, 0.12, 0.2], lift: [0.008, 0.01, 0.03], gain: [1.0, 1.0, 1.04], sat: 1.06, con: 1.08, shaft: 0, thr: 0.75, bloom: 0.9 },
+  bigair: { cloud: 0, cloudC: [0.1, 0.12, 0.2], lift: [0.008, 0.01, 0.03], gain: [1.0, 1.0, 1.04], sat: 1.06, con: 1.08, shaft: 0, thr: 0.75, bloom: 0.9 },
   garden: { cloud: 0.38, cloudC: [1.3, 1.05, 0.9], lift: [0.022, 0.01, 0.02], gain: [1.06, 1.0, 0.92], sat: 1.1, con: 1.05, shaft: 0.85 },
   bowl: { cloud: 0.85, cloudC: [0.82, 0.86, 0.94], lift: [0.02, 0.024, 0.034], gain: [0.98, 1.0, 1.03], sat: 0.9, con: 1.03, shaft: 0.3, bloom: 0.45 },
 };
