@@ -232,6 +232,7 @@ function endMatch() {
   }
   { const me = cars.find(c => c.ctrl === 'p1' || c.ctrl === 'net-me' || c.ctrl === 'p1both'); if (window.Arcade && me && match.mode !== 'local') Arcade.event('soccer', 'match', { won: me.team === winner, goals: me.goals || 0, cpu: match.cpu });
     rankedFinish(); }
+  tourneyResult();
   if (NET.role === 'host') netSendState(true);
 }
 
@@ -506,6 +507,7 @@ const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const netSend = m => NET.tr && NET.tr.broadcast(m);
 function netReset() { NetTransport.announce('soccer', null); if (NET.tr) try { NET.tr.close(); } catch (e) {} NET.tr = null; NET.role = null; NET.guest = null; NET.snaps = []; }
 function netLost(why) {
+  if (TS.match) { const tm = TS.match; if (screen === 'play' && !tm.done) { tm.done = true; Tourney.report(tm.r, tm.i, Tourney.state.me.id); TS.msg = 'Your opponent left, so you win the match.'; } else TS.msg = screen === 'over' ? '' : why; netReset(); TS.match = null; TS.auto = 0; screen = 'tourney'; Sound.playSong(SONGS.soccerMenu); return; }
   if (RK.online) { if (screen === 'play' && match && match.ranked && !RK.result) { const me = cars.find(c => c.ctrl === 'p1' || c.ctrl === 'net-me' || c.ctrl === 'p1both'); winner = me ? me.team : 0; rankedFinish(); screen = 'over'; netReset(); return; } netReset(); RK.online = false; RK.screen = 'home'; RK.err = why; screen = 'ranked'; Sound.playSong(SONGS.soccerMenu); return; }
   netReset(); NET.error = why; NET.screen = 'menu'; screen = 'online'; Sound.playSong(SONGS.soccerMenu);
 }
@@ -514,12 +516,12 @@ function hostRoom(code) {
   NET.code = code || Array.from({ length: 5 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
   NET.names = [myName(), '']; NET.own = [OWN(), false];
   NET.tr = NetTransport.host(NET.code, {
-    ready: () => { NET.screen = 'lobby'; if (!RK.online) NetTransport.announce('soccer', NET.code); },
+    ready: () => { NET.screen = 'lobby'; if (!RK.online && !TS.match) NetTransport.announce('soccer', NET.code); },
     join: id => { if (NET.guest && NET.guest !== id) { NET.tr.send(id, { t: 'full' }); return; } NET.guest = id; },
     leave: id => { if (id !== NET.guest) return; NET.guest = null; NET.names[1] = ''; if (screen === 'play') netLost('The other player left.'); else lobbySync(); },
     msg: (id, d) => {
       if (id !== NET.guest) return;
-      if (d.t === 'hello') { NET.names[1] = String(d.name || 'Guest').slice(0, 16); NET.own[1] = !!d.own; lobbySync(); if (RK.online && screen !== 'play' && !RK.started) { RK.started = true; setTimeout(() => hostStart(), 800); } }
+      if (d.t === 'hello') { NET.names[1] = String(d.name || 'Guest').slice(0, 16); NET.own[1] = !!d.own; lobbySync(); if (RK.online && screen !== 'play' && !RK.started) { RK.started = true; setTimeout(() => hostStart(), 800); } if (TS.match && screen !== 'play' && !TS.match.started) { TS.match.started = true; setTimeout(() => hostStart(), 800); } }
       else if (d.t === 'in') { const c = cars.find(x => x.ctrl === 'net'); if (c) { c.in.th = clamp(+d.th || 0, -1, 1); c.in.st = clamp(+d.st || 0, -1, 1); c.in.bo = !!d.bo; if (d.fn !== NET.lastFn) { NET.lastFn = d.fn; c.in.fl = true; } } }
       else if (d.t === 'bye') netLost('The other player left.');
     },
@@ -530,7 +532,7 @@ function joinRoom(code) {
   netReset(); NET.error = ''; NET.role = 'client'; NET.code = code.toUpperCase(); NET.screen = 'connecting'; screen = 'online';
   NET.tr = NetTransport.join(NET.code, {
     ready: () => {
-      if (!RK.online) NetTransport.announce('soccer', NET.code);
+      if (!RK.online && !TS.match) NetTransport.announce('soccer', NET.code);
       const hello = () => netSend({ t: 'hello', name: myName(), own: OWN() }); hello();
       let n = 0; const tr = NET.tr; const iv = setInterval(() => { if (NET.tr !== tr || NET.screen === 'lobby' || screen === 'play' || ++n > 10) { clearInterval(iv); if (NET.tr === tr && NET.screen !== 'lobby' && screen !== 'play') netLost('The room did not answer.'); return; } hello(); }, 1500);
     },
@@ -548,7 +550,8 @@ function joinRoom(code) {
 function lobbySync() { if (NET.role === 'host') netSend({ t: 'lobby', names: NET.names, own: NET.own, size: save.set.size, cpu: save.set.cpu }); }
 function hostStart() {
   const humans = [{ team: 0, slot: 0, ctrl: 'p1both', name: NET.names[0], own: NET.own[0] }, { team: 1, slot: 0, ctrl: 'net', name: NET.names[1], own: NET.own[1] }];
-  const m = { mode: 'online', size: RK.online ? 1 : save.set.size, cpu: save.set.cpu, time: RK.online ? 180 : save.set.time, humans, ranked: RK.online ? 'online' : null };
+  const one = RK.online || !!TS.match;
+  const m = { mode: 'online', size: one ? 1 : save.set.size, cpu: save.set.cpu, time: one ? 180 : save.set.time, humans, ranked: RK.online ? 'online' : null };
   if (RK.online) { RK.matchId = NET.code + '-' + Date.now().toString(36); RK.result = null; }
   netSend({ t: 'start', ranked: !!RK.online, matchId: RK.matchId, size: m.size, cpu: m.cpu, time: m.time, humans: humans.map(h => ({ team: h.team, slot: h.slot, name: h.name, own: h.own })) });
   startMatch(m);
@@ -570,7 +573,7 @@ function applySnap(d) {
   [...d.p].forEach((ch, i) => { if (pads[i]) pads[i].t = ch === '1' ? 1 : 0; });
   if (phase === 'goal' && prevPhase !== 'goal') { sfx.goal(); shake = 0.6; for (let k = 0; k < 120; k++) { const a = rand(0, 6.28), v = rand(100, 700); parts.push({ x: ball.tx, y: ball.ty, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: 0, life: rand(0.6, 1.6), s: rand(3, 8), col: Math.random() < 0.6 ? TEAM[d.g ? d.g.team : 0].col : '#ffffff', drag: 2.2 }); } }
   if (phase === 'kickoff' && prevPhase !== 'kickoff') { cars.forEach(c => { c.x = c.tx; c.y = c.ty; c.a = c.ta; }); ball.x = ball.tx; ball.y = ball.ty; }
-  if (d.sc === 'over' && screen !== 'over') { screen = 'over'; phaseT = 0; Sound.playSong(SONGS.soccerMenu); sfx.whistle(); }
+  if (d.sc === 'over' && screen !== 'over') { screen = 'over'; phaseT = 0; Sound.playSong(SONGS.soccerMenu); sfx.whistle(); tourneyResult(); }
 }
 let inT = 0, fN = 0;
 function clientFrame(dt) {
@@ -588,7 +591,7 @@ function clientFrame(dt) {
 // ------------------------------------------------------------ screens
 let menuDemo = null;
 function demoTick(dt) {
-  if (!menuDemo) { match = { size: 2, cpu: 2, mode: 'demo', time: 9999 }; startMatch(Object.assign({}, match, { humans: [] })); screen = 'title'; menuDemo = true; Sound.playSong(SONGS.soccerMenu); phase = 'live'; }
+  if (!menuDemo) { const keep = screen === 'over' || screen === 'play' ? 'title' : screen; match = { size: 2, cpu: 2, mode: 'demo', time: 9999 }; startMatch(Object.assign({}, match, { humans: [] })); screen = keep; menuDemo = true; Sound.playSong(SONGS.soccerMenu); phase = 'live'; }
   step(dt); if (phase === 'goal' && phaseT > 2.4) kickoffPositions();
   drawWorld(dt);
   const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, 'rgba(8,9,13,0.55)'); g.addColorStop(1, 'rgba(8,9,13,0.85)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
@@ -638,6 +641,7 @@ function drawOnline(dt) {
     NET.input.onEnter = v => { if (v.length >= 4) joinRoom(v); };
     if (U.button('join', W / 2 + 90, 340, 130, 60, 'JOIN', { color: '#3b82f6', size: 18 }) && NET.input.value.length >= 4) joinRoom(NET.input.value);
     if (NET.error) U.txt(NET.error, W / 2, 430, 15, '#f87171', 'center', { weight: 700 });
+    if (U.button('tourn', W / 2 - 220, 470, 440, 56, 'FRIEND TOURNAMENT (UP TO 8)', { color: '#f59e0b', size: 16 })) { screen = 'tourney'; TS.msg = ''; }
   } else if (NET.screen === 'connecting') {
     U.txt(NET.role === 'host' ? 'Creating room...' : `Joining ${NET.code}...`, W / 2, 280, 22, '#ffffff', 'center');
     U.txt(NetTransport.status.text || '', W / 2, 320, 14, '#94a3b8', 'center', { weight: 600 });
@@ -656,7 +660,7 @@ function drawOnline(dt) {
       if (U.button('start', W / 2 - 180, 470, 360, 62, NET.guest && NET.names[1] ? 'START MATCH' : 'Waiting for a player...', { color: NET.guest && NET.names[1] ? '#22c55e' : '#3f3f46', size: 18, disabled: !(NET.guest && NET.names[1]) })) hostStart();
     } else U.txt('Waiting for the host to start...', W / 2, 480, 18, '#cbd5e1', 'center');
   }
-  if (U.button('oback', 40, H - 80, 140, 48, 'Back', { ghost: true, size: 15, sfx: 'back' })) { netSend({ t: 'bye' }); netReset(); screen = 'title'; }
+  if (U.button('oback', 40, H - 80, 140, 48, 'Back', { ghost: true, size: 15, sfx: 'back' })) { if (TS.match) backToBracket(); else { netSend({ t: 'bye' }); netReset(); screen = 'title'; } }
 }
 function drawOver() {
   const won = winner, T = TEAM[won];
@@ -668,6 +672,10 @@ function drawOver() {
     const y = 316 + Math.floor(i / 2) * 36, x = c.team === 0 ? W / 2 - 290 : W / 2 + 20;
     U.txt(c.name, x, y, 16, TEAM[c.team].light, 'left'); U.txt(`${c.goals} goals  ·  ${c.shots} shots`, x + 270, y, 14, '#cbd5e1', 'right', { weight: 600 });
   });
+  if (TS.match || (match.mode === 'online' && TS.wasMatch)) {
+    if (U.button('again', W / 2 - 150, 470, 300, 60, 'BACK TO BRACKET', { color: '#f59e0b', size: 18 })) backToBracket();
+    return;
+  }
   if (match.ranked) {
     const r = RK.result;
     if (r) { if (r.pending) U.txt('Updating rank…', W / 2, 430, 16, '#94a3b8', 'center', { weight: 700 }); else { const d = r.after - r.before; U.txt(`${d >= 0 ? '+' : ''}${d} Elo  →  ${r.after}  ${Ranked.rankOf(r.after).name}`, W / 2, 426, 20, d >= 0 ? '#4ade80' : '#f87171', 'center', { weight: 800 }); if (r.err) U.txt(r.err, W / 2, 452, 12, '#f87171', 'center'); } }
@@ -681,12 +689,83 @@ function drawOver() {
   }
   if (U.button('menu', W / 2 + 20, 470, 300, 60, 'MENU', { ghost: true, size: 18, sfx: 'back' })) { if (match.mode === 'online') { netSend({ t: 'bye' }); netReset(); } menuDemo = null; screen = 'title'; }
 }
+// ------------------------------------------------------------ friend tournaments (assets/tourney.js runs the bracket)
+const TS = { match: null, input: { value: '', max: 6, upper: true, allow: /[a-z0-9]/i }, auto: 0, key: '', msg: '', rewarded: false };
+function tourneyResult() {
+  const tm = TS.match; if (!tm || tm.done || winner < 0) return;
+  const me = cars.find(c => c.ctrl === 'p1both' || c.ctrl === 'net-me'); if (!me) return;
+  tm.done = true; TS.wasMatch = true;
+  Tourney.report(tm.r, tm.i, me.team === winner ? Tourney.state.me.id : tm.opp);
+}
+function backToBracket() { netSend({ t: 'bye' }); netReset(); TS.match = null; TS.wasMatch = false; TS.auto = 0; screen = 'tourney'; menuDemo = null; Sound.playSong(SONGS.soccerMenu); }
+function playTourneyMatch(mm) {
+  TS.match = { r: mm.r, i: mm.i, opp: mm.opp, done: false, started: false };
+  if (mm.role === 'host') { hostRoom(mm.room); screen = 'online'; } else joinRoom(mm.room);
+}
+function drawTourney(dt) {
+  demoTick(dt);
+  ctx.fillStyle = 'rgba(8,9,13,0.78)'; ctx.fillRect(0, 0, W, H);
+  const S = Tourney.state, st = S.st;
+  U.txt('Tournament', 60, 34, 42, '#fbbf24', 'left', { head: true, weight: 800 });
+  if (!Tourney.inTourney) {
+    U.txt('Knockout bracket for 2 to 8 friends. 1v1, 3 minutes, winner moves on.', 62, 92, 15, '#cbd5e1', 'left', { weight: 600 });
+    if (U.button('tcreate', 60, 140, 520, 70, 'CREATE TOURNAMENT', { color: '#f59e0b', size: 20 })) { if (!Tourney.create('soccer', myName())) TS.msg = S.err; }
+    U.txt('OR JOIN WITH A CODE', 60, 244, 13, '#94a3b8', 'left', { weight: 700 });
+    U.input('tcode', 60, 270, 330, 62, TS.input, 'CODE');
+    TS.input.onEnter = v => { if (v.length >= 4) Tourney.join('soccer', v, myName()); };
+    if (U.button('tjoin', 404, 270, 176, 62, 'JOIN', { color: '#3b82f6', size: 18 }) && TS.input.value.length >= 4) { U.typing = null; if (!Tourney.join('soccer', TS.input.value, myName())) TS.msg = S.err; }
+    if (TS.msg || S.err) U.txt(TS.msg || S.err, 60, 356, 14, '#f87171', 'left', { weight: 700 });
+    U.txt('Friends open Rocket Soccer, press PLAY ONLINE, then FRIEND TOURNAMENT, and type your code.', 60, 400, 13, '#94a3b8', 'left', { weight: 600 });
+    if (U.button('tback', 40, H - 80, 160, 48, 'Back', { ghost: true, size: 15, sfx: 'back' })) { screen = 'online'; NET.screen = 'menu'; U.typing = null; }
+    return;
+  }
+  if (!st || !st.started) {
+    U.txt('CODE', 62, 100, 13, '#94a3b8', 'left', { weight: 800 });
+    U.txt(S.code, 60, 118, 60, '#fbbf24', 'left', { head: true, weight: 800 });
+    U.txt(S.isHost ? 'Share this code. Start when everyone is in.' : 'Waiting for the organiser to start...', 62, 192, 15, '#cbd5e1', 'left', { weight: 600 });
+    U.panel(60, 230, 560, 390);
+    U.txt(`Players ${S.players.length}/8`, 84, 250, 15, '#94a3b8', 'left', { weight: 800 });
+    S.players.slice(0, 8).forEach((p, i) => {
+      const y = 290 + i * 38;
+      U.txt(`${i + 1}.  ${p.name}`, 90, y, 18, p.id === S.me.id ? '#fde047' : '#ffffff', 'left', { weight: 700 });
+      if (p.host) U.txt('ORGANISER', 596, y + 3, 12, '#fbbf24', 'right', { weight: 800 });
+    });
+    if (S.isHost && U.button('tstart', 660, 230, 400, 76, S.players.length >= 2 ? 'START BRACKET' : 'Waiting for players...', { color: S.players.length >= 2 ? '#22c55e' : '#3f3f46', size: 20, disabled: S.players.length < 2 })) Tourney.start();
+    if (S.err) U.txt(S.err, 660, 330, 14, '#f87171', 'left', { weight: 700 });
+    if (U.button('tleave', 40, H - 80, 160, 48, 'Leave', { ghost: true, size: 15, sfx: 'back' })) { Tourney.leave(); TS.msg = ''; }
+    return;
+  }
+  U.txt(`CODE ${S.code}`, W - 280, 52, 14, '#94a3b8', 'right', { weight: 800 });
+  Tourney.drawBracket(ctx, 50, 110, W - 100, 400, { font: U.FONT, head: U.HEAD });
+  const mm = Tourney.myMatch(), y0 = 540;
+  U.panel(50, y0, W - 100, 130, { stroke: st.champ ? '#facc15' : mm ? '#22c55e' : 'rgba(255,255,255,0.09)' });
+  if (st.champ) {
+    const won = st.champ === S.me.id;
+    U.txt(won ? 'You won the tournament!' : `${Tourney.name(st.champ)} wins the tournament`, W / 2, y0 + 22, 30, '#fde047', 'center', { head: true, weight: 800 });
+    if (!TS.rewarded) { TS.rewarded = true; if (window.Arcade) Arcade.event('soccer', 'tourney', { won, players: Object.keys(st.names).length }); }
+    if (U.button('tdone', W / 2 - 150, y0 + 70, 300, 46, 'LEAVE TOURNAMENT', { ghost: true, size: 15, sfx: 'back' })) { Tourney.leave(); TS.rewarded = false; screen = 'title'; }
+  } else if (mm) {
+    const key = mm.r + ':' + mm.i;
+    if (TS.key !== key || !TS.auto) { TS.key = key; TS.auto = t + (mm.role === 'host' ? 4 : 6); }
+    const left = Math.max(0, Math.ceil(TS.auto - t));
+    U.txt(`Your match: ${Tourney.roundName(mm.r, Math.log2(st.rounds[0].length * 2))} vs ${mm.oppName}`, 80, y0 + 28, 24, '#ffffff', 'left', { weight: 800 });
+    U.txt(TS.msg || `Starting in ${left}...`, 80, y0 + 74, 15, TS.msg ? '#fbbf24' : '#94a3b8', 'left', { weight: 700 });
+    if (U.button('tplay', W - 380, y0 + 30, 300, 70, 'PLAY NOW', { color: '#22c55e', size: 20 }) || t >= TS.auto) { TS.msg = ''; playTourneyMatch(mm); TS.auto = 0; }
+  } else {
+    const me = S.me.id, out = st.rounds.some(r => r.some(m => m.w && (m.a === me || m.b === me) && m.w !== me));
+    U.txt(out ? 'You are out. Stay to watch the bracket!' : 'Waiting for the other matches to finish...', 80, y0 + 40, 20, '#ffffff', 'left', { weight: 700 });
+    if (TS.msg) U.txt(TS.msg, 80, y0 + 80, 14, '#fbbf24', 'left', { weight: 700 });
+  }
+  if (S.err) U.txt(S.err, W / 2, 86, 14, '#f87171', 'center', { weight: 700 });
+  if (!st.champ && U.button('tleave2', W - 250, 30, 190, 44, 'Leave', { ghost: true, size: 14, sfx: 'back' })) { Tourney.leave(); screen = 'title'; }
+}
 let paused = false;
 function drawPause() {
   ctx.fillStyle = 'rgba(8,9,13,0.65)'; ctx.fillRect(0, 0, W, H);
   U.panel(W / 2 - 220, 220, 440, 260);
   U.txt(match.mode === 'online' ? 'MENU' : 'PAUSED', W / 2, 250, 36, '#ffffff', 'center', { head: true, weight: 800 });
   if (U.button('resume', W / 2 - 170, 320, 340, 56, 'RESUME', { color: '#22c55e', size: 18 })) paused = false;
+  if (TS.match) { if (U.button('quit', W / 2 - 170, 392, 340, 56, 'FORFEIT', { ghost: true, size: 16, sfx: 'back' })) { paused = false; const tm = TS.match; if (!tm.done) { tm.done = true; Tourney.report(tm.r, tm.i, tm.opp); } backToBracket(); } return; }
   if (U.button('quit', W / 2 - 170, 392, 340, 56, match.ranked ? 'FORFEIT' : 'QUIT MATCH', { ghost: true, size: 16, sfx: 'back' })) { paused = false; if (match.ranked && !RK.result) { const me = cars.find(c => c.ctrl === 'p1' || c.ctrl === 'net-me' || c.ctrl === 'p1both'); winner = me ? 1 - me.team : 1; rankedFinish(); } if (match.mode === 'online') { netSend({ t: 'bye' }); netReset(); } menuDemo = null; screen = 'title'; }
 }
 
@@ -698,6 +777,7 @@ function frame(now) {
   if (screen === 'title') drawTitle(dt);
   else if (screen === 'setup') drawSetup(dt);
   else if (screen === 'online') drawOnline(dt);
+  else if (screen === 'tourney') drawTourney(dt);
   else if (screen === 'ranked') drawRanked(dt);
   else {
     if (screen === 'play' && !(paused && match.mode !== 'online')) {
@@ -718,7 +798,7 @@ function frame(now) {
     else if (paused) drawPause();
     if (match && match.mode === 'online' && screen === 'play') { const st = NetTransport.status; U.txt(`${st.ping ? st.ping + ' ms' : 'online'}${st.mode === 'relay' ? ' · relay' : ''}`, W - 20, H - 26, 12, '#4ade80', 'right', { weight: 700 }); }
   }
-  if (U.pressed.Escape) { if (screen === 'play') paused = !paused; else if (screen === 'ranked' && RK.screen === 'home') screen = 'title'; else if (screen === 'setup' || screen === 'online') { if (screen === 'online') { netSend({ t: 'bye' }); netReset(); } screen = 'title'; } }
+  if (U.pressed.Escape) { if (screen === 'play') paused = !paused; else if (screen === 'ranked' && RK.screen === 'home') screen = 'title'; else if (screen === 'online' && TS.match) backToBracket(); else if (screen === 'tourney' && !Tourney.inTourney && !U.typing) screen = 'online'; else if (screen === 'setup' || screen === 'online') { if (screen === 'online') { netSend({ t: 'bye' }); netReset(); } screen = 'title'; } }
   U.endFrame();
   requestAnimationFrame(frame);
 }
@@ -730,7 +810,7 @@ fontReady.then(() => {
 });
 
 // test hooks + owner cheats
-window.__rs = { get match() { return match; }, endMatch, openRanked, startRankedCpu, findRanked, RK, set timeLeft(v) { timeLeft = v; }, get cars() { return cars; }, get ball() { return ball; }, get score() { return score; }, get screen() { return screen; }, get phase() { return phase; }, NET, hostRoom, joinRoom, hostStart, startMatch, step, save: () => save,
+window.__rs = { TS, setScreen: v => { screen = v; }, get match() { return match; }, endMatch, openRanked, startRankedCpu, findRanked, RK, set timeLeft(v) { timeLeft = v; }, get cars() { return cars; }, get ball() { return ball; }, get score() { return score; }, get screen() { return screen; }, get phase() { return phase; }, NET, hostRoom, joinRoom, hostStart, startMatch, step, save: () => save,
   sim(dt, n) { for (let i = 0; i < n; i++) { if (screen !== 'play') return screen; step(dt); } return screen; } };
 const inMatch = () => screen === 'play' && (!NET.role || NET.role === 'host') ? '' : 'Start a match (as host) first';
 window.__cheats = [

@@ -58,8 +58,8 @@
 
   // ---------------------------------------------------------------- coins per game event
   const REWARD = {
-    tag: { match: v => v.won ? (v.pro ? 60 : v.ranked ? 45 : 30) : 10 },
-    soccer: { match: v => (v.won ? 35 : 10) + Math.min(5, v.goals || 0) * 3 },
+    tag: { match: v => v.won ? (v.pro ? 60 : v.ranked ? 45 : 30) : 10, tourney: v => v.won ? 50 + 25 * (v.players || 2) : 20 },
+    soccer: { match: v => (v.won ? 35 : 10) + Math.min(5, v.goals || 0) * 3, tourney: v => v.won ? 50 + 25 * (v.players || 2) : 20 },
     snake: { death: v => Math.min(90, Math.floor((v.len || 0) / 40) + (v.kills || 0) * 5) },
     ski: { run: v => Math.min(120, Math.floor((v.score || 0) / 400)), heat: v => [0, 60, 35, 20, 10][v.place] || 10, race: v => [0, 50, 30, 20, 10][v.place] || 10 },
     kart: { race: v => Math.max(5, 50 - ((v.place || 8) - 1) * 6) },

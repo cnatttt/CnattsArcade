@@ -68,9 +68,9 @@ window.addEventListener('keydown', e => {
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
   if (keys[e.code]) return;
   keys[e.code] = true;
-  if (e.code === 'Escape' && (screen === 'online' || screen === 'ranked')) { netLeave(); screen = 'menu'; return; }
+  if (e.code === 'Escape' && (screen === 'online' || screen === 'ranked')) { if (NET.tourney) { backToBracket(); return; } netLeave(); screen = 'menu'; return; }
   if (e.code === 'Enter' && (screen === 'online' || screen === 'ranked')) return;
-  if (e.code === 'Escape') { if (screen === 'play') pauseGame(); else if (screen === 'pause') resume(); else if (screen === 'over') toMenu(); }
+  if (e.code === 'Escape') { if (screen === 'play') pauseGame(); else if (screen === 'pause') resume(); else if (screen === 'over') { if (NET.tourney) backToBracket(); else toMenu(); } }
   if (e.code === 'KeyF' && !NET.typing) toggleFullscreen();
   if (e.code === 'Enter' && screen === 'menu') startMatch();
   if (e.code === 'KeyM') Sound.setMusic(!Sound.musicOn);
@@ -478,6 +478,7 @@ function addPoint(i, why) {
 }
 function endMatch(w) {
   winner = w; screen = 'over'; matchT = 0;
+  tourneyResult(w);
   if (NET.ranked && NET.role === 'host') reportRanked(w === NET.me);
   if (NET.cpuRanked) reportCpuRanked(w === 0);
   if (window.Arcade) Arcade.event('tag', 'match', { won: NET.role ? w === NET.me : settings.opp > 0 || NET.cpuRanked ? w === 0 : false, pro: !!NET.cpuRanked, ranked: !!NET.ranked });
@@ -861,13 +862,16 @@ function drawOver() {
   });
   ctx.restore();
   if (NET.ranked || NET.cpuRanked) drawRankedResult();
-  if (NET.cpuRanked) {
+  if (NET.tourney) {
+    if (button('again', W / 2 - 300, 470, 290, 72, 'BACK TO BRACKET', { color: '#d97706', size: 14 })) backToBracket();
+  } else if (NET.cpuRanked) {
     if (button('again', W / 2 - 300, 470, 290, 72, 'NEXT MATCH', { color: '#d97706', size: 16 })) startCpuRanked();
   } else if (NET.ranked) {
     if (button('again', W / 2 - 300, 470, 290, 72, 'FIND MATCH', { color: '#d97706', size: 16 })) { netLeave(); openRanked(true); }
   } else if (NET.role === 'client') { text('WAITING FOR HOST...', W / 2 - 155, 500, 10, '#a1a7bb', 'center'); }
   else if (button('again', W / 2 - 300, 470, 290, 72, 'REMATCH', { color: '#16a34a', size: 16 })) startMatch();
-  if (button('menu', W / 2 + 10, 470, 290, 72, 'MENU', { color: '#334155', size: 16, sfx: 'back' })) toMenu();
+  if (!NET.tourney && button('menu', W / 2 + 10, 470, 290, 72, 'MENU', { color: '#334155', size: 16, sfx: 'back' })) toMenu();
+  if (NET.tourney) text('Results go to the bracket automatically', W / 2 + 155, 500, 8, '#a1a7bb', 'center');
 }
 
 // ------------------------------------------------------------ main loop
@@ -879,6 +883,7 @@ function frame(now) {
   if (screen === 'menu') drawMenu();
   else if (screen === 'online') drawOnline();
   else if (screen === 'ranked') drawRanked();
+  else if (screen === 'tourney') drawTourney();
   else {
     if (NET.role === 'client') netClientFrame(dt);
     if (screen === 'play' && NET.role !== 'client') {
@@ -981,7 +986,9 @@ function netReset() {
   NET.role = null; NET.guestId = null; NET.snap = null; NET.menu = false; NET.matchId = null; NET.reported = false;
 }
 function netLeave() { if (NET.role) netSend({ t: 'bye' }); netReset(); NET.ranked = false; NET.queue && NET.queue.leave(); }
-function netLost(why) { const r = NET.ranked; netReset(); NET.ranked = false; NET.error = why; screen = r ? 'ranked' : 'online'; NET.screen = 'menu'; if (r) NET.rscreen = 'home'; Sound.playSong(SONGS.tag_menu); }
+function netLost(why) {
+  if (NET.tourney) { const tm = NET.tourney; if (screen === 'play' && !tm.done) { tm.done = true; Tourney.report(tm.r, tm.i, Tourney.state.me.id); } netReset(); NET.tourney = null; NET.error = ''; TN.msg = screen === 'play' ? 'Your opponent left, so you win the match.' : why; screen = 'tourney'; TN.auto = 0; Sound.playSong(SONGS.tag_menu); return; }
+  const r = NET.ranked; netReset(); NET.ranked = false; NET.error = why; screen = r ? 'ranked' : 'online'; NET.screen = 'menu'; if (r) NET.rscreen = 'home'; Sound.playSong(SONGS.tag_menu); }
 
 function hostRoom(opts = {}) {
   netReset(); NET.error = '';
@@ -994,7 +1001,7 @@ function hostRoom(opts = {}) {
       if (screen === 'play' || screen === 'over') { if (NET.ranked && screen === 'play') { winByForfeit(); } else { netLost('The other player left.'); } } },
     msg: (id, d) => {
       if (id !== NET.guestId) return;
-      if (d.t === 'hello') { NET.names[1] = String(d.name || 'P2').slice(0, 16); NET.own[1] = !!d.own; NET.cos[1] = typeof d.cos === 'string' ? d.cos : null; NET.oppUser = d.uid || null; NET.oppElo = d.elo || 1000; netLobby(); if (NET.ranked && NET.autoStart) setTimeout(() => { if (NET.role === 'host' && NET.guestId) netStart(); }, 1200); }
+      if (d.t === 'hello') { NET.names[1] = String(d.name || 'P2').slice(0, 16); NET.own[1] = !!d.own; NET.cos[1] = typeof d.cos === 'string' ? d.cos : null; NET.oppUser = d.uid || null; NET.oppElo = d.elo || 1000; netLobby(); if ((NET.ranked || NET.tourney) && NET.autoStart) setTimeout(() => { if (NET.role === 'host' && NET.guestId) netStart(); }, 1200); }
       else if (d.t === 'in') NET.remote = d;
       else if (d.t === 'bye') { NET.tr.kick && NET.tr.kick(id); NET.guestId = null; if (NET.ranked && screen === 'play') winByForfeit(); else netLost('The other player left.'); }
     },
@@ -1025,6 +1032,7 @@ function netLobby() { if (NET.role === 'host') netSend({ t: 'lobby', names: NET.
 function netStart() {
   if (NET.cpuRanked) endCpuRanked(false);
   if (NET.ranked) { settings.mode = 0; settings.target = 5; settings.arena = Math.floor(Math.random() * ARENAS.length); NET.matchId = NET.code + '-' + Date.now().toString(36); NET.reported = false; netLobby(); }
+  if (NET.tourney) { settings.mode = 0; settings.target = 5; settings.arena = Math.floor(Math.random() * ARENAS.length); }
   settings.opp = 0; startMatch();
 }
 
@@ -1061,6 +1069,7 @@ function applySnap(d) {
 }
 function endMatchClient(w) {
   winner = w; screen = 'over'; matchT = 0; sfxRaw.win(); Sound.playSong(SONGS.tag_win);
+  tourneyResult(w);
   confetti = Array.from({ length: 160 }, () => ({ x: rand(0, W), y: rand(-H, 0), vx: rand(-60, 60), vy: rand(80, 240), r: rand(0, 6), vr: rand(-8, 8), col: pick(COLORS), s: rand(6, 12) }));
   if (NET.ranked) reportRanked(w === NET.me);
   if (window.Arcade) Arcade.event('tag', 'match', { won: w === NET.me, ranked: !!NET.ranked });
@@ -1088,9 +1097,9 @@ function drawNetOverlay() {
   if (!NET.menu) return;
   ctx.fillStyle = 'rgba(8,10,16,0.7)'; ctx.fillRect(0, 0, W, H);
   box(W / 2 - 260, 230, 520, 240, '#11131e', '#ffd400');
-  text(NET.ranked ? 'LEAVING COUNTS AS A LOSS' : 'MENU', W / 2, 262, NET.ranked ? 12 : 24, '#ffd400', 'center');
+  text(NET.ranked || NET.tourney ? 'LEAVING COUNTS AS A LOSS' : 'MENU', W / 2, 262, NET.ranked ? 12 : 24, '#ffd400', 'center');
   if (button('nres', W / 2 - 200, 310, 400, 60, 'KEEP PLAYING', { color: '#16a34a' })) NET.menu = false;
-  if (button('nlv', W / 2 - 200, 386, 400, 56, 'LEAVE MATCH', { color: '#dc2626', sfx: 'back' })) { if (NET.ranked) reportRanked(false); toMenu(); }
+  if (button('nlv', W / 2 - 200, 386, 400, 56, 'LEAVE MATCH', { color: '#dc2626', sfx: 'back' })) { if (NET.tourney) { const tm = NET.tourney; if (!tm.done) { tm.done = true; Tourney.report(tm.r, tm.i, tm.opp); } backToBracket(); return; } if (NET.ranked) reportRanked(false); toMenu(); }
 }
 
 // ------------------------------------------------------------ online menu screen
@@ -1107,6 +1116,7 @@ function drawOnline() {
     if (UI.click && UI.click.x > W / 2 - 260 && UI.click.x < W / 2 + 100 && UI.click.y > 330 && UI.click.y < 400) { NET.typing = true; UI.click = null; }
     if (button('join', W / 2 + 116, 330, 144, 70, 'JOIN', { color: '#2563eb', size: 16 }) && NET.input.length >= 4) joinRoom(NET.input);
     if (NET.error) text(NET.error, W / 2, 430, 10, '#ff8a8a', 'center');
+    if (button('tourn', W / 2 - 260, 470, 520, 64, 'FRIEND TOURNAMENT (UP TO 8)', { color: '#d97706', size: 14 })) { screen = 'tourney'; TN.msg = ''; }
   } else if (NET.screen === 'connecting') {
     text(NET.role === 'host' ? 'CREATING ROOM...' : 'JOINING ' + NET.code + '...', W / 2, 260, 16, '#ffffff', 'center');
     text(NetTransport.status.text || '', W / 2, 300, 8, '#8b91a7', 'center');
@@ -1127,14 +1137,97 @@ function drawOnline() {
       if (button('nstart', W / 2 - 200, 500, 400, 70, NET.guestId ? 'START MATCH' : 'WAITING FOR PLAYER...', { color: NET.guestId ? '#16a34a' : '#262a3b', size: 16 }) && NET.guestId) netStart();
     } else text('WAITING FOR THE HOST TO START...', W / 2, 520, 12, '#a1a7bb', 'center');
   }
-  if (button('nback', 40, H - 80, 200, 50, 'BACK', { color: '#262a3b', size: 12, sfx: 'back' })) { netLeave(); screen = 'menu'; }
+  if (button('nback', 40, H - 80, 200, 50, 'BACK', { color: '#262a3b', size: 12, sfx: 'back' })) { if (NET.tourney) backToBracket(); else { netLeave(); screen = 'menu'; } }
 }
 window.addEventListener('keydown', e => {
+  if (screen === 'tourney' && TN.typing) {
+    if (e.key === 'Backspace') TN.input = TN.input.slice(0, -1);
+    else if (e.key === 'Enter') { TN.typing = false; if (TN.input.length >= 4) Tourney.join('tag', TN.input, myName()); }
+    else if (/^[a-zA-Z0-9]$/.test(e.key) && TN.input.length < 6) TN.input += e.key.toUpperCase();
+    return;
+  }
   if (screen !== 'online' || !NET.typing) return;
   if (e.key === 'Backspace') NET.input = NET.input.slice(0, -1);
   else if (e.key === 'Enter') { if (NET.input.length >= 4) joinRoom(NET.input); NET.typing = false; }
   else if (/^[a-zA-Z0-9]$/.test(e.key) && NET.input.length < 6) NET.input += e.key.toUpperCase();
 });
+
+// ------------------------------------------------------------ friend tournaments (assets/tourney.js runs the bracket)
+const TN = { input: '', typing: false, auto: 0, key: '', msg: '', rewarded: false };
+function tourneyResult(w) {
+  const tm = NET.tourney; if (!tm || tm.done || w < 0) return;
+  tm.done = true;
+  Tourney.report(tm.r, tm.i, w === NET.me ? Tourney.state.me.id : tm.opp);
+}
+function backToBracket() { netLeave(); NET.tourney = null; screen = 'tourney'; TN.auto = 0; TN.msg = ''; Sound.playSong(SONGS.tag_menu); }
+function playTourneyMatch(mm) {
+  NET.ranked = false; NET.tourney = { r: mm.r, i: mm.i, opp: mm.opp, done: false };
+  if (mm.role === 'host') { NET.autoStart = true; hostRoom({ code: mm.room }); }
+  else joinRoom(mm.room);
+  NET.tourney = { r: mm.r, i: mm.i, opp: mm.opp, done: false };
+}
+function drawTourney() {
+  ctx.fillStyle = '#0b0d14'; ctx.fillRect(0, 0, W, H);
+  ctx.globalAlpha = 0.2; ctx.drawImage(bakeCv, 0, TOP); ctx.globalAlpha = 1;
+  const S = Tourney.state, st = S.st;
+  text('TOURNAMENT', 60, 40, 32, '#fbbf24', 'left');
+  if (!Tourney.inTourney) {
+    text('Knockout bracket for 2 to 8 friends. First to 5 points, winner moves on.', 62, 96, 10, '#a1a7bb', 'left');
+    if (button('tcreate', 60, 150, 520, 76, 'CREATE TOURNAMENT', { color: '#d97706', size: 18 })) { if (!Tourney.create('tag', myName())) TN.msg = S.err; }
+    text('OR JOIN WITH A CODE', 60, 262, 12, '#8b91a7', 'left');
+    box(60, 292, 340, 70, '#05040e', TN.typing ? '#ffd400' : '#334155');
+    text(TN.input + (TN.typing && Math.floor(t * 2) % 2 ? '_' : ''), 230, 316, 24, '#ffffff', 'center');
+    if (UI.click && UI.click.x > 60 && UI.click.x < 400 && UI.click.y > 292 && UI.click.y < 362) { TN.typing = true; UI.click = null; }
+    if (button('tjoin', 416, 292, 164, 70, 'JOIN', { color: '#2563eb', size: 16 }) && TN.input.length >= 4) { TN.typing = false; if (!Tourney.join('tag', TN.input, myName())) TN.msg = S.err; }
+    if (TN.msg || S.err) text(TN.msg || S.err, 60, 392, 10, '#ff8a8a', 'left');
+    text('Everyone plays from their own computer or phone. Ask your friends to open', 60, 440, 8, '#8b91a7', 'left');
+    text('2 Player Tag, press PLAY ONLINE, then FRIEND TOURNAMENT and type your code.', 60, 458, 8, '#8b91a7', 'left');
+    if (button('tback', 40, H - 80, 200, 50, 'BACK', { color: '#262a3b', size: 12, sfx: 'back' })) { screen = 'online'; NET.screen = 'menu'; TN.typing = false; }
+    return;
+  }
+  if (!st || !st.started) {
+    text('CODE', 62, 104, 12, '#8b91a7', 'left');
+    text(S.code, 62, 126, 48, '#ffd400', 'left');
+    text(S.isHost ? 'Share this code. Start when everyone is in.' : 'Waiting for the organiser to start...', 62, 196, 10, '#a1a7bb', 'left');
+    box(60, 230, 560, 380, '#11131e', '#fbbf24');
+    text(`PLAYERS ${S.players.length}/8`, 84, 250, 12, '#8b91a7', 'left');
+    S.players.slice(0, 8).forEach((p, i) => {
+      const y = 286 + i * 38;
+      text(`${i + 1}. ${p.name}`, 90, y, 14, p.id === S.me.id ? '#ffe680' : '#ffffff', 'left');
+      if (p.host) text('ORGANISER', 596, y + 4, 8, '#fbbf24', 'right');
+    });
+    if (S.players.length > 8) text('Only the first 8 play.', 84, 590, 8, '#ff8a8a', 'left');
+    if (S.isHost && button('tstart', 660, 230, 400, 80, S.players.length >= 2 ? 'START BRACKET' : 'WAITING FOR PLAYERS', { color: S.players.length >= 2 ? '#16a34a' : '#262a3b', size: 16 }) && S.players.length >= 2) Tourney.start();
+    if (S.err) text(S.err, 660, 340, 10, '#ff8a8a', 'left');
+    if (button('tleave', 40, H - 80, 200, 50, 'LEAVE', { color: '#7f1d1d', size: 12, sfx: 'back' })) { Tourney.leave(); TN.msg = ''; }
+    return;
+  }
+  // bracket
+  text(`CODE ${S.code}`, W - 280, 52, 12, '#8b91a7', 'right');
+  Tourney.drawBracket(ctx, 50, 110, W - 100, 400, { font: FONT, head: HEAD });
+  const mm = Tourney.myMatch(), y0 = 540;
+  box(50, y0, W - 100, 120, '#11131e', st.champ ? '#facc15' : mm ? '#16a34a' : '#334155');
+  if (st.champ) {
+    const won = st.champ === S.me.id;
+    text(won ? 'YOU WON THE TOURNAMENT!' : `${Tourney.name(st.champ)} WINS THE TOURNAMENT`, W / 2, y0 + 26, 24, '#fde047', 'center');
+    if (!TN.rewarded) { TN.rewarded = true; if (window.Arcade) Arcade.event('tag', 'tourney', { won, players: Object.keys(st.names).length }); if (won) sfxRaw.win(); }
+    if (button('tdone', W / 2 - 150, y0 + 66, 300, 44, 'LEAVE TOURNAMENT', { color: '#334155', size: 12, sfx: 'back' })) { Tourney.leave(); TN.rewarded = false; screen = 'menu'; }
+  } else if (mm) {
+    const key = mm.r + ':' + mm.i;
+    if (TN.key !== key) { TN.key = key; TN.auto = t + (mm.role === 'host' ? 4 : 6); }
+    else if (!TN.auto) TN.auto = t + (mm.role === 'host' ? 4 : 6);
+    const left = Math.max(0, Math.ceil(TN.auto - t));
+    text(`YOUR MATCH: ${Tourney.roundName(mm.r, Math.log2(st.rounds[0].length * 2)).toUpperCase()} VS ${mm.oppName}`, 80, y0 + 26, 16, '#ffffff', 'left');
+    text(TN.msg || `Starting in ${left}...`, 80, y0 + 66, 10, TN.msg ? '#fbbf24' : '#a1a7bb', 'left');
+    if (button('tplay', W - 380, y0 + 26, 300, 70, 'PLAY NOW', { color: '#16a34a', size: 16 }) || t >= TN.auto) { TN.msg = ''; TN.auto = 0; TN.key = key; playTourneyMatch(mm); TN.auto = 0; }
+  } else {
+    const out = Object.keys(st.names).includes(S.me.id) && st.rounds.some(r => r.some(m => m.w && (m.a === S.me.id || m.b === S.me.id) && m.w !== S.me.id));
+    text(out ? 'You are out. Stay to watch the bracket!' : 'Waiting for the other matches to finish...', 80, y0 + 34, 14, '#ffffff', 'left');
+    if (TN.msg) text(TN.msg, 80, y0 + 70, 10, '#fbbf24', 'left');
+  }
+  if (S.err) text(S.err, W / 2, 86, 10, '#ff8a8a', 'center');
+  if (!st.champ && button('tleave2', W - 250, 40, 190, 40, 'LEAVE', { color: '#7f1d1d', size: 10, sfx: 'back' })) { Tourney.leave(); screen = 'menu'; }
+}
 
 // ------------------------------------------------------------ ranked
 // Signed-in players queue up; two waiting players are matched and one hosts the room.
@@ -1293,6 +1386,7 @@ window.__tag = { NET, hostRoom, joinRoom, netStart, rankOf, endMatch, openRanked
 
 // ------------------------------------------------------------ owner cheats (only shown for the site admin, see account/cheats.js)
 const inMatch = () => screen === 'play' ? '' : 'Start a match first';
+window.__tag.TN = TN; window.__tag.setScreen = v => { screen = v; };
 window.__cheats = [
   { name: '+1 point for Player 1', icon: '🏅', need: inMatch, run() { score[0]++; } },
   { name: 'Make Player 2 IT', icon: '👉', need: inMatch, run() { itIdx = 1; } },
