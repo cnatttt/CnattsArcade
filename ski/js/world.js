@@ -56,6 +56,18 @@ const COURSES = [
     slopes: [[0, 0.5], [130, 0.58], [175, 0.2], [330, 0.15]], rough: [[0, 0]], trees: 0.6, glade: 0, snowfall: 0.35, wind: 0.1, medals: [2500, 5000, 8000],
     feats: [['jump', 175, 'BIG', 0]], lights: true,
     ch: [['cork', 1, 'Land a cork (flip + spin)'], ['trick', 3000, 'Score 3,000 on one jump']] },
+  { id: 'garden', name: 'Rail Garden', blurb: 'Golden-hour jib park: boxes, ledges, kinks. Stall everything.', len: 960, seed: 64,
+    sky: ['#2f4fa3', '#ffd2a8'], fog: [0.98, 0.86, 0.78], fogD: 0.0014, sun: [0.8, 0.36, -0.25], sunCol: [1.4, 1.08, 0.82], amb: [0.5, 0.55, 0.8], gnd: [0.78, 0.66, 0.62],
+    slopes: [[0, 0.22], [120, 0.24], [900, 0.22]], rough: [[0, 0.3], [120, 0.05], [960, 0.05]], trees: 0.7, glade: 0, snowfall: 0, wind: 0.05, medals: [3500, 8000, 14000],
+    feats: [['box', 150, -8], ['box', 152, 8], ['ledge', 215, 0], ['rail', 275, -10], ['kink', 278, 10], ['jump', 330, 'S', 0], ['ledge', 440, -12], ['box', 443, 12], ['rail', 500, 0],
+      ['jump', 560, 'M', 0], ['kink', 668, -10], ['ledge', 670, 10], ['box', 730, 0], ['rail', 785, -9], ['rail', 788, 9], ['jump', 840, 'S', 0]],
+    ch: [['rails', 6, 'Grind 6 features in one run'], ['stall', 1, 'Land a stall on a rail, box or ledge'], ['butter', 360, 'Land a 360 butter']] },
+  { id: 'bowl', name: 'Backcountry Bowl', blurb: 'Steep powder, big cliffs and a storm rolling in.', len: 1500, seed: 79, expo: 0.95,
+    sky: ['#5b6b86', '#e6ebf2'], fog: [0.8, 0.84, 0.9], fogD: 0.0023, sun: [-0.4, 0.75, 0.3], sunCol: [0.85, 0.88, 0.95], amb: [0.62, 0.68, 0.82], gnd: [0.7, 0.72, 0.78],
+    slopes: [[0, 0.28], [150, 0.42], [600, 0.46], [1000, 0.4], [1400, 0.3]], rough: [[0, 0.6], [150, 1.2], [1500, 1.2]], trees: 1.9, glade: 1, snowfall: 1.3, wind: 0.35, medals: [3000, 7500, 13000],
+    feats: [['drop', 220, -10], ['jump', 330, 'M', 12], ['drop', 430, 8], ['log', 545, -14], ['drop', 600, -4], ['jump', 720, 'L', -8], ['drop', 840, 12], ['log', 945, -10],
+      ['drop', 1000, 0], ['jump', 1120, 'L', 6], ['drop', 1250, -10], ['log', 1360, 8]],
+    ch: [['drops', 5, 'Clear 5 cliff drops'], ['speed', 100, 'Hit 100 km/h'], ['flip', 1, 'Land a flip']] },
 ];
 
 // ------------------------------------------------------------ world state
@@ -165,14 +177,14 @@ function buildProfile(f) {
 
 // ---- rails
 function buildRail(f) {
-  const kind = f.kind, len = kind === 'kink' ? 26 : kind === 'log' ? 14 : kind === 'box' ? 12 : 16;
-  const hgt = kind === 'box' ? 0.55 : kind === 'log' ? 0.6 : 0.85;
+  const kind = f.kind, len = kind === 'kink' ? 26 : kind === 'log' ? 14 : kind === 'box' ? 12 : kind === 'ledge' ? 11 : 16;
+  const hgt = kind === 'box' ? 0.55 : kind === 'log' ? 0.6 : kind === 'ledge' ? 0.7 : 0.85;
   const z0 = f.zc - len / 2, z1 = f.zc + len / 2, x = f.x;
   const pts = [];
   const yAt = z => baseH(x, z) + hgt;
   if (kind === 'kink') { const zm = z0 + 10; pts.push([x, yAt(z0) + 0.2, z0], [x, yAt(zm) + 0.2, zm], [x, yAt(z1) - 0.5, z1]); }
   else pts.push([x, yAt(z0), z0], [x, yAt(z1), z1]);
-  f.pts = pts; f.hgt = hgt; f.width = kind === 'box' ? 0.32 : kind === 'log' ? 0.22 : 0.05;
+  f.pts = pts; f.hgt = hgt; f.width = kind === 'box' ? 0.32 : kind === 'ledge' ? 0.5 : kind === 'log' ? 0.22 : 0.05;
   // on-ramp: a little snow wedge that ends just under the rail start
   const ramp = { kind: 'ramp', zc: z0, x, w: 2.4, du: 0.25, soft: 0.2, sideK: 1.2 };
   const rl = 4.5, rz0 = z0 - rl - 0.3, prof = [];
@@ -341,7 +353,11 @@ function buildMeshes(R3) {
     for (let k = 0; k < r.pts.length - 1; k++) {
       const a = r.pts[k], b = r.pts[k + 1], L = Math.hypot(b[1] - a[1], b[2] - a[2]), pitch = Math.atan2(-(b[1] - a[1]), b[2] - a[2]);
       const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, mz = (a[2] + b[2]) / 2;
-      if (r.kind === 'box') {
+      if (r.kind === 'ledge') {   // concrete ledge with steel coping
+        rm.rbox(M4.mul(M4.compose(mx, my - 0.42, mz), M4.mul(M4.rotX(pitch), M4.scale(1.1, 0.86, L))), 16, 8, [0.62, 0.62, 0.6, 0], 0.18);
+        [-0.52, 0.52].forEach(o => rm.tube(M4.mul(M4.compose(mx + o, my - 0.02, mz), M4.mul(M4.rotX(pitch + Math.PI / 2), M4.scale(0.07, L, 0.07))), 8, [0.75, 0.78, 0.84, 0]));
+        rm.rbox(M4.mul(M4.compose(mx, my - 0.02, mz), M4.mul(M4.rotX(pitch), M4.scale(1.04, 0.05, L))), 12, 3, [0.7, 0.7, 0.68, 0], 0.3);
+      } else if (r.kind === 'box') {
         rm.box(M4.mul(M4.compose(mx, my - 0.03, mz), M4.mul(M4.rotX(pitch), M4.scale(0.62, 0.06, L))), [0.85, 0.87, 0.9, 0]);
         rm.box(M4.mul(M4.compose(mx, my - 0.33, mz), M4.mul(M4.rotX(pitch), M4.scale(0.58, 0.56, L - 0.05))), [...hex(r.x > cx(r.zc) ? '#f59e0b' : '#3b82f6'), 0]);
       } else if (r.kind === 'log') {
@@ -356,7 +372,7 @@ function buildMeshes(R3) {
     for (let k = 0; k <= n; k++) {
       const t = k / n, tot = r.pts.length - 1, seg = Math.min(tot - 1, Math.floor(t * tot)), lt = t * tot - seg;
       const a = r.pts[seg], b = r.pts[seg + 1], y = lerp(a[1], b[1], lt), z = lerp(a[2], b[2], lt), gy = baseH(r.x, z);
-      if (r.kind === 'log') continue;
+      if (r.kind === 'log' || r.kind === 'ledge') continue;
       rm.tube(M4.compose(r.x, (y + gy) / 2 - 0.2, z, 0, 0.08, Math.max(0.2, y - gy + 0.2), 0.08), 6, [0.32, 0.34, 0.4, 0]);
     }
   }
@@ -405,14 +421,15 @@ function buildMeshes(R3) {
   }
   MESH.sky = R3.mesh(sk);
   // distant mountains: a smooth ring of peaks around the camera, snow on the gentle slopes, rock on the steep faces
-  const mm = new MB(), NA = 260, RS = [900, 1000, 1110, 1230, 1370, 1520, 1690, 1880, 2090, 2320, 2560], seed = C.seed;
+  const mm = new MB(), NA = 360, RS = [], seed = C.seed;
+  for (let r = 950; r < 2700; r *= 1.075) RS.push(r);
   const hAt = (a, r) => {
-    const ca = Math.cos(a), sa = Math.sin(a), rr = r / 1000;
-    let h = 0, amp = 1, fr = 0.75;
-    for (let o = 0; o < 5; o++) { const v = vnoise(ca * fr * 2.6 + 40 + rr * fr * 1.4, sa * fr * 2.6 + 40 - rr * fr * 1.1, seed + o * 3); const ridge = 1 - Math.abs(v * 2 - 1); h += ridge * ridge * amp; amp *= 0.48; fr *= 2.07; }
-    const big = 0.55 + 0.75 * vnoise(ca * 1.7 + 9, sa * 1.7 + 9, seed + 31);
-    const env = clamp((r - 900) / 700, 0, 1);
-    return -230 + h * 470 * big * (env * env * (3 - 2 * env)) * (1 - clamp((r - 2000) / 900, 0, 1) * 0.35);
+    const x = Math.cos(a) * r, z = Math.sin(a) * r;
+    let h = 0, amp = 1, fr = 1 / 520;
+    for (let o = 0; o < 6; o++) { const v = vnoise(x * fr + 31.7, z * fr - 12.3, seed + o * 3); const ridge = 1 - Math.abs(v * 2 - 1); h += ridge * ridge * amp; amp *= 0.47; fr *= 2.03; }
+    const big = 0.45 + 0.85 * vnoise(x / 1400 + 9, z / 1400 + 9, seed + 31);
+    const env = clamp((r - 950) / 650, 0, 1);
+    return -240 + h * 520 * big * (env * env * (3 - 2 * env));
   };
   const G = RS.map(r => { const row = []; for (let i = 0; i <= NA; i++) { const a = i / NA * 6.2832; row.push([Math.cos(a) * r, hAt(a, r), Math.sin(a) * r]); } return row; });
   const nrm = (j, i) => { const p = G[j][i], A = G[j][(i + 1) % (NA + 1)], B = G[Math.min(RS.length - 1, j + 1)][i], Cq = G[j][(i + NA - 1) % (NA + 1)], D = G[Math.max(0, j - 1)][i];

@@ -1,7 +1,7 @@
 // =====================================================================
 //  POWDER PEAK - 3D freeride + slopestyle on skis or a snowboard.
-//  A/D steer (in the air: spin) · W tuck (air: frontflip) · S brake (air: backflip)
-//  hold SPACE to crouch, release to pop · SHIFT/J K L I grabs · C camera
+//  Keys are rebindable (Controls screen). Defaults: A/D steer (air: spin) · W tuck (air: frontflip) · S brake (air: backflip)
+//  hold SPACE to crouch, release to pop · F stall (rails) / butter (snow) · SHIFT K L I grabs · C camera
 // =====================================================================
 'use strict';
 (() => {
@@ -86,12 +86,27 @@ function newRun(ci) {
   screen = 'play'; pops = []; parts = []; tracks = []; hint = null; fade = 0; snapCam();
   Sound.playSong(C.bigair ? SONGS.skiNight : SONGS.ski);
 }
+// rebindable controls (Controls screen). Arrow keys always work too for steering / tuck / brake.
+const ACTIONS = [
+  ['left', 'Steer left  ·  spin left in the air', 'KeyA'], ['right', 'Steer right  ·  spin right in the air', 'KeyD'],
+  ['up', 'Tuck for speed  ·  frontflip in the air', 'KeyW'], ['down', 'Brake / hockey stop  ·  backflip in the air', 'KeyS'],
+  ['jump', 'Crouch (hold) and pop (let go)', 'Space'], ['stall', 'Stall on rails & boxes  ·  butter on the snow', 'KeyF'],
+  ['g1', 'Grab 1', 'ShiftLeft'], ['g2', 'Grab 2', 'KeyK'], ['g3', 'Grab 3', 'KeyL'], ['g4', 'Grab 4', 'KeyI'], ['cam', 'Change camera', 'KeyC'],
+];
+const DEFAULT_KEYS = Object.fromEntries(ACTIONS.map(a => [a[0], a[2]]));
+const KB = () => Object.assign({}, DEFAULT_KEYS, save.keys || {});
+function keyName(code) {
+  if (!code) return '—';
+  const map = { Space: 'SPACE', ShiftLeft: 'L-SHIFT', ShiftRight: 'R-SHIFT', ControlLeft: 'L-CTRL', ControlRight: 'R-CTRL', AltLeft: 'L-ALT', AltRight: 'R-ALT', ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓', Enter: 'ENTER', Tab: 'TAB', CapsLock: 'CAPS', Backquote: '`', Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/', Backslash: '\\' };
+  return map[code] || code.replace(/^Key/, '').replace(/^Digit/, '').replace(/^Numpad/, 'NUM ').toUpperCase();
+}
+const KN = a => keyName(KB()[a]);
 function input() {
   if (brain) return brain(P);
   if (botInput) return botInput(P);
-  const k = U.keys;
-  return { left: !!(k.KeyA || k.ArrowLeft), right: !!(k.KeyD || k.ArrowRight), up: !!(k.KeyW || k.ArrowUp), down: !!(k.KeyS || k.ArrowDown), jump: !!k.Space,
-    g1: !!(k.ShiftLeft || k.ShiftRight || k.KeyJ), g2: !!k.KeyK, g3: !!k.KeyL, g4: !!k.KeyI };
+  const k = U.keys, B = KB(), d = a => !!k[B[a]];
+  return { left: d('left') || !!k.ArrowLeft, right: d('right') || !!k.ArrowRight, up: d('up') || !!k.ArrowUp, down: d('down') || !!k.ArrowDown, jump: d('jump'), stall: d('stall'),
+    g1: d('g1'), g2: d('g2'), g3: d('g3'), g4: d('g4') };
 }
 const GRAB_KEYS = () => save.board ? ['indy', 'melon', 'tail', 'nose'] : ['mute', 'safety', 'tail', 'japan'];
 const GRAB_NAME = { indy: 'Indy', melon: 'Melon', tail: 'Tail Grab', nose: 'Nose Grab', mute: 'Mute', safety: 'Safety', japan: 'Japan' };
@@ -146,7 +161,7 @@ function popMsg(text, col = '#f87171', sub = '') { if (quiet) return; pops.push(
 function featUnder(x, z) { for (const f of W0.jumps) if (z > f.z0 - 2 && z < f.z1 && Math.abs(x - f.x) < f.w / 2 + 3) return f; return null; }
 function crash(reason) {
   if (P.crash > 0) return;
-  P.crash = 2.0; P.rail = null; P.grab = null; P.grabK = 0; P.charge = 0; P.queuedPop = 0;
+  P.crash = 2.0; P.rail = null; P.butter = null; P.wind = 0; P.grab = null; P.grabK = 0; P.charge = 0; P.queuedPop = 0;
   P.tumbleV = [rand(5, 9) * (Math.random() < 0.5 ? -1 : 1), rand(3, 7) * (Math.random() < 0.5 ? -1 : 1)];
   run.combo = 1; run.comboT = 0; run.crashes++;
   sfx.crash(); popMsg(reason || 'BAIL!');
@@ -156,6 +171,8 @@ function takeoff(kind) {
   P.ground = false; P.air = 0; P.spin = 0; P.flip = 0; P.spinV = 0; P.flipV = 0; P.flipDir = 0; P.grabs = []; P.grab = null; P.grabT = 0;
   P.takeoffFakie = P.fakie; P.feat = featUnder(P.p[0], P.p[2]); P.pop = 0; P.maxAir = 0;
   if (kind !== 'rail') P.spinOn = 0;
+  if (P.butter) { const bs = P.butter.spinV; P.butter = null; P.spin = 0; P.spinV = bs; }
+  if (P.wind && kind !== 'rail' && kind !== 'fall') { P.spinV += P.wind * 5.2; P.wind = 0; }
   const pipe = inPipe(P.p[0], P.p[2]);
   if (pipe && Math.abs(P.p[0] - pipe.x) > PIPE.floor + 2.5) { P.pipeAir = pipe; P.v[0] = -Math.sign(P.p[0] - pipe.x) * 0.9; P.yaw = 0; }
   else P.pipeAir = null;
@@ -176,20 +193,43 @@ function groundStep(dt, I) {
   P.v[0] += gk * n[0] * dt; P.v[1] += (-GRAV + gk * n[1]) * dt; P.v[2] += gk * n[2] * dt;
   const sp = v3.len(P.v);
   const steer = (I.left ? 1 : 0) - (I.right ? 1 : 0);
-  const rate = (I.down ? 2.5 : 1.95) + 1.6 / (1 + sp * 0.12);
-  P.yaw += steer * rate * dt;
-  P.lean += (steer * Math.min(1, sp / 10) - P.lean) * Math.min(1, dt * 6);
+  // butters: hold stall on the snow to press onto the nose (tuck) or tail (brake) and spin on it
+  if (I.stall && !P.butter && sp > 2 && P.groundT > 0.15) { P.butter = { k: I.down ? -1 : 1, t: 0, spinV: 0 }; P.spin = 0; }
+  if (P.butter) {
+    const B = P.butter; B.t += dt;
+    if (I.down) B.k = -1; else if (I.up) B.k = 1;
+    B.spinV += (steer * 4.6 - B.spinV) * Math.min(1, dt * 7);
+    P.spin += B.spinV * dt;
+    if (!steer && Math.abs(B.spinV) < 1.6) { const q = Math.round(P.spin / Math.PI) * Math.PI; P.spin += clamp(q - P.spin, -3.2 * dt, 3.2 * dt); }
+    if (!I.stall) endButter();
+  }
+  // carving: the turn builds up smoothly; at speed the turn widens; braking lets you pivot harder
+  const rate = (I.down ? 2.6 : 2.05) + 1.7 / (1 + sp * 0.11);
+  const target = P.butter ? 0 : steer * rate;
+  P.yawV = (P.yawV || 0) + (target - (P.yawV || 0)) * Math.min(1, dt * (steer ? 8 : 11));
+  P.yaw += P.yawV * dt;
+  P.lean += (clamp(P.yawV * Math.max(3, sp) / 24, -1, 1) * (P.butter ? 0.2 : 1) - P.lean) * Math.min(1, dt * 7);
+  // hockey stop: the rider swings sideways to the hill and sprays snow
+  P.skidA = (P.skidA || 0) + (((I.down && sp > 5 && !P.butter) ? (Math.sign(P.yawV) || (P.fakie ? -1 : 1)) * 1.15 : 0) - (P.skidA || 0)) * Math.min(1, dt * 8);
+  // winding up a spin while crouching
+  if (I.jump && steer) P.wind = clamp((P.wind || 0) + steer * dt * 2.4, -1, 1); else if (!I.jump) P.wind = (P.wind || 0) * Math.exp(-dt * 4);
   let F = [Math.sin(P.yaw), 0, Math.cos(P.yaw)]; F = v3.norm(v3.sub(F, v3.mul(n, v3.dot(F, n))));
   let S = v3.cross(n, F);
   let vf = v3.dot(P.v, F), vs = v3.dot(P.v, S);
   if (vf < -1.2) { P.yaw += Math.PI; P.fakie = !P.fakie; F = v3.mul(F, -1); S = v3.mul(S, -1); vf = -vf; vs = -vs; }
   // edges bite: sideways speed bleeds off (skidding when braking)
-  const grip = I.down ? 2.6 : 7.5;
+  const grip = I.down ? 2.6 : P.butter ? 5 : 7.5;
   P.slip = Math.abs(vs);
   vs *= Math.exp(-grip * dt);
+  // snow spray off the edges when carving hard, skidding or stopping
+  const spray = clamp((Math.abs(P.yawV) * sp - 14) / 30, 0, 1) + (I.down ? clamp(sp / 18, 0, 1) : 0) + clamp((P.slip - 2) / 6, 0, 1);
+  if (!quiet && spray > 0.05 && Math.random() < spray * 1.4) {
+    const side = Math.sign(P.yawV) || 1, out = v3.mul(S, -side);
+    for (let i = 0; i < 2; i++) parts.push([P.p[0] + rand(-0.3, 0.3), P.p[1] + 0.08, P.p[2] + rand(-0.3, 0.3), out[0] * rand(2, 5) + P.v[0] * 0.5, rand(1, 3.2), out[2] * rand(2, 5) + P.v[2] * 0.5, rand(0.45, 0.8), rand(0.18, 0.4), 0]);
+  }
   P.tuck += (((I.up && !I.down) ? 1 : 0) - P.tuck) * Math.min(1, dt * 6);
   const drag = 0.0045 - 0.0021 * P.tuck;
-  const dec = 0.045 * GRAV * n[1] + drag * vf * vf + (I.down ? 8.5 : 0) + P.slip * 0.25;
+  const dec = 0.045 * GRAV * n[1] + drag * vf * vf + (I.down ? 8.5 : 0) + P.slip * 0.25 + (P.butter ? 1.2 : 0);
   vf = vf > 0 ? Math.max(0, vf - dec * dt) : vf * Math.exp(-dt * 3);
   // speed check on park jump in-runs so the landings work
   P.speedCheck = 0;
@@ -303,6 +343,17 @@ function land() {
   P.grabs = []; P.pipeAir = null; P.feat = null; P.maxAir = 0;
   if (run.mode === 'bigair' && P.air > 0.8) run.landedAt = t;
 }
+function endButter() {
+  const B = P.butter; if (!B) return; P.butter = null;
+  const q = Math.round(P.spin / Math.PI), err = Math.abs(P.spin - q * Math.PI), deg = Math.abs(q) * 180;
+  P.spin = 0;
+  if (err > 0.95) { crash('CAUGHT AN EDGE'); return; }
+  if (q % 2) { P.fakie = !P.fakie; }
+  if (B.t < 0.35 && !deg) return;
+  const nm = (B.k > 0 ? 'Nose ' : 'Tail ') + (deg ? 'Butter ' + deg : 'Press');
+  award(nm, 140 + deg * 1.1 + Math.min(2, B.t) * 120, err < 0.3 ? 'perfect' : 'clean', nm);
+  checkCh('butter', deg || 1);
+}
 // ------------------------------------------------------------ rails
 function railY(r, z) { const p = r.pts; for (let i = 0; i < p.length - 1; i++) if (z <= p[i + 1][2] || i === p.length - 2) { const k = (z - p[i][2]) / (p[i + 1][2] - p[i][2]); return [p[i][1] + (p[i + 1][1] - p[i][1]) * k, (p[i + 1][1] - p[i][1]) / (p[i + 1][2] - p[i][2])]; } return [p[0][1], 0]; }
 function tryRail() {
@@ -316,7 +367,7 @@ function tryRail() {
     const yawR = angW(P.yaw + (P.fakie ? Math.PI : 0) + P.spin);
     const a = Math.abs(yawR), side = a > 50 * D2R && a < 130 * D2R;
     P.spinOn = P.ground ? 0 : Math.round(Math.abs(P.spin) / (Math.PI / 2)) * 90;
-    P.rail = r; P.railT = 0; P.railSide = side ? Math.sign(yawR) : 0; P.fakie = side ? P.fakie : a > 90 * D2R;
+    P.rail = r; P.railT = 0; P.stallT = 0; P.stallDone = false; P.stallResumed = false; P.railSide = side ? Math.sign(yawR) : 0; P.fakie = side ? P.fakie : a > 90 * D2R;
     P.railSpeed = Math.max(5, Math.abs(P.v[2])); P.yaw = 0; P.spin = 0; P.flip = 0; P.ground = false; P.grab = null; P.grabK = 0; P.charge = 0;
     P.bal = (Math.random() - 0.5) * 0.15; P.balV = (Math.random() - 0.5) * 0.4;
     P.p[0] = r.x; P.p[1] = ry; sfx.rail();
@@ -328,14 +379,22 @@ function railStep(dt, I) {
   const r = P.rail, [, slope] = railY(r, P.p[2]);
   P.railT += dt;
   const sl = Math.atan(slope);
-  P.railSpeed += (-GRAV * Math.sin(sl) - (r.kind === 'log' ? 1.6 : 0.9)) * dt; P.railSpeed = Math.max(3.5, P.railSpeed);
+  if (!(P.stallT > 0 && !P.stallDone)) { P.railSpeed += (-GRAV * Math.sin(sl) - (r.kind === 'log' ? 1.6 : 0.9)) * dt; P.railSpeed = Math.max(3.5, P.railSpeed); }
   P.p[2] += P.railSpeed * Math.cos(sl) * dt; P.p[0] = r.x;
   const [ry2, slope2] = railY(r, P.p[2]); P.p[1] = ry2;
   const vz = P.railSpeed * Math.cos(Math.atan(slope2));
   P.v = [0, slope2 * vz, vz];
   // balance: it drifts more the longer you stay on; steer to keep it centred
   const steer = (I.left ? 1 : 0) - (I.right ? 1 : 0);
-  P.balV += ((Math.random() - 0.5) * 3.2 * (1 + P.railT * 0.45) + P.bal * 2.2 - steer * 4.2) * dt;
+  // stall: hold the stall key to stop dead on the feature, let go (or after 2 s) to slide on
+  if (I.stall && !P.stallDone && P.railT > 0.08) {
+    if (!P.stallT) { P.stallT = 0.0001; P.stallFrom = P.railSpeed; P.stallKind = P.railT < 0.45 ? 'Nose Stall' : (r.pts[r.pts.length - 1][2] - P.p[2] < 3 ? 'Tail Stall' : 'Stall'); sfx.rail(); }
+    P.stallT += dt; P.railSpeed = Math.max(0, P.railSpeed - Math.max(P.railSpeed * 9, 6) * dt);
+    if (P.stallT > 2) P.stallDone = true;
+  } else if (P.stallT > 0 && !P.stallDone) P.stallDone = true;
+  if (P.stallDone && P.stallT > 0 && !P.stallResumed) { P.stallResumed = true; P.railSpeed = Math.max(4.5, P.stallFrom * 0.7); }
+  const stalling = P.stallT > 0 && !P.stallDone;
+  P.balV += ((Math.random() - 0.5) * 3.2 * (1 + P.railT * 0.45) * (stalling ? 0.35 : 1) + P.bal * 2.2 - steer * 4.2) * dt;
   P.balV *= Math.exp(-dt * 1.2);
   P.bal += P.balV * dt;
   if (Math.random() < 0.5) parts.push([P.p[0], P.p[1], P.p[2], rand(-1.5, 1.5), rand(0.5, 2.5), rand(-1, 0.5), 0.35, 0.12, r.kind === 'log' ? 0 : 1]);
@@ -343,13 +402,16 @@ function railStep(dt, I) {
   const jumpOff = !I.jump && P.charge > 0.08;
   if (I.jump) P.charge = Math.min(1, P.charge + dt * 2.2);
   if (Math.abs(P.bal) > 1) {
-    P.rail = null; P.railCd = t + 0.6; run.combo = 1; run.comboT = 0;
+    P.rail = null; P.railCd = t + 0.6; run.combo = 1; run.comboT = 0; P.stallT = 0; P.stallDone = false; P.stallResumed = false;
     P.v = [Math.sign(P.bal) * -2.2, 1.5, P.railSpeed * 0.7]; P.charge = 0; takeoff('fall'); popMsg('LOST BALANCE', '#fbbf24');
     return;
   }
   if (P.p[2] >= z1 || jumpOff) {
-    const kind = r.kind, nm = (P.spinOn ? P.spinOn + ' on ' : '') + (P.railSide ? (save.board ? 'Boardslide' : 'Rail Slide') : (P.fakie ? 'Switch 50-50' : '50-50')) + (kind === 'kink' ? ' Kink' : kind === 'log' ? ' Log' : kind === 'box' ? ' Box' : '');
-    const pts = 220 + P.railT * 380 + (kind === 'kink' ? 350 : 0) + (P.spinOn ? P.spinOn * 1.6 : 0) + (P.p[2] >= z1 ? 150 : 0);
+    const kind = r.kind, st = P.stallT > 0.25 ? P.stallKind : '';
+    const nm = (P.spinOn ? P.spinOn + ' on ' : '') + (st && st !== 'Stall' ? st + ' to ' : '') + (P.railSide ? (save.board ? 'Boardslide' : 'Rail Slide') : (P.fakie ? 'Switch 50-50' : '50-50')) + (st === 'Stall' ? ' Stall' : '') + (kind === 'kink' ? ' Kink' : kind === 'log' ? ' Log' : kind === 'box' ? ' Box' : kind === 'ledge' ? ' Ledge' : '');
+    const pts = 220 + P.railT * 380 + (kind === 'kink' ? 350 : 0) + (P.spinOn ? P.spinOn * 1.6 : 0) + (P.p[2] >= z1 ? 150 : 0) + (st ? 250 + Math.min(2, P.stallT) * 350 : 0);
+    if (st) checkCh('stall', 1);
+    P.stallT = 0; P.stallDone = false; P.stallResumed = false;
     const balOK = Math.abs(P.bal) < 0.35 ? 'perfect' : 'clean';
     const side = P.railSide;
     P.rail = null; P.railCd = t + 0.35; run.rails++; checkCh('rails', run.rails);
@@ -939,15 +1001,15 @@ function updateCam(dt, snap) {
   const follow = P.crash > 0 ? 0.6 : P.ground || P.rail ? 3.2 : 1.2;
   cam.dir = snap ? want : cam.dir + angW(want - cam.dir) * Math.min(1, dt * follow);
   const near = save.cam === 1;
-  const dist = (near ? 4.6 : 6.6) + Math.min(3.2, v3.len(P.v) * 0.07) + (P.ground ? 0 : 1.2), hgt = (near ? 1.8 : 2.6) + (P.ground ? 0 : 0.8);
+  const dist = (near ? 3.6 : 4.9) + Math.min(2.2, v3.len(P.v) * 0.045) + (P.ground ? 0 : 1.0), hgt = (near ? 1.45 : 1.95) + (P.ground ? 0 : 0.6);
   const f = [Math.sin(cam.dir), 0, Math.cos(cam.dir)];
   const e = [P.p[0] - f[0] * dist, P.p[1] + hgt, P.p[2] - f[2] * dist];
   const ge = heightAt(e[0], e[2]) + 1.2; if (e[1] < ge) e[1] = ge;
   const k = snap ? 1 : 1 - Math.exp(-dt * (P.ground ? 7 : 4.5));
   for (let i = 0; i < 3; i++) cam.eye[i] += (e[i] - cam.eye[i]) * k;
-  const at = [P.p[0] + f[0] * 3.5, P.p[1] + 1.0, P.p[2] + f[2] * 3.5];
+  const at = [P.p[0] + f[0] * 4.5, P.p[1] + 0.75, P.p[2] + f[2] * 4.5];
   for (let i = 0; i < 3; i++) cam.at[i] = snap ? at[i] : cam.at[i] + (at[i] - cam.at[i]) * Math.min(1, dt * 10);
-  cam.fov += (1.08 + Math.min(0.22, v3.len(P.v) / 140) - cam.fov) * (snap ? 1 : Math.min(1, dt * 2));
+  cam.fov += (1.02 + Math.min(0.26, v3.len(P.v) / 120) - cam.fov) * (snap ? 1 : Math.min(1, dt * 2));
 }
 
 // ------------------------------------------------------------ drawing
@@ -962,6 +1024,8 @@ function riderRoot(P) {
   else {
     if (P.flip) { r = M4.mul(r, M4.trans(0, 0.85, 0)); r = M4.mul(r, M4.rotX(P.flip)); r = M4.mul(r, M4.trans(0, -0.85, 0)); }
     if (P.rail && P.railSide) r = M4.mul(r, M4.rotY(P.railSide * Math.PI / 2));
+    if (P.butter) { const k = P.butter.k, e = Math.min(1, P.butter.t * 6), pv = k * 0.62; r = M4.mul(r, M4.trans(0, 0, pv)); r = M4.mul(r, M4.rotX(-k * 0.32 * e)); r = M4.mul(r, M4.trans(0, 0, -pv)); }
+    if (P.skidA && P.ground && !P.rail) r = M4.mul(r, M4.rotY(P.skidA));
     r = M4.mul(r, M4.rotZ(-P.lean * 0.42 * (P.ground ? 1 : 0.3) + (P.rail ? P.bal * 0.4 : 0)));
   }
   return r;
@@ -1091,7 +1155,7 @@ function drawHUD(dt) {
     U.rr(bx - 150, by, 300, 12, 6); ctx.fillStyle = 'rgba(15,23,42,0.55)'; ctx.fill();
     U.rr(bx - 45, by, 90, 12, 6); ctx.fillStyle = 'rgba(74,222,128,0.35)'; ctx.fill();
     const mx = bx + clamp(P.bal, -1, 1) * 150; ctx.fillStyle = Math.abs(P.bal) > 0.7 ? '#f87171' : '#ffffff'; ctx.beginPath(); ctx.arc(mx, by + 6, 10, 0, 7); ctx.fill();
-    U.txt('BALANCE  ·  A / D', bx, by + 22, 12, '#e2e8f0', 'center', { weight: 800 });
+    U.txt(P.stallT > 0 ? 'STALL!' : `BALANCE  ·  ${KN('left')} / ${KN('right')}`, bx, by + 22, 12, P.stallT > 0 ? '#fde047' : '#e2e8f0', 'center', { weight: 800 });
   }
   if (P.charge > 0.05 || P.queuedPop) {
     const k = P.queuedPop ? P.queuedPop : P.charge;
@@ -1107,15 +1171,15 @@ function drawHUD(dt) {
   if (fade > 0) { ctx.fillStyle = `rgba(5,7,15,${fade})`; ctx.fillRect(0, 0, W, H); fade = Math.max(0, fade - dt * 1.6); }
 }
 const TIPS = [
-  ['ground', 'A / D to carve  ·  W to tuck  ·  S to brake'],
-  ['charge', 'Hold SPACE to crouch, let go to jump. Let go on a kicker lip for a perfect pop'],
-  ['air', 'In the air: A / D spin  ·  W / S flip  ·  SHIFT (or J K L I) to grab'],
+  ['ground', () => `${KN('left')} / ${KN('right')} to carve  ·  ${KN('up')} to tuck  ·  ${KN('down')} to brake  ·  hold ${KN('stall')} to butter`],
+  ['charge', () => `Hold ${KN('jump')} to crouch, let go to jump. Hold ${KN('left')} or ${KN('right')} while crouching to wind up a spin`],
+  ['air', () => `In the air: ${KN('left')} / ${KN('right')} spin  ·  ${KN('up')} / ${KN('down')} flip  ·  ${KN('g1')} ${KN('g2')} ${KN('g3')} ${KN('g4')} to grab`],
   ['land', 'Land with your skis pointing downhill. Backwards counts too: that is switch!'],
-  ['rail', 'Rails: ride or jump onto them, then keep your balance with A / D'],
+  ['rail', () => `Rails: keep your balance with ${KN('left')} / ${KN('right')}. Hold ${KN('stall')} to stall`],
 ];
 function drawTips() {
   if (save.tips >= TIPS.length || run.mode !== 'slope' || run.startT > 0) return;
-  const [when, text] = TIPS[save.tips];
+  const [when, text0] = TIPS[save.tips], text = typeof text0 === 'function' ? text0() : text0;
   const show = when === 'ground' ? run.time < 6 : when === 'charge' ? run.time > 6 && run.time < 14 : when === 'air' ? !P.ground && P.air > 0.2 : when === 'land' ? !P.ground && P.air > 0.45 : when === 'rail' ? P.p[2] > 500 && P.p[2] < 560 : false;
   if (show) { pill(text.replace('skis', save.board ? 'board' : 'skis'), W / 2, H - 36, 14); hint = when; }
   else if (hint === when) { save.tips++; store(); hint = null; }
@@ -1157,28 +1221,33 @@ function courses(dt) {
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = 'rgba(8,12,28,0.55)'; ctx.fillRect(0, 0, W, H);
   U.txt('Choose a run', 70, 46, 40, '#fff', 'left', { head: true, weight: 800 });
-  [0, 1, 2, 3].forEach((ci, i) => {
-    const c = COURSES[ci], x = 70 + i * 290, y = 116, w = 270, h = 254, on = sel === ci;
+  const ORDER = [0, 1, 2, 4, 5, 3].filter(i => COURSES[i]);
+  ORDER.forEach((ci, i) => {
+    const c = COURSES[ci], x = 70 + (i % 3) * 380, y = 100 + Math.floor(i / 3) * 154, w = 360, h = 140, on = sel === ci;
     U.panel(x, y, w, h, { fill: on ? 'rgba(37,99,235,0.35)' : 'rgba(14,15,22,0.78)', stroke: on ? '#93c5fd' : 'rgba(255,255,255,0.09)' });
-    const sk = ctx.createLinearGradient(0, y + 16, 0, y + 90); sk.addColorStop(0, c.sky[0]); sk.addColorStop(1, c.sky[1]);
-    ctx.save(); U.rr(x + 16, y + 16, w - 32, 74, 12); ctx.clip(); ctx.fillStyle = sk; ctx.fillRect(x + 16, y + 16, w - 32, 74);
-    ctx.fillStyle = c.bigair ? 'rgba(180,190,220,0.6)' : 'rgba(255,255,255,0.92)'; ctx.beginPath(); ctx.moveTo(x + 16, y + 92); ctx.lineTo(x + 70, y + 50); ctx.lineTo(x + 110, y + 70); ctx.lineTo(x + 165, y + 34); ctx.lineTo(x + 215, y + 64); ctx.lineTo(x + w - 16, y + 46); ctx.lineTo(x + w - 16, y + 92); ctx.fill(); ctx.restore();
-    U.txt(c.name, x + 18, y + 104, 20, '#fff', 'left', { weight: 800 });
-    wrap(c.blurb, x + 18, y + 134, w - 36, 13, '#cbd5e1', 18);
+    const sk = ctx.createLinearGradient(0, y + 14, 0, y + 58); sk.addColorStop(0, c.sky[0]); sk.addColorStop(1, c.sky[1]);
+    ctx.save(); U.rr(x + 14, y + 14, 92, 112, 12); ctx.clip(); ctx.fillStyle = sk; ctx.fillRect(x + 14, y + 14, 92, 112);
+    ctx.fillStyle = c.bigair ? 'rgba(180,190,220,0.6)' : 'rgba(255,255,255,0.92)'; ctx.beginPath(); ctx.moveTo(x + 14, y + 96); ctx.lineTo(x + 40, y + 60); ctx.lineTo(x + 58, y + 74); ctx.lineTo(x + 80, y + 46); ctx.lineTo(x + 106, y + 80); ctx.lineTo(x + 106, y + 126); ctx.lineTo(x + 14, y + 126); ctx.fill(); ctx.restore();
+    U.txt(c.name, x + 122, y + 16, 19, '#fff', 'left', { weight: 800 });
+    wrap(c.blurb, x + 122, y + 46, w - 136, 12, '#cbd5e1', 16);
     const m = save.medal[c.id] || 0;
-    [1, 2, 3].forEach(k => { ctx.fillStyle = m >= k ? medalCol(k) : 'rgba(255,255,255,0.15)'; ctx.beginPath(); ctx.arc(x + 28 + (k - 1) * 26, y + 216, 9, 0, 7); ctx.fill(); });
-    U.txt(save.cbest[c.id] ? save.cbest[c.id].toLocaleString() : '—', x + w - 18, y + 206, 16, '#fff', 'right', { weight: 800 });
+    [1, 2, 3].forEach(k => { ctx.fillStyle = m >= k ? medalCol(k) : 'rgba(255,255,255,0.15)'; ctx.beginPath(); ctx.arc(x + 130 + (k - 1) * 22, y + 116, 8, 0, 7); ctx.fill(); });
+    U.txt(save.cbest[c.id] ? save.cbest[c.id].toLocaleString() : '—', x + w - 16, y + 106, 15, '#fff', 'right', { weight: 800 });
+    if ((c.id === 'garden' || c.id === 'bowl') && !save.cbest[c.id]) U.txt('NEW', x + w - 16, y + 16, 11, '#4ade80', 'right', { weight: 800 });
     if (U.click && U.click.x > x && U.click.x < x + w && U.click.y > y && U.click.y < y + h) { U.click = null; if (sel !== ci) { sel = ci; Sound.play('tab'); } }
   });
-  if (U.pressed.ArrowRight || U.pressed.KeyD) { sel = (sel + 1) % 4; Sound.play('tab'); }
-  if (U.pressed.ArrowLeft || U.pressed.KeyA) { sel = (sel + 3) % 4; Sound.play('tab'); }
-  const c = COURSES[sel];
-  U.panel(70, 392, 560, 226);
-  U.txt('Challenges', 94, 412, 18, '#fff', 'left', { weight: 800 });
-  c.ch.forEach(([, , text], i) => { const done = save.ch[c.id + ':' + i]; ctx.fillStyle = done ? '#22c55e' : 'rgba(255,255,255,0.12)'; ctx.beginPath(); ctx.arc(106, 462 + i * 42, 11, 0, 7); ctx.fill(); if (done) U.txt('✓', 106, 462 + i * 42, 14, '#fff', 'center', { base: 'middle', shadow: false, weight: 800 }); U.txt(text, 128, 462 + i * 42, 16, done ? '#86efac' : '#e2e8f0', 'left', { base: 'middle', weight: 600 }); });
-  U.panel(650, 392, 560, 226);
-  U.txt('Medals', 674, 412, 18, '#fff', 'left', { weight: 800 });
-  ['Bronze', 'Silver', 'Gold'].forEach((n, i) => { ctx.fillStyle = medalCol(i + 1); ctx.beginPath(); ctx.arc(686, 462 + i * 42, 10, 0, 7); ctx.fill(); U.txt(`${n}  ·  ${c.medals[i].toLocaleString()}${c.bigair ? '  (best 2 jumps)' : ''}`, 708, 462 + i * 42, 16, '#e2e8f0', 'left', { base: 'middle', weight: 600 }); });
+  const oi = Math.max(0, ORDER.indexOf(sel));
+  if (U.pressed.ArrowRight || U.pressed.KeyD) { sel = ORDER[(oi + 1) % ORDER.length]; Sound.play('tab'); }
+  if (U.pressed.ArrowLeft || U.pressed.KeyA) { sel = ORDER[(oi + ORDER.length - 1) % ORDER.length]; Sound.play('tab'); }
+  if (U.pressed.ArrowDown || U.pressed.KeyS) { sel = ORDER[(oi + 3) % ORDER.length]; Sound.play('tab'); }
+  if (U.pressed.ArrowUp || U.pressed.KeyW) { sel = ORDER[(oi + 3) % ORDER.length]; Sound.play('tab'); }
+  const c = COURSES[sel] || COURSES[0];
+  U.panel(70, 422, 560, 196);
+  U.txt('Challenges', 94, 440, 18, '#fff', 'left', { weight: 800 });
+  c.ch.forEach(([, , text], i) => { const done = save.ch[c.id + ':' + i]; ctx.fillStyle = done ? '#22c55e' : 'rgba(255,255,255,0.12)'; ctx.beginPath(); ctx.arc(106, 486 + i * 40, 11, 0, 7); ctx.fill(); if (done) U.txt('✓', 106, 486 + i * 40, 14, '#fff', 'center', { base: 'middle', shadow: false, weight: 800 }); U.txt(text, 128, 486 + i * 40, 16, done ? '#86efac' : '#e2e8f0', 'left', { base: 'middle', weight: 600 }); });
+  U.panel(650, 422, 560, 196);
+  U.txt('Medals', 674, 440, 18, '#fff', 'left', { weight: 800 });
+  ['Bronze', 'Silver', 'Gold'].forEach((n, i) => { ctx.fillStyle = medalCol(i + 1); ctx.beginPath(); ctx.arc(686, 486 + i * 40, 10, 0, 7); ctx.fill(); U.txt(`${n}  ·  ${c.medals[i].toLocaleString()}${c.bigair ? '  (best 2 jumps)' : ''}`, 708, 486 + i * 40, 16, '#e2e8f0', 'left', { base: 'middle', weight: 600 }); });
   if (U.button('go', 940, 638, 270, 58, 'DROP IN', { color: '#3b82f6', size: 20 }) || U.pressed.Enter || U.pressed.Space) newRun(sel);
   else if (U.button('back', 70, 638, 160, 58, 'BACK', { ghost: true, size: 16, sfx: 'back' }) || U.pressed.Escape) screen = 'title';
 }
@@ -1209,16 +1278,34 @@ function riderScreen(dt) {
   if (U.button('cam', x, 538, 414, 48, `Camera: ${save.cam ? 'Close' : 'Normal'}`, { ghost: true, size: 15, sfx: 'tab' })) { save.cam = save.cam ? 0 : 1; store(); }
   if (U.button('done', x, 606, 414, 58, 'DONE', { color: '#3b82f6', size: 18 }) || U.pressed.Escape || U.pressed.Enter) { screen = 'title'; P = null; }
 }
+let rebind = null;
+window.addEventListener('keydown', e => {
+  if (!rebind) return;
+  e.preventDefault(); e.stopPropagation();
+  if (e.code === 'Escape') { rebind = null; return; }
+  const B = KB(), was = B[rebind];
+  // taking a key that another action uses swaps them
+  for (const k in B) if (k !== rebind && B[k] === e.code) B[k] = was;
+  B[rebind] = e.code; save.keys = B; store(); rebind = null; Sound.play('tab');
+}, true);
 function controlsScreen(dt) {
   flyover(dt); updateCam(dt); render3D(dt);
-  ctx.clearRect(0, 0, W, H); ctx.fillStyle = 'rgba(8,12,28,0.7)'; ctx.fillRect(0, 0, W, H);
-  U.panel(W / 2 - 400, 60, 800, 580);
-  U.txt('Controls', W / 2, 88, 36, '#fff', 'center', { head: true, weight: 800 });
-  const rows = [['A / D  or  ← / →', 'Carve left / right  ·  spin in the air'], ['W  or  ↑', 'Tuck for speed  ·  frontflip in the air'], ['S  or  ↓', 'Brake  ·  backflip in the air'], ['SPACE  (hold, let go)', 'Crouch and pop. Let go on a kicker lip for a perfect pop'],
-    ['SHIFT  or  J / K / L / I', save.board ? 'Indy / Melon / Tail / Nose grab' : 'Mute / Safety / Tail / Japan grab'], ['A / D on a rail', 'Keep your balance'], ['C', 'Change camera'], ['R   ·   ESC', 'Restart   ·   Pause']];
-  rows.forEach(([k, d], i) => { U.txt(k, W / 2 - 360, 160 + i * 52, 17, '#fde047', 'left', { weight: 800 }); U.txt(d, W / 2 - 60, 160 + i * 52, 16, '#e2e8f0', 'left', { weight: 600 }); });
-  U.txt('Land pointing down the hill. Hold grabs longer for more points; repeating a trick scores less.', W / 2, 590, 13, '#94a3b8', 'center', { weight: 600 });
-  if (U.button('back', W / 2 - 100, 656, 200, 50, 'BACK', { ghost: true, size: 16, sfx: 'back' }) || U.pressed.Escape) screen = 'title';
+  ctx.clearRect(0, 0, W, H); ctx.fillStyle = 'rgba(8,12,28,0.72)'; ctx.fillRect(0, 0, W, H);
+  U.panel(W / 2 - 460, 40, 920, 640);
+  U.txt('Controls', W / 2, 62, 34, '#fff', 'center', { head: true, weight: 800 });
+  U.txt('Click a key to change it, then press the new key (ESC cancels). Arrow keys always steer too.', W / 2, 110, 14, '#94a3b8', 'center', { weight: 600 });
+  const gk = GRAB_KEYS().map(g => GRAB_NAME[g]), B = KB();
+  ACTIONS.forEach(([id, desc], i) => {
+    const col = i < 6 ? 0 : 1, row = col ? i - 6 : i, x = W / 2 - 430 + col * 450, y = 150 + row * 64;
+    const label = id[0] === 'g' && id.length === 2 ? `Grab: ${gk[+id[1] - 1]}` : desc;
+    U.txt(label, x + 150, y + 26, 14, '#e2e8f0', 'left', { weight: 600, base: 'middle' });
+    const on = rebind === id;
+    if (U.button('kb' + id, x, y + 4, 136, 44, on ? 'PRESS A KEY' : keyName(B[id]), on ? { color: '#f59e0b', size: 13 } : { ghost: true, size: 15, sfx: 'tab' })) rebind = on ? null : id;
+  });
+  U.txt('Stalls: hold the stall key on a rail or box to stop dead, let go to slide on.  Butters: hold it on the snow (with tuck = nose, brake = tail)', W / 2, 560, 13, '#cbd5e1', 'center', { weight: 600 });
+  U.txt('and steer to spin on your tips. Wind up spins by holding a steer key while you crouch for a jump.', W / 2, 580, 13, '#cbd5e1', 'center', { weight: 600 });
+  if (U.button('kreset', W / 2 - 230, 616, 220, 50, 'RESET DEFAULTS', { ghost: true, size: 14, sfx: 'tab' })) { save.keys = {}; store(); rebind = null; }
+  if (U.button('back', W / 2 + 10, 616, 220, 50, 'DONE', { color: '#3b82f6', size: 16, sfx: 'back' }) || (U.pressed.Escape && !rebind)) { rebind = null; screen = 'title'; }
 }
 function results() {
   ctx.fillStyle = 'rgba(8,12,28,0.55)'; ctx.fillRect(0, 0, W, H);
@@ -1417,7 +1504,7 @@ function frame(now) {
       if (U.pressed.KeyR && run.heat && run.heat.kind === 'race') startHeat(built, 'race', { diff: run.heat.diff });
     }
   }
-  if (U.pressed.KeyC && screen === 'play') { save.cam = save.cam ? 0 : 1; store(); }
+  if (U.pressed[KB().cam] && screen === 'play') { save.cam = save.cam ? 0 : 1; store(); }
   U.endFrame();
   requestAnimationFrame(frame);
 }
@@ -1443,6 +1530,6 @@ window.__cheats = [
 ];
 setInterval(() => { if (window.__moon && P && !P.ground && !P.rail) P.v[1] += 7 * 0.05; }, 50);
 // touch controls for phones / tablets
-if (window.TouchPad) TouchPad.setup({ active: () => screen === 'play' && !paused && !!P, stick: { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD' }, pause: 'Escape',
-  buttons: [{ label: 'JUMP', code: 'Space', hold: true, color: 'rgba(59,130,246,0.6)' }, { label: 'GRAB', code: 'ShiftLeft', hold: true, color: 'rgba(245,158,11,0.5)' }, { label: 'GRAB 2', code: 'KeyK', hold: true }] });
+if (window.TouchPad) TouchPad.setup({ active: () => screen === 'play' && !paused && !!P, stick: { up: () => KB().up, down: () => KB().down, left: () => KB().left, right: () => KB().right }, pause: 'Escape',
+  buttons: [{ label: 'JUMP', code: () => KB().jump, hold: true, color: 'rgba(59,130,246,0.6)' }, { label: 'GRAB', code: () => KB().g1, hold: true, color: 'rgba(245,158,11,0.5)' }, { label: 'STALL', code: () => KB().stall, hold: true, color: 'rgba(236,72,153,0.5)' }, { label: 'GRAB 2', code: () => KB().g2, hold: true }] });
 })();
