@@ -47,6 +47,11 @@
     { id: 'soccer_carbon', game: 'soccer', slot: 'car', name: 'Carbon', price: 550, col: '#27272a' },
     { id: 'soccer_toxic', game: 'soccer', slot: 'car', name: 'Toxic', price: 550, col: '#84cc16' },
     { id: 'soccer_owner', game: 'soccer', slot: 'car', name: 'Owner Royale', admin: true, col: '#7c3aed', fx: 'crown' },
+    // Party Clash - blob looks (colour + face)
+    { id: 'party_gold', game: 'party', slot: 'blob', name: 'Golden Shades', price: 400, col: '#facc15', face: 'cool' },
+    { id: 'party_galaxy', game: 'party', slot: 'blob', name: 'Space Cat', price: 550, col: '#6366f1', face: 'cat', fx: 'stars' },
+    { id: 'party_lava', game: 'party', slot: 'blob', name: 'Hot Head', price: 500, col: '#f97316', face: 'angry', fx: 'lava' },
+    { id: 'party_owner', game: 'party', slot: 'blob', name: 'Owner King', admin: true, col: '#111827', face: 'crown', fx: 'crown' },
     // Putt Park - golf balls (and their trails)
     { id: 'golf_gold', game: 'golf', slot: 'ball', name: 'Gold Ball', price: 350, col: '#facc15', fx: 'shine' },
     { id: 'golf_fire', game: 'golf', slot: 'ball', name: 'Fireball', price: 550, col: '#f97316', fx: 'fire' },

@@ -63,8 +63,10 @@ const cpuIn = [{ x: 0, y: 0, a: false, aN: 0 }, { x: 0, y: 0, a: false, aN: 0 }]
 function newS(mode, players) {
   return { scr: 'card', mode, game: null, gs: null, crowns: [0, 0], target: save.target, order: [], played: [], players, timer: 0, ev: [], evN: 0, online: !!net.role, winner: -1, spin: null, cpu: net.role ? -1 : save.cpu };
 }
+// an equipped Arcade cosmetic replaces player 1's colour and face
+function myLook() { const it = window.Arcade && Arcade.equipped('party', 'blob'); return it ? { col: it.col, face: it.face } : save.players[0].look; }
 function startMatch(mode, gameId) {
-  const players = net.role ? [{ name: myName(), look: save.players[0].look, own: OWN() }, net.guest || { name: 'Guest', look: { col: COLORS[1], face: 'happy' } }] : [Object.assign({}, save.players[0], { own: OWN() }), save.cpu >= 0 ? { name: ['CPU (EASY)', 'CPU (NORMAL)', 'CPU (HARD)'][save.cpu], look: { col: save.players[1].look.col === save.players[0].look.col ? COLORS[5] : save.players[1].look.col, face: 'angry' } } : save.players[1]];
+  const players = net.role ? [{ name: myName(), look: myLook(), own: OWN() }, net.guest || { name: 'Guest', look: { col: COLORS[1], face: 'happy' } }] : [Object.assign({}, save.players[0], { look: myLook(), own: OWN() }), save.cpu >= 0 ? { name: ['CPU (EASY)', 'CPU (NORMAL)', 'CPU (HARD)'][save.cpu], look: { col: save.players[1].look.col === save.players[0].look.col ? COLORS[5] : save.players[1].look.col, face: 'angry' } } : save.players[1]];
   const pl = JSON.parse(JSON.stringify(players));
   if (net.role) { // online: both players may still have the default look, so make sure they differ
     if (pl[1].look.col === pl[0].look.col) pl[1].look.col = COLORS.find(c => c !== pl[0].look.col && c !== COLORS[0]);
@@ -337,7 +339,7 @@ function drawTitle() {
   });
   // player previews
   for (let i = 0; i < 2; i++) {
-    const p = save.players[i], x = i === 0 ? 170 : W - 170, cpu = i === 1 && save.cpu >= 0;
+    const p = i === 0 ? Object.assign({}, save.players[0], { look: myLook() }) : save.players[i], x = i === 0 ? 170 : W - 170, cpu = i === 1 && save.cpu >= 0;
     drawBlob(x, 470 + Math.sin(t * 3 + i * 2) * 8, 70, cpu ? { col: p.look.col, face: 'angry' } : p.look, { ang: i === 0 ? 0 : Math.PI });
     txt(cpu ? 'COMPUTER' : p.name, x, 570, 28, p.look.col, 'center');
     txt(cpu ? ['EASY', 'NORMAL', 'HARD'][save.cpu] : controlsLine(i), x, 610, 17, cpu ? ['#5ab8ff', '#ff9a2a', '#ff3a5a'][save.cpu] : '#ffffff', 'center', { stroke: 3 });
@@ -418,7 +420,7 @@ function joinRoom(code) {
   net.tr = NetTransport.join(net.code, {
     ready: id => {
       net.myId = id; NetTransport.announce('party', net.code); net.joinedAt = performance.now();
-      const hello = () => netSend('host', { t: 'hello', name: myName(), look: save.players[0].look, own: OWN() });
+      const hello = () => netSend('host', { t: 'hello', name: myName(), look: myLook(), own: OWN() });
       hello(); let n = 0; const tr = net.tr;
       const iv = setInterval(() => { if (net.tr !== tr || net.screen === 'lobby' || ++n > 10) { clearInterval(iv); if (net.tr === tr && net.screen !== 'lobby') netLost('The room did not answer. Try again.'); return; } hello(); }, 1500);
     },
@@ -438,7 +440,7 @@ function netReset(k) { NetTransport.announce('party', null); netResetBase(k); }
 function netResetBase(keepErr) { if (net.tr) try { net.tr.close(); } catch (e) {} net.tr = null; net.role = null; net.guest = null; net.guestId = null; net.prev = net.cur = null; if (!keepErr) net.error = ''; }
 function netLost(why) { netReset(); net.error = why; net.screen = 'menu'; S = null; go('online'); }
 function leaveOnline() { if (net.role === 'client') netSend('host', { t: 'bye' }); netReset(); net.screen = 'menu'; S = null; go('title'); }
-function lobbySync() { netBroadcast({ t: 'lobby', cfg: net.cfg, host: { name: myName(), look: save.players[0].look, own: OWN() }, guest: net.guest }); }
+function lobbySync() { netBroadcast({ t: 'lobby', cfg: net.cfg, host: { name: myName(), look: myLook(), own: OWN() }, guest: net.guest }); }
 function hostStartMatch() { if (!net.guest) return; startMatch(net.cfg.mode, net.cfg.mode === 'free' ? net.cfg.game : null); }
 function myPress() { // guest presses ACTION: remember the reaction time for Quick Draw (measured on this computer)
   net.myAN++;
@@ -458,8 +460,8 @@ function drawOnline() {
   if (!net.role) {
     panel(W / 2 - 330, 100, 660, 540);
     txt('YOUR PLAYER', W / 2 - 290, 124, 18, '#c8c0ff', 'left', { stroke: 0 });
-    drawBlob(W / 2 - 230, 200, 44, save.players[0].look, { ang: 0 });
-    txt(myName(), W / 2 - 160, 180, 32, save.players[0].look.col, 'left'); if (OWN()) ownTag(W / 2 - 150 + ctx.measureText(myName()).width, 186, 26);
+    drawBlob(W / 2 - 230, 200, 44, myLook(), { ang: 0 });
+    txt(myName(), W / 2 - 160, 180, 32, myLook().col, 'left'); if (OWN()) ownTag(W / 2 - 150 + ctx.measureText(myName()).width, 186, 26);
     if (button('edl', W / 2 + 140, 170, 150, 46, 'CHANGE', { color: '#b06aff', size: 20 })) go('looks');
     if (button('host', W / 2 - 290, 270, 580, 76, 'HOST A ROOM', { color: '#1ab8a8', size: 34 })) hostRoom();
     txt('OR JOIN A FRIEND\'S ROOM', W / 2 - 290, 370, 18, '#c8c0ff', 'left', { stroke: 0 });
@@ -478,7 +480,7 @@ function drawOnline() {
     if (button('cc', W / 2 - 100, 380, 200, 56, 'CANCEL', { color: '#8a2a3a', size: 22, sfx: 'back' })) { netReset(); net.screen = 'menu'; }
     return;
   }
-  const isHost = net.role === 'host', hostP = isHost ? { name: myName(), look: save.players[0].look, own: OWN() } : net.hostP, guest = isHost ? net.guest : (net.guest || { name: save.players[0].name, look: save.players[0].look });
+  const isHost = net.role === 'host', hostP = isHost ? { name: myName(), look: myLook(), own: OWN() } : net.hostP, guest = isHost ? net.guest : (net.guest || { name: save.players[0].name, look: myLook() });
   panel(70, 100, 1140, 540);
   txt('ROOM CODE', 110, 124, 20, '#c8c0ff', 'left', { stroke: 0 });
   txt(net.code, 110, 150, 72, '#5affe8', 'left', { stroke: 10 });
