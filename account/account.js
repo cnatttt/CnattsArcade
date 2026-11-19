@@ -40,6 +40,8 @@
     { id: 'tag_elo', game: '2 Player Tag', name: 'Ranked Elo', key: null },
     { id: 'soccer_elo', game: 'Rocket Soccer', name: 'Ranked Elo', key: null },
     { id: 'kart_elo', game: 'Turbo Karts', name: 'Ranked Elo', key: null },
+    { id: 'golf_best', game: 'Putt Park', name: 'Best round (strokes)', key: 'cnatt_golf', lower: true, get: s => s.best || null },
+    { id: 'golf_aces', game: 'Putt Park', name: 'Holes in one', key: 'cnatt_golf', get: s => s.aces },
   ];
   const sentScore = {};
   function scoresFromSave(key, data) {

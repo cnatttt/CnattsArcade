@@ -1,0 +1,70 @@
+// =====================================================================
+//  PUTT PARK - the nine holes. Coordinates are canvas pixels (1280x720).
+//  course: outline polygon (walls run all the way round)
+//  blocks: raised solid shapes · sand / water: polygons · slopes: { poly, ax, ay }
+//  bumpers: { x, y, r } · spinners: { x, y, len, speed, arms } · movers: { x, y, w, h, dx, dy, period }
+//  portals: [{ x, y }, { x, y }] (a pair, one way: first -> second)
+// =====================================================================
+'use strict';
+const rectP = (x0, y0, x1, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+const HOLES = [
+  { name: 'Warm Up', par: 2, theme: 0,
+    course: [[180, 290], [1100, 290], [1100, 470], [180, 470]],
+    tee: [270, 380], cup: [1000, 380],
+    slopes: [{ poly: rectP(560, 290, 720, 470), ax: 0, ay: 0, bump: true }],
+    tip: 'Drag back from the ball and let go. Further back = harder.' },
+  { name: 'Dogleg', par: 3, theme: 0,
+    course: [[160, 480], [740, 480], [740, 150], [920, 150], [920, 640], [160, 640]],
+    tee: [250, 560], cup: [830, 235],
+    blocks: [[[880, 640], [920, 600], [920, 640]]],
+    sand: [[[560, 480], [660, 480], [680, 510], [640, 530], [570, 520]]],
+    tip: 'Bank it off the far wall to turn the corner.' },
+  { name: 'Windmill', par: 3, theme: 0,
+    course: rectP(140, 250, 1140, 530),
+    tee: [240, 390], cup: [1045, 390],
+    blocks: [rectP(600, 250, 700, 368), rectP(600, 412, 700, 530)],
+    house: { x: 650, y: 390 },
+    spinners: [{ x: 560, y: 390, len: 92, speed: 1.15, arms: 4 }],
+    tip: 'Time it through the gap in the sails.' },
+  { name: 'Sand Traps', par: 3, theme: 1,
+    course: [[160, 200], [1000, 200], [1120, 320], [1120, 600], [300, 600], [160, 460]],
+    tee: [260, 300], cup: [1015, 505],
+    blocks: [rectP(700, 200, 740, 470)],
+    sand: [[[600, 505], [790, 505], [800, 600], [590, 600]], [[930, 330], [1040, 330], [1060, 400], [960, 420]]],
+    tip: 'Sand stops you dead. Thread the lane above it.' },
+  { name: 'Island Green', par: 3, theme: 1,
+    course: rectP(140, 170, 1140, 630),
+    tee: [240, 520], cup: [1020, 290],
+    water: [rectP(390, 170, 850, 352), rectP(390, 428, 850, 630)],
+    bridge: [390, 352, 850, 428],
+    tip: 'Over the bridge. Splash = one stroke penalty.' },
+  { name: 'Bumper Alley', par: 3, theme: 1,
+    course: [[160, 390], [400, 160], [1120, 160], [1120, 620], [400, 620]],
+    tee: [250, 390], cup: [1030, 250],
+    bumpers: [{ x: 520, y: 300, r: 22 }, { x: 620, y: 430, r: 22 }, { x: 730, y: 270, r: 24 }, { x: 830, y: 470, r: 22 }, { x: 910, y: 335, r: 22 }, { x: 560, y: 530, r: 20 }, { x: 770, y: 560, r: 20 }],
+    tip: 'Bumpers kick the ball back harder than it hit them.' },
+  { name: 'The Hill', par: 3, theme: 2,
+    course: rectP(200, 170, 1080, 610),
+    tee: [300, 520], cup: [975, 265],
+    blocks: [rectP(830, 380, 1080, 420)],
+    slopes: [{ poly: rectP(520, 170, 760, 610), ax: 0, ay: 330 }, { poly: rectP(880, 170, 1080, 380), ax: 0, ay: 0, bowl: [975, 265, 140] }],
+    tip: 'The hill pulls everything down. Aim high.' },
+  { name: 'Rush Hour', par: 3, theme: 2,
+    course: rectP(140, 260, 1140, 520),
+    tee: [230, 390], cup: [1060, 390],
+    movers: [{ x: 400, y: 270, w: 56, h: 96, dx: 0, dy: 144, period: 2.6, ph: 0 }, { x: 620, y: 270, w: 56, h: 96, dx: 0, dy: 144, period: 2.0, ph: 0.5 }, { x: 840, y: 270, w: 56, h: 96, dx: 0, dy: 144, period: 3.1, ph: 0.25 }],
+    tip: 'Three moving walls. Wait for the gaps.' },
+  { name: 'Grand Finale', par: 4, theme: 2,
+    course: rectP(140, 140, 1140, 640),
+    tee: [230, 215], cup: [1050, 565],
+    blocks: [rectP(140, 290, 940, 320), rectP(340, 470, 1140, 500)],
+    bumpers: [{ x: 640, y: 395, r: 20 }, { x: 820, y: 360, r: 18 }, { x: 460, y: 430, r: 18 }],
+    portals: [{ x: 640, y: 215 }, { x: 430, y: 570 }],
+    slopes: [{ poly: rectP(700, 500, 1000, 640), ax: 140, ay: 0 }],
+    tip: 'Long way round... or find the shortcut.' },
+];
+const THEMES = [
+  { name: 'Meadow', bg: ['#1f4d33', '#0f2a1d'], grass: '#5cbf62', grass2: '#53b45a', wall: '#8a5a34', wallTop: '#c08552', block: '#9a6a3e', blockTop: '#cf9358', deco: ['#2f7d45', '#3a8f52', '#276b3b'], flower: ['#fde047', '#f472b6', '#ffffff'] },
+  { name: 'Beach', bg: ['#1d5f73', '#0d3442'], grass: '#4fc08a', grass2: '#47b480', wall: '#e8d7b0', wallTop: '#fff6dc', block: '#d9c294', blockTop: '#f6e4bb', deco: ['#2c8f7a', '#38a48b', '#227a68'], flower: ['#fb7185', '#fde68a', '#ffffff'] },
+  { name: 'Twilight', bg: ['#2a2350', '#120f26'], grass: '#3fa275', grass2: '#389669', wall: '#40466e', wallTop: '#6b74b0', block: '#4b5384', blockTop: '#7b85c6', deco: ['#2c3c6e', '#35477d', '#24325c'], flower: ['#c4b5fd', '#67e8f9', '#f0abfc'], night: true },
+];

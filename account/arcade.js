@@ -47,8 +47,14 @@
     { id: 'soccer_carbon', game: 'soccer', slot: 'car', name: 'Carbon', price: 550, col: '#27272a' },
     { id: 'soccer_toxic', game: 'soccer', slot: 'car', name: 'Toxic', price: 550, col: '#84cc16' },
     { id: 'soccer_owner', game: 'soccer', slot: 'car', name: 'Owner Royale', admin: true, col: '#7c3aed', fx: 'crown' },
+    // Putt Park - golf balls (and their trails)
+    { id: 'golf_gold', game: 'golf', slot: 'ball', name: 'Gold Ball', price: 350, col: '#facc15', fx: 'shine' },
+    { id: 'golf_fire', game: 'golf', slot: 'ball', name: 'Fireball', price: 550, col: '#f97316', fx: 'fire' },
+    { id: 'golf_galaxy', game: 'golf', slot: 'ball', name: 'Galaxy', price: 600, col: '#6366f1', fx: 'stars' },
+    { id: 'golf_rainbow', game: 'golf', slot: 'ball', name: 'Rainbow Trail', price: 900, col: '#f472b6', fx: 'rainbow' },
+    { id: 'golf_owner', game: 'golf', slot: 'ball', name: 'Owner Crown Ball', admin: true, col: '#fde047', fx: 'crown' },
   ];
-  const GAME_NAMES = { tag: '2 Player Tag', kart: 'Turbo Karts', ski: 'Powder Peak', snake: 'Snake Arena', soccer: 'Rocket Soccer', party: 'Party Clash', horde: 'Nightfall Horde', siege: 'Nightfall Siege', dungeon: 'Nightfall Depths', fishing: 'Fishing Simulator', chess: 'Nightfall Chess', golf: 'Mini Golf' };
+  const GAME_NAMES = { tag: '2 Player Tag', kart: 'Turbo Karts', ski: 'Powder Peak', snake: 'Snake Arena', soccer: 'Rocket Soccer', party: 'Party Clash', horde: 'Nightfall Horde', siege: 'Nightfall Siege', dungeon: 'Nightfall Depths', fishing: 'Fishing Simulator', chess: 'Nightfall Chess', golf: 'Putt Park' };
 
   // ---------------------------------------------------------------- coins per game event
   const REWARD = {
@@ -63,7 +69,7 @@
     dungeon: { run: v => Math.min(100, (v.floor || 0) * 8) },
     fishing: { catch: v => [1, 2, 4, 8, 15][v.rarity || 0] || 1 },
     chess: { game: v => v.won ? 40 : 10 },
-    golf: { round: v => v.won ? 40 : 15 },
+    golf: { round: v => v.won ? 40 : 15, ace: () => 25 },
   };
 
   // ---------------------------------------------------------------- daily challenge
@@ -79,6 +85,8 @@
     { game: 'snake', type: 'death', text: 'Grow to length 300 in Snake Arena', ok: v => v.len >= 300 },
     { game: 'snake', type: 'death', text: 'Get 3 kills in one Snake Arena game', ok: v => v.kills >= 3 },
     { game: 'party', type: 'match', text: 'Win a Party Clash match', ok: v => v.won },
+    { game: 'golf', type: 'round', text: 'Finish Putt Park at par or better', ok: v => v.toPar <= 0 },
+    { game: 'golf', type: 'ace', text: 'Get a hole in one in Putt Park', ok: () => true },
     { game: 'horde', type: 'run', text: 'Reach wave 8 in Nightfall Horde', ok: v => v.wave >= 8 },
     { game: 'siege', type: 'run', text: 'Hold out for 6 waves in Nightfall Siege', ok: v => v.wave >= 6 },
     { game: 'dungeon', type: 'run', text: 'Reach floor 4 in Nightfall Depths', ok: v => v.floor >= 4 },

@@ -20,6 +20,16 @@ const SITE = {
 
 const GAMES = [
   {
+    id: "golf",
+    title: "Putt Park",
+    folder: "golf",
+    thumbnail: "assets/thumb_golf.png",
+    tag: "Sports",
+    description: "Nine holes of mini golf: windmills, bumpers, moving walls and water. Solo, vs the computer, or pass-and-play for 4.",
+    players: "1-4", isNew: true, cats: ["Sports", "Party", "2 Player"],
+    accent: "#4ade80"
+  },
+  {
     id: "soccer",
     title: "Rocket Soccer",
     folder: "soccer",
