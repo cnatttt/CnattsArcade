@@ -951,7 +951,8 @@ function updateCam(dt, snap) {
 }
 
 // ------------------------------------------------------------ drawing
-function env() { const s = C.sun, l = Math.hypot(...s); return { fog: C.fog, fogD: C.fogD, sun: s.map(v => v / l), sunCol: C.sunCol, sky: C.amb, ground: C.gnd }; }
+const hx3 = c => { const h = c.replace('#', ''); return [0, 2, 4].map(i => Math.pow(parseInt(h.slice(i, i + 2), 16) / 255, 2.2) * 1.25); };
+function env() { const s = C.sun, l = Math.hypot(...s); return { fog: C.fog, fogD: C.fogD, sun: s.map(v => v / l), sunCol: C.sunCol, sky: C.amb, ground: C.gnd, expo: C.expo || 1.0 }; }
 function riderRoot(P) {
   const n = P.upN, yawR = P.yaw + (P.fakie ? Math.PI : 0) + P.spin;
   let F = [Math.sin(yawR), 0, Math.cos(yawR)]; F = v3.norm(v3.sub(F, v3.mul(n, v3.dot(F, n)))); const X = v3.cross(n, F);
@@ -998,7 +999,9 @@ function render3D(dt) {
   Rider.draw(R3, myMesh, riderRoot(P), riderPose(P), true);
   others().forEach(o => { if (o.mesh && Math.abs(o.P.p[2] - P.p[2]) < 50) Rider.draw(R3, o.mesh, riderRoot(o.P), riderPose(o.P, o.look.board), true); });
   R3.shadowEnd();
+  if (window.__camOv) { const o = window.__camOv(P); cam.eye = o.eye; cam.at = o.at; cam.fov = o.fov || cam.fov; }
   R3.begin(view, cam, E);
+  R3.skyDome({ top: hx3(C.sky[0]), hor: hx3(C.sky[1]), sun: E.sun, sunCol: C.sunCol, fog: C.fog, night: !!C.bigair });
   R3.sky(MESH.sky);
   R3.draw(MESH.mtn, M4.trans(cam.eye[0], cam.eye[1] - 40, cam.eye[2]), null, 0, true, { fogD: C.fogD * 0.42 });
   MESH.chunks.forEach(c => { if (c.z0 > camZ - 200 && c.z0 < camZ + 1000) R3.draw(c.m, null, null, 0, false, { snow: 1 }); });
@@ -1138,7 +1141,7 @@ function title(dt) {
   if (U.button('ride', 84, 340, 330, 64, 'RIDE', { color: '#3b82f6', size: 22 }) || U.pressed.Enter) screen = 'courses';
   if (U.button('rk', 84, 418, 160, 58, 'RANKED', { color: '#f59e0b', size: 17 })) openRanked();
   if (U.button('race', 254, 418, 160, 58, 'RACE', { color: '#10b981', size: 17 })) { screen = 'racesel'; if (sel > 2) sel = 0; }
-  if (U.button('ba', 84, 488, 160, 50, 'BIG AIR', { color: '#e11d48', size: 15 })) newRun(3);
+  if (U.button('ba', 84, 488, 160, 50, 'BIG AIR', { color: '#e11d48', size: 15 })) newRun(COURSES.findIndex(c => c.bigair));
   if (U.button('rider', 254, 488, 160, 50, 'RIDER', { ghost: true, size: 15, sfx: 'tab' })) screen = 'rider';
   if (U.button('ctl', 84, 548, 330, 44, 'CONTROLS', { ghost: true, size: 14, sfx: 'tab' })) screen = 'controls';
   const medals = Object.values(save.medal).reduce((a, m) => a + (m || 0), 0), chs = Object.keys(save.ch).length, chTotal = COURSES.reduce((a, c) => a + c.ch.length, 0);
@@ -1424,6 +1427,7 @@ const fontReady = document.fonts ? Promise.race([document.fonts.load(`800 40px '
 fontReady.then(() => requestAnimationFrame(n => { last = n; frame(n); }));
 
 window.__ski = {
+  rebuild() { myMesh = Rider.build(R3, look(), myMesh); }, get cam() { return cam; },
   U, get P() { return P; }, set P(v) { P = v; }, get run() { return run; }, get screen() { return screen; }, set screen(v) { screen = v; }, newRun, step, takeoff,
   get C() { return C; }, get W0() { return W0; }, set bot(f) { botInput = f; }, snapCam() { updateCam(1, true); }, freeze(v) { hold = v; }, save: () => save, finishRun,
   get pops() { return pops; }, makeBrain, makeRaceBrain, startHeat, RACE, raceStandings, closeRace, get paused() { return paused; }, openRanked, standings: () => standings().map(x => [x.o.name, x.s, x.o.fin || false, x.o.cpu ? x.o.P.p[2].toFixed(0) : '', x.o.cpu ? x.o.run.crashes : '']), get RK() { return RK; },

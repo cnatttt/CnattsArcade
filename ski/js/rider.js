@@ -34,45 +34,83 @@ const Rider = (() => {
   function build(R3, look, old) {
     if (old) for (const k in old) R3.free(old[k]);
     const M = {};
-    const J = col4(look.jacket), P = col4(look.pants), H = col4(look.helmet), dark = [0.1, 0.1, 0.13, 0], skin = [0.93, 0.76, 0.63, 0];
-    const tubeM = (c, cap) => { const mb = new MB(); mb.tube(M4.compose(0, 0.5, 0), 10, c, cap || c); return R3.mesh(mb); };
-    const ballM = c => { const mb = new MB(); mb.ball(M4.ident(), 10, 7, c); return R3.mesh(mb); };
-    M.limbJ = tubeM(J); M.limbP = tubeM(P); M.jointJ = ballM(J); M.jointP = ballM(P); M.glove = ballM(dark);
-    { const mb = new MB(); mb.box(M4.compose(0, 0.11, 0.04, 0, 0.17, 0.22, 0.3), dark); mb.box(M4.compose(0, 0.22, -0.02, 0, 0.18, 0.04, 0.2), col4(look.jacket === '#111827' ? '#f8fafc' : '#1f2937')); M.boot = R3.mesh(mb); }
-    { // torso: tapered jacket with a zip stripe and a collar
-      const mb = new MB();
-      mb.taper(M4.compose(0, 0, 0, 0, 0.36, 1, 0.24), 1.18, 1.0, J);
-      mb.box(M4.compose(0, 0.55, 0.125, 0, 0.03, 0.9, 0.01), [0.95, 0.95, 0.97, 0]);
-      mb.box(M4.compose(0, 0.95, 0, 0, 0.28, 0.16, 0.24), col4(look.jacket === '#111827' ? '#334155' : '#111827'));
-      M.torso = R3.mesh(mb);
-    }
-    { const mb = new MB(); mb.box(M4.compose(0, 0.5, 0, 0, 1, 1, 1), P); M.pelvis = R3.mesh(mb); }
-    { // head: face, helmet, goggles
-      const mb = new MB();
-      mb.ball(M4.compose(0, 0.13, 0.01, 0, 0.21, 0.25, 0.22), 10, 8, skin);
-      mb.ball(M4.compose(0, 0.18, -0.005, 0, 0.27, 0.25, 0.28), 12, 8, H);
-      mb.box(M4.compose(0, 0.165, 0.115, 0, 0.25, 0.085, 0.05), [0.98, 0.55, 0.12, 0.25]);
-      mb.box(M4.compose(0, 0.165, 0.09, 0, 0.28, 0.035, 0.07), dark);
-      mb.ball(M4.compose(0, 0.02, 0.0, 0, 0.2, 0.08, 0.2), 8, 5, dark);
-      M.head = R3.mesh(mb);
-    }
-    if (look.board) { // snowboard along z with a two-tone top
-      const mb = new MB(), deck = col4(look.deck || '#0f172a'), accent = col4(look.jacket);
-      mb.box(M4.compose(0, 0.025, 0, 0, 0.29, 0.03, 1.2), deck);
-      [-1, 1].forEach(s => { mb.cyl(M4.compose(0, 0.025, s * 0.6, 0, 0.29, 0.03, 0.3), 12, deck); mb.box(M4.mul(M4.compose(0, 0.055, s * 0.77, 0), M4.mul(M4.rotX(-s * 0.35), M4.scale(0.27, 0.025, 0.14))), deck); });
-      mb.box(M4.compose(0, 0.042, 0, 0, 0.2, 0.005, 1.0), [...accent.slice(0, 3), 0.1]);
-      mb.box(M4.compose(0, 0.003, 0, 0, 0.3, 0.008, 1.5), [0.9, 0.92, 0.95, 0]);
-      [-0.27, 0.27].forEach(z => mb.box(M4.compose(0, 0.08, z, 0, 0.22, 0.08, 0.14), dark));
-      M.board = R3.mesh(mb);
+    const J = col4(look.jacket), P = col4(look.pants), H = col4(look.helmet), dark = [0.07, 0.07, 0.09, 0], skin = [0.93, 0.76, 0.63, 0];
+    const shade = (c, k) => [c[0] * k, c[1] * k, c[2] * k, c[3] || 0];
+    const lightJ = (J[0] + J[1] + J[2]) / 3 > 0.75, trim = lightJ ? [0.16, 0.18, 0.24, 0] : [0.94, 0.95, 0.97, 0];
+    const mesh = fn => { const mb = new MB(); fn(mb); return R3.mesh(mb); };
+    // limbs: tapered, slightly baggy tubes (unit length along y, radius ~0.5) - puffy sleeves and pants with a cuff
+    M.limbJ = mesh(mb => mb.lathe(M4.ident(), [[-0.02, 0.44], [0.1, 0.5], [0.5, 0.52], [0.86, 0.47], [1.02, 0.4]], 14, 8, (u, v) => v < 0.12 ? shade(J, 0.82) : J));
+    M.limbP = mesh(mb => mb.lathe(M4.ident(), [[-0.02, 0.42], [0.12, 0.5], [0.5, 0.55], [0.85, 0.52], [1.02, 0.46]], 14, 8, (u, v) => v < 0.1 ? shade(P, 0.8) : P));
+    M.jointJ = mesh(mb => mb.ball(M4.ident(), 14, 10, J));
+    M.jointP = mesh(mb => mb.ball(M4.ident(), 14, 10, P));
+    // mittens with a thumb
+    M.glove = mesh(mb => { mb.ball(M4.compose(0, 0, 0.05, 0, 0.9, 0.8, 1.15), 12, 9, dark); mb.ball(M4.compose(0.38, 0.1, 0.12, 0, 0.36, 0.36, 0.5), 8, 6, dark); mb.lathe(M4.compose(0, 0, -0.42, 0, 1, 1, 1, Math.PI / 2), [[-0.2, 0.5], [0.2, 0.52]], 12, 2, trim); });
+    // ski boots: rounded shell with a cuff and buckles
+    M.boot = mesh(mb => {
+      mb.rbox(M4.compose(0, 0.07, 0.05, 0, 0.17, 0.12, 0.31), 16, 10, dark, 0.35);
+      mb.rbox(M4.compose(0, 0.19, -0.01, 0, 0.16, 0.2, 0.19), 16, 10, [0.22, 0.23, 0.27, 0], 0.4);
+      [0.13, 0.2].forEach(y => mb.rbox(M4.compose(0, y, 0.085, 0, 0.13, 0.025, 0.03), 8, 4, [0.6, 0.62, 0.68, 0], 0.4));
+    });
+    // torso: a puffy jacket, oval section, zip down the front, darker hem and a collar
+    M.torso = mesh(mb => {
+      const prof = [[-0.06, 0.15], [0.02, 0.172], [0.25, 0.17], [0.5, 0.186], [0.72, 0.2], [0.86, 0.205], [0.95, 0.18], [1.02, 0.1]];
+      mb.lathe(M4.ident(), prof, 22, 14, (u, v, p) => {
+        if (Math.abs(p[0]) < 0.012 && p[2] > 0) return trim;            // zip
+        if (v < 0.1) return shade(J, 0.75);                               // hem
+        const band = Math.abs(((v * 6) % 1) - 0.5) < 0.06 ? 0.9 : 1;     // quilted puffer lines
+        return shade(J, band);
+      }, 0.72);
+      mb.lathe(M4.compose(0, 0.95, -0.005, 0, 1, 1, 0.85), [[-0.02, 0.105], [0.08, 0.1], [0.14, 0.085]], 16, 3, shade(J, 0.7));   // collar
+      mb.ball(M4.compose(0, 0.86, -0.12, 0, 0.26, 0.17, 0.13), 12, 8, shade(J, 0.85));                                            // hood bunched at the back
+      mb.rbox(M4.compose(0.1, 0.62, 0.115, 0, 0.07, 0.07, 0.02), 8, 4, shade(trim, 0.8), 0.5);                                     // chest pocket / pass
+    });
+    // pelvis: rounded, with a belt line
+    M.pelvis = mesh(mb => mb.ball(M4.compose(0, 0.5, 0, 0, 1, 1.05, 1), 16, 10, P));
+    // head: face, smooth helmet with a ridge, wrap-round goggles and strap
+    M.head = mesh(mb => {
+      mb.ball(M4.compose(0, 0.12, 0.015, 0, 0.19, 0.23, 0.2), 14, 10, skin);
+      mb.ball(M4.compose(0, 0.18, -0.008, 0, 0.27, 0.255, 0.29), 18, 12, H);
+      // goggles: a curved band hugging the face
+      const R = 0.135, a0 = -1.15, a1 = 1.15;
+      mb.surf(M4.ident(), (u, v) => { const a = a0 + (a1 - a0) * u, y = 0.135 + (v - 0.5) * 0.085, r = R + 0.012 * Math.cos(v * Math.PI); return [Math.sin(a) * r * 1.05, y, Math.cos(a) * r + 0.018]; }, 16, 4,
+        (u, v) => { const g = 0.25 + 0.75 * v; return [0.98 * g + 0.2, 0.45 * g + 0.15, 0.85 - 0.5 * g, 0.3]; }, [0, 0.135, 0]);
+      mb.surf(M4.ident(), (u, v) => { const a = -Math.PI + 2 * Math.PI * u, y = 0.135 + (v - 0.5) * 0.04, r = 0.147; return [Math.sin(a) * r * 1.03, y, Math.cos(a) * r]; }, 22, 2, dark, [0, 0.135, 0]);
+      mb.lathe(M4.compose(0, -0.04, 0.0), [[0, 0.085], [0.05, 0.08], [0.1, 0.075]], 14, 3, shade(J, 0.7));   // neck gaiter
+    });
+    // a snowboard: rounded outline with sidecut, kicked-up nose and tail, two-tone top sheet
+    if (look.board) {
+      const deck = col4(look.deck || '#0f172a'), accent = [J[0], J[1], J[2], 0.08];
+      // build board + bindings into one mesh
+      M.board = (() => {
+        const mb = new MB();
+        mb.surf(M4.ident(), (u, v) => {
+          const zn = u * 2 - 1, z = zn * 0.78, end = Math.pow(Math.max(0, 1 - Math.pow(Math.abs(zn), 9)), 1 / 9);
+          const w = (0.155 - 0.012 * Math.cos(zn * Math.PI / 2)) * end, rise = 0.07 * Math.pow(clamp((Math.abs(zn) - 0.74) / 0.26, 0, 1), 2);
+          const a = v * Math.PI * 2; return [Math.cos(a) * w, 0.016 + rise + Math.sin(a) * 0.012, z];
+        }, 44, 12, (u, v, p) => { const zn = u * 2 - 1; if (Math.sin(v * Math.PI * 2) < 0) return [0.92, 0.93, 0.96, 0]; if (Math.abs(Math.abs(zn) - 0.56) < 0.05 || Math.abs(p[0]) < 0.025 && Math.abs(zn) < 0.5) return accent; return deck; }, [0, 0.016, 0]);
+        [-0.27, 0.27].forEach(z => {
+          mb.rbox(M4.compose(0, 0.04, z, 0, 0.27, 0.02, 0.14), 12, 4, dark, 0.3);                        // base plate
+          mb.surf(M4.compose(0, 0.04, z), (u, v) => { const a = (u - 0.5) * 2.4; return [-0.08 - 0.02 * v + Math.cos(a) * 0.02, v * 0.17, Math.sin(a) * 0.07]; }, 10, 5, dark, [0.05, 0.08, 0]);   // highback
+          mb.rbox(M4.compose(0.02, 0.11, z, 0, 0.12, 0.035, 0.16), 10, 4, shade(trim, 0.85), 0.45);        // strap
+        });
+        return R3.mesh(mb);
+      })();
     } else {
-      const mb = new MB(), c = col4(look.deck || '#0f172a'), a = col4(look.jacket);
-      mb.box(M4.compose(0, 0.02, 0, 0, 0.09, 0.025, 1.6), c);
-      mb.box(M4.mul(M4.compose(0, 0.05, 0.86, 0), M4.mul(M4.rotX(-0.45), M4.scale(0.09, 0.025, 0.2))), c);
-      mb.box(M4.mul(M4.compose(0, 0.035, -0.84, 0), M4.mul(M4.rotX(0.25), M4.scale(0.09, 0.025, 0.12))), c);
-      mb.box(M4.compose(0, 0.035, 0.35, 0, 0.07, 0.005, 0.5), [...a.slice(0, 3), 0.1]);
-      mb.box(M4.compose(0, 0.06, 0.02, 0, 0.1, 0.06, 0.24), [0.6, 0.62, 0.68, 0]);
-      M.ski = R3.mesh(mb);
-      const pm = new MB(); pm.tube(M4.compose(0, 0.5, 0, 0, 0.025, 1, 0.025), 5, [0.75, 0.77, 0.82, 0]); pm.cyl(M4.compose(0, 0.08, 0, 0, 0.12, 0.015, 0.12), 8, dark); M.pole = R3.mesh(pm);
+      const c = col4(look.deck || '#0f172a'), a = [J[0], J[1], J[2], 0.08];
+      M.ski = mesh(mb => {
+        mb.surf(M4.ident(), (u, v) => {
+          const zn = u * 2 - 1, z = zn * 0.86, end = Math.pow(Math.max(0, 1 - Math.pow(Math.abs(zn), 6)), 1 / 6);
+          const w = (0.046 - 0.006 * Math.cos(zn * Math.PI / 2)) * end, rise = (zn > 0 ? 0.12 : 0.085) * Math.pow(clamp((Math.abs(zn) - 0.8) / 0.2, 0, 1), 2);
+          const an = v * Math.PI * 2; return [Math.cos(an) * w, 0.012 + rise + Math.sin(an) * 0.009, z];
+        }, 40, 10, (u, v, p) => { const zn = u * 2 - 1; if (Math.sin(v * Math.PI * 2) < 0) return [0.9, 0.91, 0.95, 0]; return zn > 0.25 && zn < 0.65 ? a : c; }, [0, 0.012, 0]);
+        mb.rbox(M4.compose(0, 0.04, 0.12, 0, 0.07, 0.04, 0.12), 10, 4, [0.6, 0.62, 0.68, 0], 0.4);     // toe piece
+        mb.rbox(M4.compose(0, 0.045, -0.16, 0, 0.07, 0.05, 0.1), 10, 4, [0.6, 0.62, 0.68, 0], 0.4);    // heel piece
+      });
+      M.pole = mesh(pm => {
+        pm.tube(M4.compose(0, 0.5, 0, 0, 0.022, 1, 0.022), 8, [0.78, 0.8, 0.85, 0]);
+        pm.lathe(M4.compose(0, -0.02, 0), [[0.0, 0.016], [0.1, 0.03], [0.18, 0.028], [0.2, 0.0]], 10, 4, dark);                     // grip
+        pm.lathe(M4.compose(0, 0.92, 0), [[-0.01, 0.06], [0.01, 0.065], [0.02, 0.0]], 14, 2, dark);                                 // basket
+      });
     }
     return M;
   }
@@ -106,7 +144,7 @@ const Rider = (() => {
     const chest = V.add(pel, V.mul(V.norm(up), 0.56));
     out.push(['pelvis', seg(V.add(pel, [0, -0.08, 0]), V.add(pel, [0, 0.1, 0]), 0.34, 0.24)]);
     out.push(['torso', seg(pel, chest, 1, 1)]);
-    const head = V.add(chest, V.mul(V.norm(V.add(up, [0, 0.6, -0.15])), 0.1));
+    const head = V.add(chest, V.mul(V.norm(V.add(up, [0, 0.6, -0.15])), 0.06));
     out.push(['head', seg(head, V.add(head, V.mul(V.norm(V.add(up, [0, 0.5, -0.1])), 1)), 1, 1)]);
     // arms
     const sh = s => V.add(chest, [s * 0.22, -0.06, -0.02]);

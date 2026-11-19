@@ -294,8 +294,9 @@ function buildMeshes(R3) {
     // trees + rocks in this chunk
     W0.trees.forEach(t => { if (t.z >= z0 && t.z < z0 + CH) addTree(mb, t, R); });
     W0.rocks.forEach(r => { if (r.z >= z0 && r.z < z0 + CH) {
-      mb.sphere(M4.compose(r.x, r.y + r.s * 0.2, r.z, r.r, r.s * 1.6, r.s * 1.1, r.s * 1.3), 7, 5, [0.38, 0.39, 0.44, 0], 0.12);
-      mb.sphere(M4.compose(r.x + 0.1, r.y + r.s * 0.72, r.z, r.r, r.s * 1.2, r.s * 0.4, r.s * 1.0), 7, 3, [0.93, 0.95, 1, 0], 0.03); } });
+      mb.ball(M4.compose(r.x, r.y + r.s * 0.2, r.z, r.r, r.s * 1.6, r.s * 1.1, r.s * 1.3), 10, 7, [0.33, 0.34, 0.38, 0]);
+      mb.ball(M4.compose(r.x + 0.3, r.y + r.s * 0.05, r.z + 0.4, r.r + 1, r.s * 0.9, r.s * 0.7, r.s * 0.8), 8, 6, [0.29, 0.3, 0.34, 0]);
+      mb.ball(M4.compose(r.x + 0.1, r.y + r.s * 0.66, r.z, r.r, r.s * 1.3, r.s * 0.42, r.s * 1.05), 10, 5, [0.93, 0.95, 1, 0]); } });
     MESH.chunks.push({ z0, m: R3.mesh(mb) });
   }
   // features: fine grids so lips and knuckles look crisp
@@ -396,45 +397,43 @@ function buildMeshes(R3) {
   // night lamps
   W0.lights.forEach(L => { rm.tube(M4.compose(L.x, L.y + 5, L.z, 0, 0.18, 10, 0.18), 6, [0.25, 0.27, 0.33, 0]); rm.box(M4.compose(L.x, L.y + 10.1, L.z, 0, 1.6, 0.5, 0.9), [1, 0.95, 0.82, 1]); });
   MESH.rails = R3.mesh(rm);
-  // sky dome + sun
-  const sk = new MB(), top = hex(C.sky[0]), hor = hex(C.sky[1]), SR = 2600;
-  for (let v = 0; v < 14; v++) for (let u = 0; u < 32; u++) {
-    const e0 = (v / 14) * Math.PI / 2 - 0.12, e1 = ((v + 1) / 14) * Math.PI / 2 - 0.12, a0 = u / 32 * 6.2832, a1 = (u + 1) / 32 * 6.2832;
-    const p = (e, a) => [Math.cos(a) * Math.cos(e) * SR, Math.sin(e) * SR, Math.sin(a) * Math.cos(e) * SR];
-    const k0 = Math.pow(clamp((v + 0.5) / 14, 0, 1), 0.7), c0 = mixc(hor, top, k0).map(x => x / 1.25);
-    sk.quad(p(e0, a0), p(e0, a1), p(e1, a1), p(e1, a0), [...c0, 1]);
+  // sky: the gradient + sun are drawn per pixel (R3.skyDome); this mesh only holds soft clouds
+  const sk = new MB(), hor = hex(C.sky[1]);
+  for (let k = 0; k < 18 && !C.bigair; k++) {
+    const a = R() * 6.28, d = 1700 + R() * 500, y = 260 + R() * 380, n = 4 + Math.floor(R() * 4), cc = mixc(hor, [1, 1, 1], 0.78).map(x => x / 1.15);
+    for (let j = 0; j < n; j++) { const o = (j - n / 2) * (60 + R() * 40); sk.ball(M4.compose(Math.cos(a) * d - Math.sin(a) * o, y + R() * 40 - Math.abs(j - n / 2) * 12, Math.sin(a) * d + Math.cos(a) * o, a, 110 + R() * 110, 46 + R() * 34, 120 + R() * 90), 12, 7, [...cc, 1]); }
   }
-  const sd = C.sun, sl = Math.hypot(...sd), sp = sd.map(v => v / sl * 2300), sunC = C.bigair ? [0.85, 0.88, 0.95] : [1, 0.96, 0.85];
-  sk.ball(M4.compose(sp[0], sp[1], sp[2], 0, C.bigair ? 70 : 110, C.bigair ? 70 : 110, C.bigair ? 70 : 110), 12, 8, [...sunC, 1]);
-  // clouds
-  for (let k = 0; k < 14 && !C.bigair; k++) { const a = R() * 6.28, d = 1500 + R() * 600, y = 380 + R() * 420; for (let j = 0; j < 4; j++) sk.ball(M4.compose(Math.cos(a) * d + (j - 1.5) * 90, y + R() * 30, Math.sin(a) * d + R() * 60, R(), 150 + R() * 90, 38 + R() * 26, 110 + R() * 60), 9, 5, [...mixc(hor, [1, 1, 1], 0.65).map(x => x / 1.2), 1]); }
   MESH.sky = R3.mesh(sk);
-  // distant mountain ring (drawn around the camera, lit, no fog)
-  const mm = new MB(), rings = [[1250, 420, 0.3], [1600, 640, 0.48], [2000, 900, 0.62]], fogc = C.fog;
-  rings.forEach(([rad, hmax, fade], ri) => {
-    const n = 160, pts = [];
-    for (let i = 0; i <= n; i++) {
-      const a = i / n * 6.2832, ca = Math.cos(a), sa = Math.sin(a);
-      let h = 0, amp = 1, fr = 1.6;
-      for (let o = 0; o < 4; o++) { const v = vnoise(ca * fr + ri * 13 + 50, sa * fr + 50, C.seed + ri * 7 + o); h += (1 - Math.abs(v * 2 - 1)) * amp; amp *= 0.5; fr *= 2.1; }
-      pts.push(hmax * Math.pow(h / 1.875, 2.2) * 1.5 + 40);
-    }
-    const rock = mixc([0.3, 0.33, 0.42], fogc, fade), rock2 = mixc([0.42, 0.45, 0.54], fogc, fade), snow = mixc([0.96, 0.97, 1.0], fogc, fade * 0.6), snowS = mixc([0.75, 0.8, 0.92], fogc, fade * 0.6);
-    for (let i = 0; i < n; i++) {
-      const a0 = i / n * 6.2832, a1 = (i + 1) / n * 6.2832, h0 = pts[i], h1 = pts[i + 1];
-      const P0 = (a, r, y) => [Math.cos(a) * r, y, Math.sin(a) * r];
-      const B0 = P0(a0, rad, -520), B1 = P0(a1, rad, -520), T0 = P0(a0, rad + 60, h0 - 300), T1 = P0(a1, rad + 60, h1 - 300);
-      const sl = (h0 + h1) / 2, snowLine = 0.55 + (vnoise(i * 0.7, ri, 5) - 0.5) * 0.25;
-      const M0 = v3l(B0, T0, snowLine), M1 = v3l(B1, T1, snowLine + (vnoise(i * 0.7 + 0.7, ri, 5) - 0.5) * 0.12);
-      const lit = (i % 2) ? 1 : 0.94;
-      // the base fades into the haze so the range rises out of the valley fog
-      const rc = (sl > hmax * 0.35 ? rock : rock2).map(v => v * lit), fg = fogc.map(v => v / 1.25);
-      const H0 = v3l(B0, T0, 0.36), H1 = v3l(B1, T1, 0.36);
-      vquad(mm, B0, B1, H1, H0, [...fg, 1], [...fg, 1], [...rc, 0], [...rc, 0]);
-      vquad(mm, H0, H1, M1, M0, [...rc, 0], [...rc, 0], [...rc, 0], [...rc, 0]);
-      mm.quad(M0, M1, T1, T0, [...(i % 3 ? snow : snowS), 0]);
-    }
-  });
+  // distant mountains: a smooth ring of peaks around the camera, snow on the gentle slopes, rock on the steep faces
+  const mm = new MB(), NA = 260, RS = [900, 1000, 1110, 1230, 1370, 1520, 1690, 1880, 2090, 2320, 2560], seed = C.seed;
+  const hAt = (a, r) => {
+    const ca = Math.cos(a), sa = Math.sin(a), rr = r / 1000;
+    let h = 0, amp = 1, fr = 0.75;
+    for (let o = 0; o < 5; o++) { const v = vnoise(ca * fr * 2.6 + 40 + rr * fr * 1.4, sa * fr * 2.6 + 40 - rr * fr * 1.1, seed + o * 3); const ridge = 1 - Math.abs(v * 2 - 1); h += ridge * ridge * amp; amp *= 0.48; fr *= 2.07; }
+    const big = 0.55 + 0.75 * vnoise(ca * 1.7 + 9, sa * 1.7 + 9, seed + 31);
+    const env = clamp((r - 900) / 700, 0, 1);
+    return -230 + h * 470 * big * (env * env * (3 - 2 * env)) * (1 - clamp((r - 2000) / 900, 0, 1) * 0.35);
+  };
+  const G = RS.map(r => { const row = []; for (let i = 0; i <= NA; i++) { const a = i / NA * 6.2832; row.push([Math.cos(a) * r, hAt(a, r), Math.sin(a) * r]); } return row; });
+  const nrm = (j, i) => { const p = G[j][i], A = G[j][(i + 1) % (NA + 1)], B = G[Math.min(RS.length - 1, j + 1)][i], Cq = G[j][(i + NA - 1) % (NA + 1)], D = G[Math.max(0, j - 1)][i];
+    const u = [A[0] - Cq[0], A[1] - Cq[1], A[2] - Cq[2]], v = [B[0] - D[0], B[1] - D[1], B[2] - D[2]];
+    let n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]]; if (n[1] < 0) n = n.map(x => -x); const l = Math.hypot(...n) || 1; return n.map(x => x / l); };
+  const N = G.map((row, j) => row.map((_, i) => nrm(j, i)));
+  const rockC = C.bigair ? [0.16, 0.17, 0.22] : [0.34, 0.33, 0.36], rock2 = C.bigair ? [0.12, 0.13, 0.18] : [0.25, 0.25, 0.29], snowC = [0.93, 0.95, 1.0];
+  const colAt = (j, i) => {
+    const p = G[j][i], n = N[j][i], a = i / NA * 6.2832, line = -150 + (vnoise(Math.cos(a) * 9, Math.sin(a) * 9, seed + 77) - 0.5) * 120;
+    const steep = clamp((0.62 - n[1]) * 3.5, 0, 1), high = clamp((p[1] - line) / 70, 0, 1);
+    const streak = vnoise(p[0] * 0.02, p[2] * 0.02, seed + 5);
+    const rock = mixc(rock2, rockC, streak);
+    let c = mixc(rock, snowC, high * (1 - steep * 0.85));
+    if (p[1] < -170) c = mixc(c, [0.42, 0.48, 0.5], clamp((-170 - p[1]) / 90, 0, 0.5));   // hazy valleys
+    return [c[0], c[1], c[2], 0];
+  };
+  const Cc = G.map((row, j) => row.map((_, i) => colAt(j, i)));
+  for (let j = 0; j < RS.length - 1; j++) for (let i = 0; i < NA; i++) {
+    mm.triN(G[j][i], G[j + 1][i], G[j + 1][i + 1], N[j][i], N[j + 1][i], N[j + 1][i + 1], Cc[j][i]);
+    mm.triN(G[j][i], G[j + 1][i + 1], G[j][i + 1], N[j][i], N[j + 1][i + 1], N[j][i + 1], Cc[j][i]);
+  }
   MESH.mtn = R3.mesh(mm);
   const tk = new MB();
   for (let k = 0; k < 6; k++) tk.box(M4.compose(0, 0, 0, k * Math.PI / 6, 0.12, 0.12, 1.1), [0.55, 0.9, 1, 0.75]);
@@ -452,15 +451,26 @@ function addTree(mb, t, R) {
     for (let k = 0; k < 6; k++) { const yy = y + (2.5 + k * 0.9) * s, a = R() * 6.28; mb.box(M4.mul(M4.compose(x + Math.cos(a) * 0.6 * s, yy, z + Math.sin(a) * 0.6 * s, -a), M4.mul(M4.rotZ(0.4), M4.scale(1.4 * s, 0.08, 0.08))), [0.3, 0.24, 0.2, 0]); }
     return;
   }
-  const g = 0.22 + R() * 0.07, dark = [0.07, g, 0.13 + R() * 0.03, 0], snow = [0.92, 0.95, 1.0, 0];
-  mb.tube(M4.compose(x, y + 0.6 * s, z, 0, 0.36 * s, 1.6 * s, 0.36 * s), 6, [0.3, 0.21, 0.15, 0]);
-  const tiers = 5;
+  const g = 0.2 + R() * 0.08, dark = [0.06, g, 0.12 + R() * 0.04, 0], mid = [0.09, g + 0.07, 0.15, 0], snow = [0.9, 0.94, 1.0, 0];
+  mb.tube(M4.compose(x, y + 0.6 * s, z, 0, 0.32 * s, 1.6 * s, 0.32 * s), 7, [0.28, 0.2, 0.15, 0]);
+  const tiers = 5, seg = 10;
+  // one tier: a drooping skirt of branches (smooth normals), with a snow cap resting on top
+  const skirt = (yy, r, h, rot, col, sk) => {
+    const ap = [x, yy + h, z], ring = [];
+    for (let i = 0; i <= seg; i++) { const a = rot + i / seg * 6.2832, wob = 1 + 0.12 * Math.sin(a * 3 + rot * 5); ring.push([x + Math.cos(a) * r * wob, yy - 0.18 * r * sk, z + Math.sin(a) * r * wob, a]); }
+    for (let i = 0; i < seg; i++) {
+      const p0 = ring[i], p1 = ring[i + 1], nn = q => { const k = h / r; return [Math.cos(q[3]), 1 / Math.max(0.4, k) * 0.9, Math.sin(q[3])]; };
+      mb.triN(p0, ap, p1, nn(p0), [0, 1, 0], nn(p1), col);
+      const in0 = [x + (p0[0] - x) * 0.6, yy + 0.05 * h, z + (p0[2] - z) * 0.6], in1 = [x + (p1[0] - x) * 0.6, yy + 0.05 * h, z + (p1[2] - z) * 0.6];
+      mb.triN(p0, p1, in1, [0, -1, 0], [0, -1, 0], [0, -1, 0], dark); mb.triN(p0, in1, in0, [0, -1, 0], [0, -1, 0], [0, -1, 0], dark);
+    }
+  };
   for (let k = 0; k < tiers; k++) {
-    const yy = y + (1.2 + k * 1.45) * s, r = (3.0 - k * 0.5) * s, h = (2.3 - k * 0.1) * s, rot = R() * 6;
-    mb.cone(M4.compose(x, yy, z, rot, r, h, r), 8, dark, 0.1);
-    mb.cone(M4.compose(x, yy + h * 0.38, z, rot + 0.3, r * 0.72, h * 0.32, r * 0.72), 8, snow, 0.04);
+    const yy = y + (1.3 + k * 1.35) * s, r = (2.9 - k * 0.48) * s, h = (2.2 - k * 0.12) * s, rot = R() * 6;
+    skirt(yy, r, h, rot, k % 2 ? mid : dark, 1);
+    skirt(yy + h * 0.42, r * 0.62, h * 0.36, rot + 0.3, snow, 0.6);
   }
-  mb.cone(M4.compose(x, y + (1.2 + tiers * 1.45) * s - 0.4 * s, z, 0, 0.7 * s, 1.4 * s, 0.7 * s), 6, snow, 0.04);
+  skirt(y + (1.3 + tiers * 1.35) * s - 0.5 * s, 0.75 * s, 1.5 * s, 0, snow, 0.3);
 }
 function buildPipeMesh(mb, f, R) {
   const half = PIPE.floor + PIPE.R + PIPE.deck + 12;
