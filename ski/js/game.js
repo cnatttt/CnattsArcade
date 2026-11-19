@@ -101,7 +101,7 @@ function newRun(ci) {
   P = freshRider(C.bigair ? 4 : 10);
   run = { mode: C.bigair ? 'bigair' : 'slope', time: 0, score: 0, combo: 1, comboT: 0, tricks: [], used: {}, tokens: 0, rails: 0, drops: new Set(), maxSpeed: 0, best: null,
     crashes: 0, done: false, startT: 2.6, attempt: 0, attempts: [0, 0, 0], attemptScore: 0, landedAt: null, chNew: [], total: 0 };
-  screen = 'play'; pops = []; parts = []; tracks = []; hint = null; fade = 0; snapCam();
+  screen = 'play'; pops = []; parts = []; tracks = []; hint = null; fade = 0; rec = []; snapCam();
   Sound.playSong(C.bigair ? SONGS.skiNight : SONGS.ski);
 }
 // rebindable controls (Controls screen). Arrow keys always work too for steering / tuck / brake.
@@ -110,6 +110,7 @@ const ACTIONS = [
   ['up', 'Tuck for speed  ·  frontflip in the air', 'KeyW'], ['down', 'Brake / hockey stop  ·  backflip in the air', 'KeyS'],
   ['jump', 'Crouch (hold) and pop (let go)', 'Space'], ['stall', 'Stall on rails & boxes  ·  butter on the snow', 'KeyF'],
   ['g1', 'Grab 1', 'ShiftLeft'], ['g2', 'Grab 2', 'KeyK'], ['g3', 'Grab 3', 'KeyL'], ['g4', 'Grab 4', 'KeyI'], ['cam', 'Change camera', 'KeyC'],
+  ['replay', 'Instant replay', 'KeyP'],
 ];
 const DEFAULT_KEYS = Object.fromEntries(ACTIONS.map(a => [a[0], a[2]]));
 const KB = () => Object.assign({}, DEFAULT_KEYS, save.keys || {});
@@ -1091,11 +1092,12 @@ function render3D(dt) {
   if (window.__noRender) return;
   const E = env(), view = { x: 0, y: 0, w: W, h: H };
   const camZ = cam.eye[2];
-  R3.shadowBegin([P.p[0], P.p[1], P.p[2] + 6], E.sun, 46);
-  MESH.chunks.forEach(c => { if (c.z0 > P.p[2] - 90 && c.z0 < P.p[2] + 60) R3.shadowDraw(c.m); });
+  const RV = rpView || { p: P.p, root: riderRoot(P), pose: riderPose(P) };
+  R3.shadowBegin([RV.p[0], RV.p[1], RV.p[2] + 6], E.sun, 46);
+  MESH.chunks.forEach(c => { if (c.z0 > RV.p[2] - 90 && c.z0 < RV.p[2] + 60) R3.shadowDraw(c.m); });
   R3.shadowDraw(MESH.feats); R3.shadowDraw(MESH.rails);
-  Rider.draw(R3, myMesh, riderRoot(P), riderPose(P), true);
-  others().forEach(o => { if (o.mesh && Math.abs(o.P.p[2] - P.p[2]) < 50) Rider.draw(R3, o.mesh, riderRoot(o.P), riderPose(o.P, o.look.board), true); });
+  Rider.draw(R3, myMesh, RV.root, RV.pose, true);
+  if (!rpView) others().forEach(o => { if (o.mesh && Math.abs(o.P.p[2] - P.p[2]) < 50) Rider.draw(R3, o.mesh, riderRoot(o.P), riderPose(o.P, o.look.board), true); });
   R3.shadowEnd();
   if (window.__camOv) { const o = window.__camOv(P); cam.eye = o.eye; cam.at = o.at; cam.fov = o.fov || cam.fov; }
   R3.begin(view, cam, E);
@@ -1119,8 +1121,8 @@ function render3D(dt) {
       R3.draw(MESH.chair, M4.compose(p[0], p[1], p[2], up ? Math.PI : 0), null, 0, false);
     }
   }
-  Rider.draw(R3, myMesh, riderRoot(P), riderPose(P), false, 0.25);
-  others().forEach(o => { if (o.mesh && Math.abs(o.P.p[2] - cam.eye[2]) < 400) Rider.draw(R3, o.mesh, riderRoot(o.P), riderPose(o.P, o.look.board), false, 0.25); });
+  Rider.draw(R3, myMesh, RV.root, RV.pose, false, 0.25);
+  if (!rpView) others().forEach(o => { if (o.mesh && Math.abs(o.P.p[2] - cam.eye[2]) < 400) Rider.draw(R3, o.mesh, riderRoot(o.P), riderPose(o.P, o.look.board), false, 0.25); });
   R3.flat(buildTracks(), false);
   const pts = [], sparks = [], clouds = [];
   const snowTint = C.bigair ? [0.55, 0.58, 0.72] : [0.97, 0.98, 1];
@@ -1147,6 +1149,60 @@ function render3D(dt) {
   if (pts.length) R3.points(pts, false);
   postFX(dt);
   R3.end();
+}
+
+// ------------------------------------------------------------ replays
+// The run is recorded at 30 Hz (rider transform + pose); replays cut between cinematic cameras and slow down in the air.
+let rec = [], recT = 0, rp = null, rpView = null;
+function recFrame(dt) {
+  if (!P || !run || run.done && P.ground) return;
+  recT += dt; if (recT < 1 / 30) return; recT %= 1 / 30;
+  const pose = riderPose(P); delete pose.board;
+  rec.push({ p: [...P.p], v: [...P.v], root: riderRoot(P), pose, air: !P.ground && !P.rail && P.crash <= 0, crash: P.crash > 0 });
+  if (rec.length > 30 * 25) rec.shift();
+}
+function startReplay(secs, back) {
+  if (rec.length < 20) return;
+  const n = Math.min(rec.length, Math.round(secs * 30));
+  rp = { i0: rec.length - n, f: rec.length - n, back, shot: -1, shotT: 0, cam: null, speed: 1 };
+  screen = 'replay'; nextShot();
+}
+function nextShot() {
+  rp.shot = (rp.shot + 1) % 3; rp.shotT = 0;
+  const fr = rec[Math.min(rec.length - 1, Math.floor(rp.f) + 50)] || rec[rec.length - 1];
+  // trackside: plant a camera ahead of where the rider will be, off to one side
+  const side = Math.random() < 0.5 ? -1 : 1, v = v3.norm([fr.v[0], 0, fr.v[2] || 1]);
+  const px = fr.p[0] + v[2] * side * 7 + v[0] * 6, pz = fr.p[2] + v[2] * 6 - v[0] * side * 7;
+  rp.fixed = [px, Math.max(heightAt(px, pz) + 1.4, fr.p[1] + 0.6), pz];
+  rp.orbitA = Math.random() * 6.28;
+}
+function replayStep(dt) {
+  const fi = Math.floor(rp.f), fr = rec[Math.min(rec.length - 1, fi)], fr2 = rec[Math.min(rec.length - 1, fi + 1)], k = rp.f - fi;
+  const want = fr.air || fr.crash ? 0.4 : 1; rp.speed += (want - rp.speed) * Math.min(1, dt * 4);
+  rp.f += dt * 30 * rp.speed; rp.shotT += dt;
+  if (rp.f >= rec.length - 1) { rp.f = rp.i0; rp.shot = -1; nextShot(); }
+  if (rp.shotT > (rp.shot === 1 ? 2.6 : 3.4)) nextShot();
+  const p = v3.lerp(fr.p, fr2.p, k), root = new Float32Array(fr.root); root[12] = p[0]; root[13] = p[1]; root[14] = p[2];
+  rpView = { p, root, pose: Object.assign({ board: save.board }, fr.pose) };
+  const at = [p[0], p[1] + 0.9, p[2]];
+  if (rp.shot === 0) { cam.eye = [...rp.fixed]; cam.at = at; const d = v3.len(v3.sub(at, cam.eye)); cam.fov = clamp(6 / d, 0.22, 0.9); }
+  else if (rp.shot === 1) { const a = rp.orbitA + rp.shotT * 0.35, r = 3.2; cam.eye = [p[0] + Math.sin(a) * r, p[1] + 1.1, p[2] + Math.cos(a) * r]; cam.at = at; cam.fov = 0.8; }
+  else { const v = v3.norm([fr.v[0], 0, fr.v[2] || 1]); cam.eye = [p[0] - v[0] * 5.5, p[1] + 2.0, p[2] - v[2] * 5.5]; cam.at = [p[0] + v[0] * 3, p[1] + 0.8, p[2] + v[2] * 3]; cam.fov = 1.0; }
+  const g = heightAt(cam.eye[0], cam.eye[2]) + 0.5; if (cam.eye[1] < g) cam.eye[1] = g;
+}
+function replayScreen(dt) {
+  replayStep(dt); render3D(dt);
+  rpView = null;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, 54); ctx.fillRect(0, H - 54, W, 54);
+  const blink = Math.sin(t * 5) > 0;
+  ctx.fillStyle = blink ? '#ef4444' : 'rgba(239,68,68,0.35)'; ctx.beginPath(); ctx.arc(46, 27, 7, 0, 7); ctx.fill();
+  U.txt('REPLAY', 62, 27, 16, '#fff', 'left', { weight: 800, base: 'middle' });
+  if (rp.speed < 0.7) U.txt('SLOW-MO', W - 40, 27, 14, '#fde047', 'right', { weight: 800, base: 'middle' });
+  const prog = (rp.f - rp.i0) / Math.max(1, rec.length - 1 - rp.i0);
+  ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillRect(W / 2 - 200, H - 30, 400, 4); ctx.fillStyle = '#fff'; ctx.fillRect(W / 2 - 200, H - 30, 400 * clamp(prog, 0, 1), 4);
+  U.txt('ESC / ENTER to exit', W - 40, H - 27, 13, '#94a3b8', 'right', { weight: 700, base: 'middle' });
+  if (U.pressed.Escape || U.pressed.Enter || U.pressed[KB().replay] || U.click) { screen = rp.back; rp = null; cam.off = null; if (screen === 'play') updateCam(0, true); }
 }
 
 // colour grade per run + speed streaks + flashes
@@ -1395,9 +1451,10 @@ function results() {
   const stats = C.bigair ? run.attempts.map((s, i) => [`Jump ${i + 1}`, s.toLocaleString()]) : [['Time', fmtTime(run.time)], ['Snowflakes', `${run.tokens}`], ['Rails', `${run.rails}`], ['Top speed', `${Math.round(run.maxSpeed)} km/h`], ['Bails', `${run.crashes}`]];
   stats.forEach(([a, b], i) => { U.txt(a, W / 2 + 30, 362 + i * 28, 15, '#cbd5e1', 'left', { weight: 600 }); U.txt(b, W / 2 + 320, 362 + i * 28, 16, '#fff', 'right', { weight: 800 }); });
   if (run.chNew.length) U.txt('Challenge complete: ' + run.chNew.join(', '), W / 2, 524, 14, '#4ade80', 'center', { weight: 800 });
-  if (U.button('again', W / 2 - 330, 574, 210, 58, 'RIDE AGAIN', { color: '#3b82f6', size: 17 }) || U.pressed.Enter) newRun(built);
-  else if (U.button('runs', W / 2 - 105, 574, 210, 58, 'RUNS', { ghost: true, size: 17, sfx: 'tab' })) { screen = 'courses'; sel = built; P = null; Sound.playSong(SONGS.skiMenu); }
-  else if (U.button('menu', W / 2 + 120, 574, 210, 58, 'MENU', { ghost: true, size: 17, sfx: 'back' }) || U.pressed.Escape) { screen = 'title'; P = null; Sound.playSong(SONGS.skiMenu); }
+  if (U.button('again', W / 2 - 340, 574, 166, 58, 'RIDE AGAIN', { color: '#3b82f6', size: 16 }) || U.pressed.Enter) newRun(built);
+  else if (U.button('replay', W / 2 - 166, 574, 160, 58, 'REPLAY', { color: '#ef4444', size: 16 }) || U.pressed[KB().replay]) startReplay(25, 'results');
+  else if (U.button('runs', W / 2 + 2, 574, 160, 58, 'RUNS', { ghost: true, size: 16, sfx: 'tab' })) { screen = 'courses'; sel = built; P = null; Sound.playSong(SONGS.skiMenu); }
+  else if (U.button('menu', W / 2 + 170, 574, 166, 58, 'MENU', { ghost: true, size: 16, sfx: 'back' }) || U.pressed.Escape) { screen = 'title'; P = null; Sound.playSong(SONGS.skiMenu); }
 }
 
 // ------------------------------------------------------------ ranked screens
@@ -1557,11 +1614,12 @@ function frame(now) {
   else if (screen === 'controls') { controlsScreen(dt); sounds(0); }
   else if (screen === 'ranked') { rankedScreen(dt); sounds(0); }
   else if (screen === 'racesel') { raceSelect(dt); sounds(0); }
+  else if (screen === 'replay') { replayScreen(dt); sounds(0); }
   else {
     if (screen === 'play' && !paused && !hold) {
       const n = Math.max(1, Math.ceil(dt / (1 / 240)));
       for (let i = 0; i < n && screen === 'play'; i++) step(dt / n);
-      effects(dt);
+      effects(dt); recFrame(dt);
       heatTick(dt);
     }
     updateCam(paused || hold ? 0 : dt); render3D(paused || hold ? 0 : dt);
@@ -1582,6 +1640,7 @@ function frame(now) {
       if (U.pressed.Escape) paused = true;
       if (paused && run.heat && run.heat.kind === 'online') { /* the other rider keeps going */ }
       if (U.pressed.KeyR && !run.heat) newRun(built);
+      if (U.pressed[KB().replay] && !run.heat && !run.done) startReplay(8, 'play');
       if (U.pressed.KeyR && run.heat && run.heat.kind === 'race') startHeat(built, 'race', { diff: run.heat.diff });
     }
   }
@@ -1596,9 +1655,9 @@ applyGfx();
 fontReady.then(() => requestAnimationFrame(n => { last = n; frame(n); }));
 
 window.__ski = {
-  rebuild() { myMesh = Rider.build(R3, look(), myMesh); }, get cam() { return cam; },
+  rebuild() { myMesh = Rider.build(R3, look(), myMesh); }, get cam() { return cam; }, get myMesh() { return myMesh; }, riderPose, riderRoot,
   U, get P() { return P; }, set P(v) { P = v; }, get run() { return run; }, get screen() { return screen; }, set screen(v) { screen = v; }, newRun, step, takeoff,
-  get C() { return C; }, get W0() { return W0; }, set bot(f) { botInput = f; }, snapCam() { updateCam(1, true); }, freeze(v) { hold = v; }, save: () => save, finishRun,
+  get C() { return C; }, get W0() { return W0; }, recFrame, startReplay, heightAt, set bot(f) { botInput = f; }, snapCam() { updateCam(1, true); }, freeze(v) { hold = v; }, save: () => save, finishRun,
   get pops() { return pops; }, makeBrain, makeRaceBrain, startHeat, RACE, raceStandings, closeRace, get paused() { return paused; }, openRanked, standings: () => standings().map(x => [x.o.name, x.s, x.o.fin || false, x.o.cpu ? x.o.P.p[2].toFixed(0) : '', x.o.cpu ? x.o.run.crashes : '']), get RK() { return RK; },
   cpuTricks: () => run.heat.riders.filter(o => o.cpu).map(o => [o.name, o.run.tricks.map(t => t.name + ' ' + t.pts).join(' | ')]),
 };

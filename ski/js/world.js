@@ -334,7 +334,7 @@ function buildMeshes(R3) {
       const zz = (a[2] + d[2]) / 2, xx = (a[0] + b[0]) / 2, inW = Math.abs(xx - f.x) < f.w / 2;
       let col = snowColor(xx, zz, Nn[j][i], true, R);
       col = mixc(col, [0.97, 0.98, 1.0], inW ? 0.5 : 0);   // freshly shaped
-      if (dye && inW && (Math.abs(zz - f.lipZ) < 0.35 || Math.abs(zz - f.knuckleZ) < 0.35)) col = dye;
+      if (dye && inW && (Math.abs(zz - f.lipZ) < 0.22 || Math.abs(zz - f.knuckleZ) < 0.22)) col = dye;
       if (f.kind === 'drop' && inW && Math.abs(zz - f.knuckleZ) < 0.4) col = [0.2, 0.45, 0.95];
       const c4 = vcol(col, xx, zz);
       fm.triN(a, cc, b, Nn[j][i], Nn[j + 1][i + 1], Nn[j][i + 1], c4);
@@ -348,7 +348,7 @@ function buildMeshes(R3) {
       else if (f.size === 'S') fm.cyl(M4.compose(sx, sy + 2.3, sz, 0, 0.7, 0.06, 0.7, Math.PI / 2), 14, [...sc, 0.15]);
       else if (f.size === 'M') fm.box(M4.compose(sx, sy + 2.3, sz, 0, 0.66, 0.66, 0.06), [...sc, 0.15]);
       else fm.box(M4.compose(sx, sy + 2.3, sz, Math.PI / 4, 0.55, 0.55, 0.06), [...sc, 0.15]);
-      [-1, 1].forEach(s => { const x = f.x + s * (f.w / 2 + 0.4), y = heightAt(x, f.lipZ); fm.tube(M4.compose(x, y + 0.8, f.lipZ, 0, 0.05, 1.6, 0.05), 5, [0.2, 0.2, 0.22, 0]); fm.box(M4.compose(x + s * 0.35, y + 1.45, f.lipZ, 0, 0.7, 0.4, 0.03), [...hex(s < 0 ? '#ef4444' : '#2563eb'), 0.2]); });
+      [-1, 1].forEach(s => { const x = f.x + s * (f.w / 2 + 0.4), y = heightAt(x, f.lipZ); fm.tube(M4.compose(x, y + 0.8, f.lipZ, 0, 0.05, 1.6, 0.05), 5, [0.2, 0.2, 0.22, 0]); const fc = hex(s < 0 ? '#ef4444' : '#2563eb'); fm.surf(M4.compose(x, y + 1.45, f.lipZ), (u, v) => [s * u * 0.75, (v - 0.5) * 0.42 * (1 - u * 0.35), Math.sin(u * 4.2 + v * 0.6) * 0.07 * u], 10, 3, [...fc, 0.2], [0, 0, -1]); });
     }
   }
   MESH.feats = R3.mesh(fm);
@@ -363,13 +363,18 @@ function buildMeshes(R3) {
         [-0.52, 0.52].forEach(o => rm.tube(M4.mul(M4.compose(mx + o, my - 0.02, mz), M4.mul(M4.rotX(pitch + Math.PI / 2), M4.scale(0.07, L, 0.07))), 8, [0.75, 0.78, 0.84, 0]));
         rm.rbox(M4.mul(M4.compose(mx, my - 0.02, mz), M4.mul(M4.rotX(pitch), M4.scale(1.04, 0.05, L))), 12, 3, [0.7, 0.7, 0.68, 0], 0.3);
       } else if (r.kind === 'box') {
-        rm.box(M4.mul(M4.compose(mx, my - 0.03, mz), M4.mul(M4.rotX(pitch), M4.scale(0.62, 0.06, L))), [0.85, 0.87, 0.9, 0]);
-        rm.box(M4.mul(M4.compose(mx, my - 0.33, mz), M4.mul(M4.rotX(pitch), M4.scale(0.58, 0.56, L - 0.05))), [...hex(r.x > cx(r.zc) ? '#f59e0b' : '#3b82f6'), 0]);
+        // fun box: rounded body in team colour with a white racing stripe, slick white top, steel edges
+        const bc = hex(r.x > cx(r.zc) ? '#f59e0b' : '#3b82f6'), RX = M4.rotX(pitch);
+        rm.rbox(M4.mul(M4.compose(mx, my - 0.33, mz), M4.mul(RX, M4.scale(0.6, 0.6, L - 0.02))), 16, 10, [...bc, 0], 0.08);
+        [-0.301, 0.301].forEach(o => rm.box(M4.mul(M4.compose(mx + o, my - 0.36, mz), M4.mul(RX, M4.scale(0.01, 0.07, L * 0.9))), [0.95, 0.96, 0.98, 0]));
+        rm.rbox(M4.mul(M4.compose(mx, my - 0.03, mz), M4.mul(RX, M4.scale(0.64, 0.06, L))), 12, 4, [0.92, 0.93, 0.95, 0], 0.25);
+        [-0.32, 0.32].forEach(o => rm.tube(M4.mul(M4.compose(mx + o, my - 0.04, mz), M4.mul(M4.rotX(pitch + Math.PI / 2), M4.scale(0.03, L, 0.03))), 8, [0.72, 0.75, 0.8, 0]));
       } else if (r.kind === 'log') {
         rm.tube(M4.mul(M4.compose(mx, my - 0.18, mz), M4.mul(M4.rotX(pitch + Math.PI / 2), M4.scale(0.42, L + 0.4, 0.42))), 9, [0.45, 0.3, 0.2, 0], [0.75, 0.6, 0.42, 0]);
         rm.box(M4.mul(M4.compose(mx, my + 0.02, mz), M4.mul(M4.rotX(pitch), M4.scale(0.3, 0.06, L))), [0.95, 0.97, 1, 0]);
       } else {
-        rm.tube(M4.mul(M4.compose(mx, my - 0.05, mz), M4.mul(M4.rotX(pitch + Math.PI / 2), M4.scale(0.1, L, 0.1))), 8, [0.82, 0.84, 0.9, 0]);
+        rm.tube(M4.mul(M4.compose(mx, my - 0.05, mz), M4.mul(M4.rotX(pitch + Math.PI / 2), M4.scale(0.1, L, 0.1))), 14, [0.82, 0.84, 0.9, 0]);
+        if (k === 0 || k === r.pts.length - 2) { const e = k === 0 ? a : b; rm.ball(M4.compose(e[0], e[1] - 0.05, e[2], 0, 0.2, 0.2, 0.2), 10, 6, [0.25, 0.26, 0.3, 0]); }
       }
     }
     // legs
@@ -378,7 +383,8 @@ function buildMeshes(R3) {
       const t = k / n, tot = r.pts.length - 1, seg = Math.min(tot - 1, Math.floor(t * tot)), lt = t * tot - seg;
       const a = r.pts[seg], b = r.pts[seg + 1], y = lerp(a[1], b[1], lt), z = lerp(a[2], b[2], lt), gy = baseH(r.x, z);
       if (r.kind === 'log' || r.kind === 'ledge') continue;
-      rm.tube(M4.compose(r.x, (y + gy) / 2 - 0.2, z, 0, 0.08, Math.max(0.2, y - gy + 0.2), 0.08), 6, [0.32, 0.34, 0.4, 0]);
+      rm.tube(M4.compose(r.x, (y + gy) / 2 - 0.2, z, 0, 0.08, Math.max(0.2, y - gy + 0.2), 0.08), 10, [0.32, 0.34, 0.4, 0]);
+      rm.ball(M4.compose(r.x, gy - 0.05, z, 0, 0.55, 0.22, 0.55), 12, 6, [0.93, 0.95, 1, 0]);   // snow banked round the post
     }
   }
   // finish line + start gate
@@ -392,7 +398,9 @@ function buildMeshes(R3) {
       const x = cx(z) + s * 23, y = baseH(x, z);
       rm.box(M4.compose(x, y + 0.5, z, 0, 0.08, 1.0, 2.2), [0.95, 0.42, 0.12, 0]);
       if (z > fz - 25 && R() < 0.75) { const px = x + s * (1.2 + R() * 2.5), py = baseH(px, z); const jc = hex(['#ef4444', '#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#ec4899', '#f8fafc', '#111827'][Math.floor(R() * 8)]);
-        rm.box(M4.compose(px, py + 0.45, z, 0, 0.32, 0.9, 0.24), [0.15, 0.16, 0.22, 0]); rm.box(M4.compose(px, py + 1.2, z, 0, 0.46, 0.62, 0.3), [...jc, 0]); rm.sphere(M4.compose(px, py + 1.68, z, 0, 0.26, 0.28, 0.26), 6, 4, [0.95, 0.8, 0.68, 0], 0); rm.sphere(M4.compose(px, py + 1.78, z, 0, 0.29, 0.18, 0.29), 6, 3, [...jc, 0], 0); }
+        const sw = R() * 6.28; rm.rbox(M4.compose(px, py + 0.45, z, 0, 0.34, 0.9, 0.26), 8, 6, [0.15, 0.16, 0.22, 0], 0.5); rm.rbox(M4.compose(px, py + 1.2, z, 0, 0.5, 0.66, 0.34), 10, 6, [...jc, 0], 0.5);
+          rm.ball(M4.compose(px, py + 1.66, z, 0, 0.26, 0.3, 0.26), 8, 6, [0.95, 0.8, 0.68, 0]); rm.ball(M4.compose(px, py + 1.76, z, 0, 0.29, 0.2, 0.29), 8, 5, [...jc, 0]);
+          if (R() < 0.4) rm.tube(M4.compose(px + Math.cos(sw) * 0.2, py + 1.75, z, 0, 0.05, 0.6, 0.05), 5, [...jc, 0]); }
     }
   }
   const sz = 6, sx = cx(sz), sy = baseH(sx, sz);
