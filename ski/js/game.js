@@ -27,6 +27,24 @@ const DECKS = ['#0f172a', '#ef4444', '#2563eb', '#16a34a', '#f59e0b', '#e5e7eb']
 let save = { best: 0, runs: 0, board: false, jacket: 5, pants: 0, helmet: 0, deck: 0, course: 0, cbest: {}, medal: {}, ch: {}, cam: 0, tips: 0 };
 try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if (s) save = Object.assign(save, s); } catch (e) {}
 if (!(save.course >= 0 && save.course < COURSES.length)) save.course = 0;
+// ---- graphics quality + dynamic resolution (drops the render scale when frames run slow, raises it back when there's headroom)
+if (typeof save.gfx !== 'number') save.gfx = 1;
+let dynRes = 1, frameEma = 1 / 60, resT = 0;
+function applyGfx() { R3.setQuality(save.gfx); dynRes = 1; fitRes(true); }
+function fitRes(force) {
+  const r = glc.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1);
+  const cap = [1, 1.5, 2][R3.quality] || 1, want = Math.max(0.5, Math.min(cap, (r.width * dpr) / 1280) * dynRes);
+  const q = Math.round(want * 10) / 10;
+  if (force || Math.abs(q * 1280 - glc.width) > 1) R3.setScale(q);
+}
+function resTick(dt) {
+  if (window.__noRender || !dt) return;
+  frameEma += (dt - frameEma) * 0.05; resT += dt;
+  if (resT < 1.2) return; resT = 0;
+  if (frameEma > 1 / 48 && dynRes > 0.55) { dynRes = Math.max(0.55, dynRes - 0.1); fitRes(); }
+  else if (frameEma < 1 / 57 && dynRes < 1) { dynRes = Math.min(1, dynRes + 0.05); fitRes(); }
+  else fitRes();
+}
 if (typeof save.jacket !== 'number' || save.jacket >= JACKETS.length) save.jacket = 5;
 ['cbest', 'medal', 'ch'].forEach(k => { if (!save[k] || typeof save[k] !== 'object') save[k] = {}; });
 const store = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {} };
@@ -324,6 +342,7 @@ function land() {
   P.yaw = Math.atan2(tv[0], tv[2]);
   P.fakie = sw; P.spin = 0; P.flip = 0; P.squash = clamp(impact / 14, 0.25, 1);
   sfx.land(quality === 'hard' ? 'hard' : 'ok');
+  if (quality === 'perfect') flash(0.09, [1, 0.95, 0.82]);
   for (let i = 0; i < 26; i++) parts.push([P.p[0] + rand(-0.4, 0.4), P.p[1] + 0.1, P.p[2] + rand(-0.4, 0.4), rand(-3, 3) + P.v[0] * 0.25, rand(1, 3.6), rand(-1.5, 2) + P.v[2] * 0.25, rand(0.5, 0.9), rand(0.2, 0.5), 0]);
   // score
   const gp = P.grabs.reduce((a, g) => a + 120 + Math.min(g.t, 2) * 260 + (g.t > 0.9 ? 150 : 0), 0);
@@ -1035,7 +1054,8 @@ function riderPose(P, board = save.board) {
   return { board, t,
     crouch: P.crash > 0 ? 0.8 : clamp((ground ? 0.22 + Math.abs(P.lean) * 0.22 : 0.42) + P.charge * 0.6 + P.squash * 0.5 + (P.rail ? 0.15 : 0), 0, 1),
     lean: P.rail ? P.bal * 0.6 : 0, tuck: ground ? P.tuck : 0, arms: P.crash > 0 ? 1 : P.rail ? 0.9 : ground ? 0.12 : 0.55,
-    grab: P.grab || (P.grabK > 0.05 ? P.lastGrab : null), grabK: P.grabK, tweak: P.grabK * Math.sin(t * 3), tuckLegs: !ground && !P.rail && P.crash <= 0 ? 0.3 : 0, plant: 0 };
+    grab: P.grab || (P.grabK > 0.05 ? P.lastGrab : null), grabK: P.grabK, tweak: P.grabK * Math.sin(t * 3), tuckLegs: !ground && !P.rail && P.crash <= 0 ? 0.3 : 0, plant: 0,
+    ...(window.__poseOv || {}) };
 }
 function buildTracks() {
   const out = [];
@@ -1065,9 +1085,9 @@ function render3D(dt) {
   R3.shadowEnd();
   if (window.__camOv) { const o = window.__camOv(P); cam.eye = o.eye; cam.at = o.at; cam.fov = o.fov || cam.fov; }
   R3.begin(view, cam, E);
-  R3.skyDome({ top: hx3(C.sky[0]), hor: hx3(C.sky[1]), sun: E.sun, sunCol: C.sunCol, fog: C.fog, night: !!C.bigair });
+  R3.skyDome({ top: hx3(C.sky[0]), hor: hx3(C.sky[1]), sun: E.sun, sunCol: C.sunCol, fog: C.fog, night: !!C.bigair, time: t, cloud: (GRADE[C.id] || GRADE.park).cloud, cloudCol: (GRADE[C.id] || GRADE.park).cloudC });
   R3.sky(MESH.sky);
-  R3.draw(MESH.mtn, M4.trans(cam.eye[0], cam.eye[1] - 40, cam.eye[2]), null, 0, true, { fogD: C.fogD * 0.42 });
+  R3.draw(MESH.mtn, M4.trans(cam.eye[0], cam.eye[1] - 40, cam.eye[2]), null, 0, true, { fogD: C.fogD * 0.55, mtn: C.bigair ? 2 : 1 });
   MESH.chunks.forEach(c => { if (c.z0 > camZ - 200 && c.z0 < camZ + 1000) R3.draw(c.m, null, null, 0, false, { snow: 1 }); });
   R3.draw(MESH.feats, null, null, 0, false, { snow: 1 });
   R3.draw(MESH.rails, null, null, 0, false, { spec: 0.5 });
@@ -1096,7 +1116,28 @@ function render3D(dt) {
   for (let i = 0; i < 260 * sf; i++) { const a = i * 12.9898, x = cam.eye[0] + ((((Math.sin(a) * 437.5 + t * (0.5 + i % 3 * 0.3)) % 50) + 50) % 50) - 25, z = cam.eye[2] + ((((Math.cos(a) * 913.1 - t * 1.5) % 50) + 50) % 50) - 12, y = cam.eye[1] + 10 - ((t * (1.1 + (i % 5) * 0.2) + i * 3.7) % 18); pts.push(x, y, z, 1, 1, 1, 0.85, 0.07); }
   if (C.lights) W0.lights.forEach(Lg => { if (Math.abs(Lg.z - camZ) < 400) pts.push(Lg.x, Lg.y + 10, Lg.z, 1, 0.92, 0.75, 0.55, 6); });
   if (pts.length) R3.points(pts, false);
+  postFX(dt);
   R3.end();
+}
+
+// colour grade per run + speed streaks + flashes
+const GRADE = {
+  park: { cloud: 0.42, cloudC: [1.15, 1.15, 1.2], lift: [0.004, 0.01, 0.026], gain: [1.02, 1.0, 0.97], sat: 1.1, con: 1.05, shaft: 0.45 },
+  pine: { cloud: 0.55, cloudC: [1.05, 1.07, 1.12], lift: [0.006, 0.012, 0.024], gain: [1.0, 1.0, 0.98], sat: 1.04, con: 1.05, shaft: 0.7 },
+  summit: { cloud: 0.4, cloudC: [1.25, 1.0, 0.95], lift: [0.02, 0.008, 0.03], gain: [1.05, 0.99, 0.93], sat: 1.12, con: 1.06, shaft: 0.85 },
+  bigair: { cloud: 0.3, cloudC: [0.1, 0.12, 0.2], lift: [0.008, 0.01, 0.03], gain: [1.0, 1.0, 1.04], sat: 1.06, con: 1.08, shaft: 0, thr: 0.75, bloom: 0.9 },
+  garden: { cloud: 0.38, cloudC: [1.3, 1.05, 0.9], lift: [0.022, 0.01, 0.02], gain: [1.06, 1.0, 0.92], sat: 1.1, con: 1.05, shaft: 0.85 },
+  bowl: { cloud: 0.85, cloudC: [0.82, 0.86, 0.94], lift: [0.02, 0.024, 0.034], gain: [0.98, 1.0, 1.03], sat: 0.9, con: 1.03, shaft: 0.3, bloom: 0.45 },
+};
+let fxFlash = 0, fxFlashC = [1, 1, 1];
+function flash(k, col = [1, 1, 1]) { fxFlash = Math.max(fxFlash, k); fxFlashC = col; }
+function postFX(dt) {
+  const F = R3.fx, g = GRADE[C.id] || GRADE.park;
+  F.lift = g.lift; F.gain = g.gain; F.sat = g.sat; F.con = g.con; F.shaft = g.shaft; F.thr = g.thr || 1.7; F.bloom = g.bloom || 0.4;
+  F.sunC = C.sunCol.map(v => v * 0.6); F.vig = 0.5; F.time = t;
+  const sp = P && screen === 'play' ? v3.len(P.v) : 0;
+  F.speed += ((window.__noSpeedFx || (P && P.crash > 0) ? 0 : clamp((sp - 16) / 26, 0, 1)) - F.speed) * Math.min(1, dt * 4);
+  fxFlash = Math.max(0, fxFlash - dt * 2.6); F.flash = fxFlash; F.flashC = fxFlashC;
 }
 
 // ------------------------------------------------------------ HUD
@@ -1304,8 +1345,9 @@ function controlsScreen(dt) {
   });
   U.txt('Stalls: hold the stall key on a rail or box to stop dead, let go to slide on.  Butters: hold it on the snow (with tuck = nose, brake = tail)', W / 2, 560, 13, '#cbd5e1', 'center', { weight: 600 });
   U.txt('and steer to spin on your tips. Wind up spins by holding a steer key while you crouch for a jump.', W / 2, 580, 13, '#cbd5e1', 'center', { weight: 600 });
-  if (U.button('kreset', W / 2 - 230, 616, 220, 50, 'RESET DEFAULTS', { ghost: true, size: 14, sfx: 'tab' })) { save.keys = {}; store(); rebind = null; }
-  if (U.button('back', W / 2 + 10, 616, 220, 50, 'DONE', { color: '#3b82f6', size: 16, sfx: 'back' }) || (U.pressed.Escape && !rebind)) { rebind = null; screen = 'title'; }
+  if (U.button('kreset', W / 2 - 320, 616, 200, 50, 'RESET KEYS', { ghost: true, size: 14, sfx: 'tab' })) { save.keys = {}; store(); rebind = null; }
+  if (U.button('gfx', W / 2 - 100, 616, 200, 50, 'GRAPHICS: ' + ['LOW', 'HIGH', 'ULTRA'][R3.quality], { ghost: true, size: 14, sfx: 'tab' })) { save.gfx = R3.hasPost ? (R3.quality + 1) % 3 : 0; store(); applyGfx(); }
+  if (U.button('back', W / 2 + 120, 616, 200, 50, 'DONE', { color: '#3b82f6', size: 16, sfx: 'back' }) || (U.pressed.Escape && !rebind)) { rebind = null; screen = 'title'; }
 }
 function results() {
   ctx.fillStyle = 'rgba(8,12,28,0.55)'; ctx.fillRect(0, 0, W, H);
@@ -1468,7 +1510,8 @@ function sounds(on) {
   loops.grind.set(P.rail ? 0.12 : 0, P.rail && P.rail.kind === 'log' ? 900 : 3200);
 }
 function frame(now) {
-  let dt = Math.min(0.05, (now - last) / 1000 || 0); last = now; t += dt;
+  const rawDt = (now - last) / 1000 || 0;
+  let dt = Math.min(0.05, rawDt); last = now; t += dt; resTick(Math.min(0.1, rawDt));
   ensureLoops(); NetTransport.frame();
   if (screen === 'title') { title(dt); sounds(0); }
   else if (screen === 'courses') { courses(dt); sounds(0); }
@@ -1511,6 +1554,7 @@ function frame(now) {
 
 Sound.playSong(SONGS.skiMenu);
 const fontReady = document.fonts ? Promise.race([document.fonts.load(`800 40px 'Plus Jakarta Sans'`), new Promise(r => setTimeout(r, 2000))]) : Promise.resolve();
+applyGfx();
 fontReady.then(() => requestAnimationFrame(n => { last = n; frame(n); }));
 
 window.__ski = {

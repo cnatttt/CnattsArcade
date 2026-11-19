@@ -31,18 +31,150 @@ const Rider = (() => {
     return [V.add(V.add(A, V.mul(dir, a)), V.mul(pp, h)), C];
   }
 
+  // ------------------------------------------------------------ skinned body
+  // One continuous mesh for torso, arms and legs, bent by 10 bones every frame (CPU skinning, 2 bones per vertex),
+  // so knees, elbows, hips and shoulders fold smoothly instead of being separate tubes and balls.
+  const BONES = ['pelvis', 'chest', 'thighL', 'shinL', 'thighR', 'shinR', 'uarmL', 'farmL', 'uarmR', 'farmR'];
+  const BI = Object.fromEntries(BONES.map((b, i) => [b, i]));
+  const ss = (a, b, x) => { const k = clamp((x - a) / (b - a), 0, 1); return k * k * (3 - 2 * k); };
+  function frame(O, Yd, ref) {   // orthonormal frame: Y along the bone, X as close to ref as possible
+    const Y = V.norm(Yd); let X = V.sub(ref, V.mul(Y, V.dot(ref, Y)));
+    if (V.len(X) < 0.08) { const r2 = Math.abs(Y[1]) < 0.9 ? [0, 1, 0] : [0, 0, 1]; X = V.sub(r2, V.mul(Y, V.dot(r2, Y))); }
+    X = V.norm(X); return { O, X, Y, Z: V.cross(X, Y) };
+  }
+  function boneFrames(J) {
+    const F = [];
+    const pv = V.norm(V.lerp([0, 1, 0], J.up, 0.4));
+    F[BI.pelvis] = frame(J.pel, pv, [1, 0, 0]);
+    F[BI.chest] = frame(J.pel, J.up, [1, 0, 0]);
+    F[BI.thighL] = frame(J.HL, V.sub(J.KL, J.HL), [1, 0, 0]); F[BI.shinL] = frame(J.KL, V.sub(J.AL, J.KL), [1, 0, 0]);
+    F[BI.thighR] = frame(J.HR, V.sub(J.KR, J.HR), [1, 0, 0]); F[BI.shinR] = frame(J.KR, V.sub(J.AR, J.KR), [1, 0, 0]);
+    // arms: twist reference is the plane the elbow bends in, so sleeves don't corkscrew
+    const arm = (S, E, Hn, s) => { const n = V.cross(V.sub(E, S), V.sub(Hn, E)); const ref = V.len(n) > 1e-4 ? V.mul(V.norm(n), s) : [0, 0, 1]; return [frame(S, V.sub(E, S), ref), frame(E, V.sub(Hn, E), ref)]; };
+    [F[BI.uarmL], F[BI.farmL]] = arm(J.SL, J.EL, J.HnL, 1); [F[BI.uarmR], F[BI.farmR]] = arm(J.SR, J.ER, J.HnR, -1);
+    return F;
+  }
+  // world <- local for a frame, and local coords of a point
+  const toLocal = (F, p) => { const d = V.sub(p, F.O); return [V.dot(d, F.X), V.dot(d, F.Y), V.dot(d, F.Z)]; };
+  const toLocalN = (F, n) => [V.dot(n, F.X), V.dot(n, F.Y), V.dot(n, F.Z)];
+
+  class SkinB {
+    constructor() { this.p = []; this.n = []; this.c = []; this.b = []; this.w = []; this.idx = []; }
+    v(p, n, c, b0, b1, w1) { this.p.push(p); this.n.push(n); this.c.push(c); this.b.push([b0, b1]); this.w.push(w1); return this.p.length - 1; }
+    // rings: [{ c, X, Z, a, b, wt: [b0, b1, w1], col: (ang, ring) => rgba }]; closed loop of nu around each ring
+    sweep(rings, nu) {
+      const G = rings.map(r => { const row = []; for (let i = 0; i < nu; i++) { const t = i / nu * Math.PI * 2, ca = Math.cos(t), sa = Math.sin(t);
+        const k = r.sq ? Math.pow(Math.abs(ca), r.sq) * Math.sign(ca) : ca, l = r.sq ? Math.pow(Math.abs(sa), r.sq) * Math.sign(sa) : sa;
+        row.push(V.add(V.add(r.c, V.mul(r.X, k * r.a)), V.mul(r.Z, l * r.b + (r.zo || 0)))); } return row; });
+      const base = this.p.length;
+      rings.forEach((r, j) => { for (let i = 0; i < nu; i++) {
+        const p = G[j][i], du = V.sub(G[j][(i + 1) % nu], G[j][(i + nu - 1) % nu]), dv = V.sub(G[Math.min(rings.length - 1, j + 1)][i], G[Math.max(0, j - 1)][i]);
+        let n = V.norm(V.cross(du, dv)); if (V.dot(n, V.sub(p, r.c)) < 0) n = V.mul(n, -1);
+        if (V.len(V.cross(du, dv)) < 1e-9) n = V.norm(V.sub(p, r.c));
+        this.v(p, n, r.col(i / nu * Math.PI * 2, j), r.wt[0], r.wt[1], r.wt[2]);
+      } });
+      for (let j = 0; j < rings.length - 1; j++) for (let i = 0; i < nu; i++) {
+        const a = base + j * nu + i, b = base + j * nu + (i + 1) % nu, c = base + (j + 1) * nu + (i + 1) % nu, d = base + (j + 1) * nu + i;
+        this.idx.push(a, b, c, a, c, d);
+      }
+    }
+    // copy a rigid MB piece (bind pose, body space) onto one or two bones
+    piece(mb, b0, b1 = b0, w1 = 0) { const d = mb.d; for (let i = 0; i < d.length; i += 10) this.idx.push(this.v([d[i], d[i + 1], d[i + 2]], [d[i + 3], d[i + 4], d[i + 5]], [d[i + 6], d[i + 7], d[i + 8], d[i + 9]], b0, b1, w1)); }
+  }
+
+  const BIND = { crouch: 0.2, lean: 0, tuck: 0, arms: 0.35, grab: null, grabK: 0, tweak: 0, tuckLegs: 0, plant: 0, t: 0 };
+  function buildSkin(R3, look, J0, Jc, Pc, trim) {
+    const shade = (c, k) => [c[0] * k, c[1] * k, c[2] * k, c[3] || 0];
+    const sk = new SkinB(), J = parts(Object.assign({ board: look.board }, BIND)).J, F = boneFrames(J);
+    // --- torso: one sweep from the crotch to the collar; pants below the jacket hem
+    const up = J.up, side = V.norm(V.sub([1, 0, 0], V.mul(up, up[0]))), fwd = V.cross(side, up);
+    const T = [ // [t along spine, half-width, half-depth, front/back offset, jacket?]
+      [-0.175, 0.02, 0.02, 0, 0], [-0.165, 0.09, 0.075, 0, 0], [-0.14, 0.145, 0.11, 0, 0], [-0.1, 0.178, 0.13, 0, 0], [-0.075, 0.183, 0.135, 0, 0],
+      [-0.07, 0.212, 0.158, 0.004, 1], [-0.05, 0.214, 0.158, 0.004, 1], [0.03, 0.208, 0.15, 0.006, 1], [0.14, 0.2, 0.142, 0.01, 1], [0.26, 0.205, 0.145, 0.012, 1],
+      [0.37, 0.218, 0.15, 0.008, 1], [0.45, 0.222, 0.148, 0.0, 1], [0.51, 0.205, 0.138, -0.008, 1], [0.555, 0.16, 0.12, -0.012, 1], [0.59, 0.105, 0.095, -0.012, 1],
+      [0.615, 0.08, 0.078, -0.008, 1], [0.66, 0.072, 0.07, 0, 1]];
+    const yoke = [Jc[0] * 0.72 + trim[0] * 0.28, Jc[1] * 0.72 + trim[1] * 0.28, Jc[2] * 0.72 + trim[2] * 0.28, 0];
+    const rings = T.map(([t, a, b, zo, jk], j) => ({ c: V.add(J.pel, V.mul(up, t)), X: side, Z: fwd, a, b, zo, sq: 0.85,
+      wt: t < 0.5 ? [BI.pelvis, BI.chest, ss(0.06, 0.32, t)] : [BI.chest, BI.chest, 0],
+      col: (ang, ring) => {
+        if (!jk) return Pc;
+        const front = Math.sin(ang), x = Math.cos(ang);
+        if (t < -0.04) return shade(Jc, 0.78);                                                             // hem band
+        if (t > 0.4 && t < 0.6) return yoke;                                                                // shoulder yoke
+        const q = Math.abs(((t + 0.08) * 7.5) % 1 - 0.5) < 0.07 ? 0.9 : 1;                                 // quilting
+        return shade(Jc, q * (t > 0.6 ? 0.82 : 1));
+      } }));
+    sk.sweep(rings, 24);
+    // hood rolled up behind the collar, collar ring
+    { const mb = new MB(); const hp = V.add(V.add(J.pel, V.mul(up, 0.6)), V.mul(fwd, -0.11));
+      mb.ball(M4.compose(hp[0], hp[1], hp[2], 0, 0.27, 0.15, 0.14), 14, 8, shade(Jc, 0.8)); sk.piece(mb, BI.chest); }
+    // --- legs: hip -> knee -> ankle, baggy with a cuff over the boot
+    const leg = (H, K, A, s, bt, bs) => {
+      const d1 = V.sub(K, H), L1 = V.len(d1), d2 = V.sub(A, K), L2 = V.len(d2), Y1 = V.norm(d1), Y2 = V.norm(d2);
+      const fr1 = frame(H, Y1, [1, 0, 0]), fr2 = frame(K, Y2, [1, 0, 0]), frK = frame(K, V.norm(V.add(Y1, Y2)), [1, 0, 0]);
+      const R = []; const S = [[-0.05, 0.085], [0.0, 0.106], [0.05, 0.115], [0.2, 0.112], [0.36, 0.104], [0.43, 0.1], [0.47, 0.098], [0.51, 0.097], [0.56, 0.096], [0.7, 0.094], [0.8, 0.098], [0.88, 0.108], [0.92, 0.118], [0.97, 0.122], [1.0, 0.12], [1.005, 0.08]];
+      for (const [u, r] of S) {   // u: distance along the leg (thigh 0..0.47, shin 0.47..0.94)
+        let c, f, wt;
+        if (u < L1 - 0.03) { c = V.add(H, V.mul(Y1, u)); f = fr1; wt = u < 0.06 ? [BI.pelvis, bt, ss(-0.12, 0.06, u)] : [bt, bs, ss(L1 - 0.08, L1 + 0.06, u)]; }
+        else if (u <= L1 + 0.03) { c = V.add(K, V.mul(frK.Y, u - L1)); f = frK; wt = [bt, bs, ss(L1 - 0.08, L1 + 0.06, u)]; }
+        else { c = V.add(K, V.mul(Y2, u - L1)); f = fr2; wt = [bt, bs, ss(L1 - 0.08, L1 + 0.06, u)]; }
+        const cuff = u > 0.86, knee = Math.abs(u - L1) < 0.07;
+        R.push({ c, X: f.X, Z: f.Z, a: r, b: r * 1.04, zo: knee ? 0.008 : 0, wt, col: ang => cuff ? shade(Pc, 0.72) : knee && Math.sin(ang) > 0.5 ? shade(Pc, 0.88) : (Math.abs(Math.cos(ang) * s + 1) < 0.08 ? shade(Pc, 0.86) : Pc) });
+      }
+      sk.sweep(R, 18);
+    };
+    leg(J.HL, J.KL, J.AL, 1, BI.thighL, BI.shinL); leg(J.HR, J.KR, J.AR, -1, BI.thighR, BI.shinR);
+    // --- arms: shoulder -> elbow -> wrist, with a round deltoid and a cuff
+    const arm = (Sh, E, Hn, s, bu, bf) => {
+      const Y1 = V.norm(V.sub(E, Sh)), Y2 = V.norm(V.sub(Hn, E)), L1 = V.len(V.sub(E, Sh)), L2 = V.len(V.sub(Hn, E));
+      const fr1 = frame(Sh, Y1, [0, 0, 1]), fr2 = frame(E, Y2, [0, 0, 1]), frE = frame(E, V.norm(V.add(Y1, Y2)), [0, 0, 1]);
+      const S = [[-0.07, 0.07], [-0.03, 0.088], [0.02, 0.09], [0.12, 0.084], [0.24, 0.078], [0.29, 0.074], [0.31, 0.072], [0.34, 0.07], [0.45, 0.068], [0.53, 0.07], [0.565, 0.075], [0.585, 0.074], [0.6, 0.05]];
+      const R = [];
+      for (const [u, r] of S) {
+        let c, f;
+        if (u < L1 - 0.025) { c = V.add(Sh, V.mul(Y1, u)); f = fr1; } else if (u <= L1 + 0.025) { c = V.add(E, V.mul(frE.Y, u - L1)); f = frE; } else { c = V.add(E, V.mul(Y2, u - L1)); f = fr2; }
+        const wt = u < 0.1 ? [BI.chest, bu, ss(-0.07, 0.07, u)] : [bu, bf, ss(L1 - 0.06, L1 + 0.05, u)];
+        R.push({ c, X: f.X, Z: f.Z, a: r, b: r, wt, col: () => u > 0.55 ? shade(Jc, 0.7) : u > 0.52 ? trim : u < 0.12 ? yoke : Jc });
+      }
+      sk.sweep(R, 16);
+    };
+    arm(J.SL, J.EL, J.HnL, 1, BI.uarmL, BI.farmL); arm(J.SR, J.ER, J.HnR, -1, BI.uarmR, BI.farmR);
+    // bake: positions/normals in each bone's local bind space
+    const N = sk.p.length, Lp = new Float32Array(N * 6), Ln = new Float32Array(N * 6), Bi = new Uint8Array(N * 2), Wt = new Float32Array(N), out = new Float32Array(N * 10);
+    for (let i = 0; i < N; i++) {
+      const [b0, b1] = sk.b[i];
+      const p0 = toLocal(F[b0], sk.p[i]), p1 = toLocal(F[b1], sk.p[i]), n0 = toLocalN(F[b0], sk.n[i]), n1 = toLocalN(F[b1], sk.n[i]);
+      Lp.set(p0, i * 6); Lp.set(p1, i * 6 + 3); Ln.set(n0, i * 6); Ln.set(n1, i * 6 + 3); Bi[i * 2] = b0; Bi[i * 2 + 1] = b1; Wt[i] = sk.w[i];
+      const c = sk.c[i]; out[i * 10 + 6] = c[0]; out[i * 10 + 7] = c[1]; out[i * 10 + 8] = c[2]; out[i * 10 + 9] = c[3] || 0;
+    }
+    const m = R3.dynMesh(N, sk.idx);
+    return { m, N, Lp, Ln, Bi, Wt, out, key: '' };
+  }
+  function skinPose(R3, S, J) {
+    const F = boneFrames(J), o = S.out, Lp = S.Lp, Ln = S.Ln;
+    for (let i = 0; i < S.N; i++) {
+      const w1 = S.Wt[i], w0 = 1 - w1, A = F[S.Bi[i * 2]], B = F[S.Bi[i * 2 + 1]], k = i * 6;
+      const ax = Lp[k], ay = Lp[k + 1], az = Lp[k + 2], bx = Lp[k + 3], by = Lp[k + 4], bz = Lp[k + 5];
+      const px = (A.O[0] + A.X[0] * ax + A.Y[0] * ay + A.Z[0] * az) * w0 + (B.O[0] + B.X[0] * bx + B.Y[0] * by + B.Z[0] * bz) * w1;
+      const py = (A.O[1] + A.X[1] * ax + A.Y[1] * ay + A.Z[1] * az) * w0 + (B.O[1] + B.X[1] * bx + B.Y[1] * by + B.Z[1] * bz) * w1;
+      const pz = (A.O[2] + A.X[2] * ax + A.Y[2] * ay + A.Z[2] * az) * w0 + (B.O[2] + B.X[2] * bx + B.Y[2] * by + B.Z[2] * bz) * w1;
+      const nax = Ln[k], nay = Ln[k + 1], naz = Ln[k + 2], nbx = Ln[k + 3], nby = Ln[k + 4], nbz = Ln[k + 5];
+      let nx = (A.X[0] * nax + A.Y[0] * nay + A.Z[0] * naz) * w0 + (B.X[0] * nbx + B.Y[0] * nby + B.Z[0] * nbz) * w1;
+      let ny = (A.X[1] * nax + A.Y[1] * nay + A.Z[1] * naz) * w0 + (B.X[1] * nbx + B.Y[1] * nby + B.Z[1] * nbz) * w1;
+      let nz = (A.X[2] * nax + A.Y[2] * nay + A.Z[2] * naz) * w0 + (B.X[2] * nbx + B.Y[2] * nby + B.Z[2] * nbz) * w1;
+      const l = Math.hypot(nx, ny, nz) || 1, q = i * 10;
+      o[q] = px; o[q + 1] = py; o[q + 2] = pz; o[q + 3] = nx / l; o[q + 4] = ny / l; o[q + 5] = nz / l;
+    }
+    R3.updateDyn(S.m, o);
+  }
+
   function build(R3, look, old) {
-    if (old) for (const k in old) R3.free(old[k]);
+    if (old) for (const k in old) { if (k === 'skin') R3.free(old.skin.m); else R3.free(old[k]); }
     const M = {};
     const J = col4(look.jacket), P = col4(look.pants), H = col4(look.helmet), dark = [0.07, 0.07, 0.09, 0], skin = [0.93, 0.76, 0.63, 0];
     const shade = (c, k) => [c[0] * k, c[1] * k, c[2] * k, c[3] || 0];
     const lightJ = (J[0] + J[1] + J[2]) / 3 > 0.75, trim = lightJ ? [0.16, 0.18, 0.24, 0] : [0.94, 0.95, 0.97, 0];
     const mesh = fn => { const mb = new MB(); fn(mb); return R3.mesh(mb); };
-    // limbs: tapered, slightly baggy tubes (unit length along y, radius ~0.5) - puffy sleeves and pants with a cuff
-    M.limbJ = mesh(mb => mb.lathe(M4.ident(), [[-0.02, 0.44], [0.1, 0.5], [0.5, 0.52], [0.86, 0.47], [1.02, 0.4]], 14, 8, (u, v) => v < 0.12 ? shade(J, 0.82) : J));
-    M.limbP = mesh(mb => mb.lathe(M4.ident(), [[-0.02, 0.42], [0.12, 0.5], [0.5, 0.55], [0.85, 0.52], [1.02, 0.46]], 14, 8, (u, v) => v < 0.1 ? shade(P, 0.8) : P));
-    M.jointJ = mesh(mb => mb.ball(M4.ident(), 14, 10, J));
-    M.jointP = mesh(mb => mb.ball(M4.ident(), 14, 10, P));
     // mittens with a thumb
     M.glove = mesh(mb => { mb.ball(M4.compose(0, 0, 0.05, 0, 0.9, 0.8, 1.15), 12, 9, dark); mb.ball(M4.compose(0.38, 0.1, 0.12, 0, 0.36, 0.36, 0.5), 8, 6, dark); mb.lathe(M4.compose(0, 0, -0.42, 0, 1, 1, 1, Math.PI / 2), [[-0.2, 0.5], [0.2, 0.52]], 12, 2, trim); });
     // ski boots: rounded shell with a cuff and buckles
@@ -51,21 +183,7 @@ const Rider = (() => {
       mb.rbox(M4.compose(0, 0.19, -0.01, 0, 0.16, 0.2, 0.19), 16, 10, [0.22, 0.23, 0.27, 0], 0.4);
       [0.13, 0.2].forEach(y => mb.rbox(M4.compose(0, y, 0.085, 0, 0.13, 0.025, 0.03), 8, 4, [0.6, 0.62, 0.68, 0], 0.4));
     });
-    // torso: a puffy jacket, oval section, zip down the front, darker hem and a collar
-    M.torso = mesh(mb => {
-      const prof = [[-0.06, 0.15], [0.02, 0.172], [0.25, 0.17], [0.5, 0.186], [0.72, 0.2], [0.86, 0.205], [0.95, 0.18], [1.02, 0.1]];
-      mb.lathe(M4.ident(), prof, 22, 14, (u, v, p) => {
-        if (Math.abs(p[0]) < 0.012 && p[2] > 0) return trim;            // zip
-        if (v < 0.1) return shade(J, 0.75);                               // hem
-        const band = Math.abs(((v * 6) % 1) - 0.5) < 0.06 ? 0.9 : 1;     // quilted puffer lines
-        return shade(J, band);
-      }, 0.72);
-      mb.lathe(M4.compose(0, 0.95, -0.005, 0, 1, 1, 0.85), [[-0.02, 0.105], [0.08, 0.1], [0.14, 0.085]], 16, 3, shade(J, 0.7));   // collar
-      mb.ball(M4.compose(0, 0.86, -0.12, 0, 0.26, 0.17, 0.13), 12, 8, shade(J, 0.85));                                            // hood bunched at the back
-      mb.rbox(M4.compose(0.1, 0.62, 0.115, 0, 0.07, 0.07, 0.02), 8, 4, shade(trim, 0.8), 0.5);                                     // chest pocket / pass
-    });
-    // pelvis: rounded, with a belt line
-    M.pelvis = mesh(mb => mb.ball(M4.compose(0, 0.5, 0, 0, 1, 1.05, 1), 16, 10, P));
+    M.skin = buildSkin(R3, look, null, J, P, trim);
     // head: face, smooth helmet with a ridge, wrap-round goggles and strap
     M.head = mesh(mb => {
       mb.ball(M4.compose(0, 0.12, 0.015, 0, 0.19, 0.23, 0.2), 14, 10, skin);
@@ -134,16 +252,12 @@ const Rider = (() => {
     const pole = [0, 0.2, 1];
     const [KL] = ik(HL, AL, 0.47, 0.47, pole), [KR] = ik(HR, AR, 0.47, 0.47, pole);
     const AL2 = ik(HL, AL, 0.47, 0.47, pole)[1], AR2 = ik(HR, AR, 0.47, 0.47, pole)[1];
-    out.push(['limbP', seg(HL, KL, 0.17, 0.17)], ['limbP', seg(KL, AL2, 0.14, 0.14)], ['limbP', seg(HR, KR, 0.17, 0.17)], ['limbP', seg(KR, AR2, 0.14, 0.14)]);
-    out.push(['jointP', at(KL, 0.16)], ['jointP', at(KR, 0.16)]);
     out.push(['boot', M4.trans(AL2[0], AL2[1] - 0.11, AL2[2])], ['boot', M4.trans(AR2[0], AR2[1] - 0.11, AR2[2])]);
     // pelvis + torso
     const pel = [lean, hipY + 0.02, hipZ];
     const fwdLean = 0.18 + 0.55 * c + 0.45 * st.tuck + 0.25 * g;
     const up = [st.lean * 0.18, Math.cos(fwdLean), Math.sin(fwdLean)];
     const chest = V.add(pel, V.mul(V.norm(up), 0.56));
-    out.push(['pelvis', seg(V.add(pel, [0, -0.08, 0]), V.add(pel, [0, 0.1, 0]), 0.34, 0.24)]);
-    out.push(['torso', seg(pel, chest, 1, 1)]);
     const head = V.add(chest, V.mul(V.norm(V.add(up, [0, 0.6, -0.15])), 0.06));
     out.push(['head', seg(head, V.add(head, V.mul(V.norm(V.add(up, [0, 0.5, -0.1])), 1)), 1, 1)]);
     // arms
@@ -159,8 +273,10 @@ const Rider = (() => {
     }
     const elbowPole = s => [s * 1, -0.6, -0.5];
     const [EL, HnL2] = ik(SL, HnL, 0.31, 0.3, elbowPole(1)), [ER, HnR2] = ik(SR, HnR, 0.31, 0.3, elbowPole(-1));
-    out.push(['limbJ', seg(SL, EL, 0.13, 0.13)], ['limbJ', seg(EL, HnL2, 0.11, 0.11)], ['limbJ', seg(SR, ER, 0.13, 0.13)], ['limbJ', seg(ER, HnR2, 0.11, 0.11)]);
-    out.push(['jointJ', at(SL, 0.17)], ['jointJ', at(SR, 0.17)], ['jointJ', at(EL, 0.12)], ['jointJ', at(ER, 0.12)], ['glove', at(HnL2, 0.12)], ['glove', at(HnR2, 0.12)]);
+    // mittens point along the forearm
+    const glove = (E, Hn, s) => { const Z = V.norm(V.sub(Hn, E)); let X = V.sub([s, 0, 0], V.mul(Z, Z[0] * s)); if (V.len(X) < 0.1) X = [0, 1, 0]; X = V.norm(X); const Y = V.cross(Z, X); return basis(V.mul(X, 0.12 * s), V.mul(Y, 0.12), V.mul(Z, 0.12), V.add(Hn, V.mul(Z, 0.02))); };
+    out.push(['glove', glove(EL, HnL2, 1)], ['glove', glove(ER, HnR2, -1)]);
+    out.J = { pel, chest, up: V.norm(up), HL, KL, AL: AL2, HR, KR, AR: AR2, SL, EL, HnL: HnL2, SR, ER, HnR: HnR2 };
     // board / skis + poles
     if (B) {
       const tw = st.tweak || 0;
@@ -180,7 +296,13 @@ const Rider = (() => {
   function draw(R3, M, root, st, shadow, spec) {
     const body = st.board ? M4.rotY(-Math.PI / 2) : null;
     const base = body ? M4.mul(root, body) : root;
-    for (const [k, L] of parts(st)) {
+    const list = parts(st);
+    if (M.skin) {
+      const key = [st.crouch, st.lean, st.tuck, st.arms, st.grab, st.grabK, st.tweak, st.tuckLegs, st.plant, st.t].join();
+      if (key !== M.skin.key) { skinPose(R3, M.skin, list.J); M.skin.key = key; }
+      if (shadow) R3.shadowDraw(M.skin.m, base); else R3.draw(M.skin.m, base, null, 0, false, { spec: (spec || 0) * 0.6 });
+    }
+    for (const [k, L] of list) {
       const m = M[k]; if (!m) continue;
       // board/skis are placed in rider space, everything else in body space
       const W = (k === 'board') ? M4.mul(root, L) : M4.mul(base, L);

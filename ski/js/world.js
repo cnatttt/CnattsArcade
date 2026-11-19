@@ -20,6 +20,11 @@ function vquad(mb, a, b, c, d, ca, cb, cc, cd) {   // quad with a colour per cor
   const n = (() => { const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], v = [d[0] - a[0], d[1] - a[1], d[2] - a[2]]; const x = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]], l = Math.hypot(...x) || 1; return x.map(q => q / l); })();
   for (const [p, k] of [[a, ca], [b, cb], [c, cc], [a, ca], [c, cc], [d, cd]]) mb.d.push(p[0], p[1], p[2], n[0], n[1], n[2], k[0], k[1], k[2], k[3]);
 }
+function triNC(mb, a, b, c, na, nb, nc, ca, cb, cc, aOff = 0) {   // smooth normals + a colour per vertex
+  const fx = (b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]), fy = (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]), fz = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  if (fx * (na[0] + nb[0] + nc[0]) + fy * (na[1] + nb[1] + nc[1]) + fz * (na[2] + nb[2] + nc[2]) < 0) { [b, c] = [c, b]; [nb, nc] = [nc, nb]; [cb, cc] = [cc, cb]; }
+  for (const [p, n, k] of [[a, na, ca], [b, nb, cb], [c, nc, cc]]) mb.d.push(p[0], p[1], p[2], n[0], n[1], n[2], k[0], k[1], k[2], k[3] + aOff);
+}
 function mixc(a, b, t) { return [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)]; }
 function hex(c) { const h = c.replace('#', ''); return [parseInt(h.slice(0, 2), 16) / 255, parseInt(h.slice(2, 4), 16) / 255, parseInt(h.slice(4, 6), 16) / 255]; }
 
@@ -299,9 +304,9 @@ function buildMeshes(R3) {
     }
     for (let j = 0; j < P.length - 1; j++) for (let i = 0; i < xs.length - 1; i++) {
       const a = P[j][i], b = P[j][i + 1], cc = P[j + 1][i + 1], d = P[j + 1][i];
-      const col = Cc[j][i];
-      mb.triN(a, cc, b, N[j][i], N[j + 1][i + 1], N[j][i + 1], col);
-      mb.triN(a, d, cc, N[j][i], N[j + 1][i], N[j + 1][i + 1], col);
+      const g = Math.abs((a[0] + b[0]) / 2 - cx(a[2])) < 40 ? -2 : 0;   // groomed piste flag for the shader
+      triNC(mb, a, cc, b, N[j][i], N[j + 1][i + 1], N[j][i + 1], Cc[j][i], Cc[j + 1][i + 1], Cc[j][i + 1], g);
+      triNC(mb, a, d, cc, N[j][i], N[j + 1][i], N[j + 1][i + 1], Cc[j][i], Cc[j + 1][i], Cc[j + 1][i + 1], g);
     }
     // trees + rocks in this chunk
     W0.trees.forEach(t => { if (t.z >= z0 && t.z < z0 + CH) addTree(mb, t, R); });
@@ -415,7 +420,7 @@ function buildMeshes(R3) {
   MESH.rails = R3.mesh(rm);
   // sky: the gradient + sun are drawn per pixel (R3.skyDome); this mesh only holds soft clouds
   const sk = new MB(), hor = hex(C.sky[1]);
-  for (let k = 0; k < 18 && !C.bigair; k++) {
+  for (let k = 0; k < 18 && false; k++) {
     const a = R() * 6.28, d = 1700 + R() * 500, y = 260 + R() * 380, n = 4 + Math.floor(R() * 4), cc = mixc(hor, [1, 1, 1], 0.78).map(x => x / 1.15);
     for (let j = 0; j < n; j++) { const o = (j - n / 2) * (60 + R() * 40); sk.ball(M4.compose(Math.cos(a) * d - Math.sin(a) * o, y + R() * 40 - Math.abs(j - n / 2) * 12, Math.sin(a) * d + Math.cos(a) * o, a, 110 + R() * 110, 46 + R() * 34, 120 + R() * 90), 12, 7, [...cc, 1]); }
   }
@@ -448,8 +453,8 @@ function buildMeshes(R3) {
   };
   const Cc = G.map((row, j) => row.map((_, i) => colAt(j, i)));
   for (let j = 0; j < RS.length - 1; j++) for (let i = 0; i < NA; i++) {
-    mm.triN(G[j][i], G[j + 1][i], G[j + 1][i + 1], N[j][i], N[j + 1][i], N[j + 1][i + 1], Cc[j][i]);
-    mm.triN(G[j][i], G[j + 1][i + 1], G[j][i + 1], N[j][i], N[j + 1][i + 1], N[j][i + 1], Cc[j][i]);
+    triNC(mm, G[j][i], G[j + 1][i], G[j + 1][i + 1], N[j][i], N[j + 1][i], N[j + 1][i + 1], Cc[j][i], Cc[j + 1][i], Cc[j + 1][i + 1]);
+    triNC(mm, G[j][i], G[j + 1][i + 1], G[j][i + 1], N[j][i], N[j + 1][i + 1], N[j][i + 1], Cc[j][i], Cc[j + 1][i + 1], Cc[j][i + 1]);
   }
   MESH.mtn = R3.mesh(mm);
   const tk = new MB();
