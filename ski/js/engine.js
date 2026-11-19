@@ -315,10 +315,16 @@ function createRenderer(canvas) {
     void main() { vec3 c = fog(vC.rgb, vW, 0.3) * uExpo; o = vec4(uPost > 0.5 ? c : aces(c), vC.a); }`);
   const PTS = prog(`#version 300 es
     in vec3 aPos; in vec4 aCol; in float aSize; uniform mat4 uVP; uniform float uScale; out vec4 vC;
-    void main() { vC = aCol; gl_Position = uVP * vec4(aPos, 1.0); gl_PointSize = clamp(aSize * uScale / gl_Position.w, 1.0, 96.0); }`,
+    uniform float uMax; void main() { vC = aCol; gl_Position = uVP * vec4(aPos, 1.0); gl_PointSize = clamp(aSize * uScale / gl_Position.w, 1.0, uMax); }`,
   `#version 300 es
-    precision highp float; in vec4 vC; out vec4 o; uniform float uBoost;
-    void main() { vec2 p = gl_PointCoord - 0.5; float r = length(p); if (r > 0.5) discard; o = vec4(vC.rgb * uBoost, vC.a * smoothstep(0.5, 0.2, r)); }`);
+    precision highp float; in vec4 vC; out vec4 o; uniform float uBoost, uSoft;
+    void main() { vec2 p = gl_PointCoord - 0.5; float r = length(p); if (r > 0.5) discard;
+      if (uSoft > 0.5) {   // powder puff: gaussian, lit from above, lumpy edge
+        float n = sin(p.x * 23.0 + vC.a * 40.0) * sin(p.y * 19.0 - vC.a * 31.0) * 0.06;
+        float a = exp(-(r * r) * 16.0) * smoothstep(0.5, 0.36, r + n);
+        float sh = mix(0.74, 1.1, smoothstep(0.45, -0.3, p.y));
+        o = vec4(vC.rgb * sh * uBoost, vC.a * a); return; }
+      o = vec4(vC.rgb * uBoost, vC.a * smoothstep(0.5, 0.2, r)); }`);
 
   // sky: gradient + sun glow worked out per pixel from the view direction
   const SKY = prog(`#version 300 es
@@ -635,9 +641,10 @@ function createRenderer(canvas) {
       gl.disable(gl.POLYGON_OFFSET_FILL); gl.depthMask(true); gl.disable(gl.BLEND);
     },
     // pts: x,y,z,r,g,b,a,size per point
-    points(arr, additive) {
+    points(arr, additive, soft) {
       if (!arr.length) return;
       gl.useProgram(PTS.p); gl.uniformMatrix4fv(PTS.u.uVP, false, VP); gl.uniform1f(PTS.u.uScale, vpH * 0.9);
+      gl.uniform1f(PTS.u.uSoft, soft ? 1 : 0); gl.uniform1f(PTS.u.uMax, soft ? Math.min(gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE)[1], 512) : 96);
       gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, additive ? gl.ONE : gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false);
       gl.bindVertexArray(ptVao); gl.bindBuffer(gl.ARRAY_BUFFER, ptBuf); gl.bufferData(gl.ARRAY_BUFFER, arr instanceof Float32Array ? arr : new Float32Array(arr), gl.DYNAMIC_DRAW);
       gl.drawArrays(gl.POINTS, 0, arr.length / 8);

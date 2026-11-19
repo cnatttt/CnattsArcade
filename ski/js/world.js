@@ -473,26 +473,40 @@ function addTree(mb, t, R) {
     for (let k = 0; k < 6; k++) { const yy = y + (2.5 + k * 0.9) * s, a = R() * 6.28; mb.box(M4.mul(M4.compose(x + Math.cos(a) * 0.6 * s, yy, z + Math.sin(a) * 0.6 * s, -a), M4.mul(M4.rotZ(0.4), M4.scale(1.4 * s, 0.08, 0.08))), [0.3, 0.24, 0.2, 0]); }
     return;
   }
-  const g = 0.2 + R() * 0.08, dark = [0.06, g, 0.12 + R() * 0.04, 0], mid = [0.09, g + 0.07, 0.15, 0], snow = [0.9, 0.94, 1.0, 0];
-  mb.tube(M4.compose(x, y + 0.6 * s, z, 0, 0.32 * s, 1.6 * s, 0.32 * s), 7, [0.28, 0.2, 0.15, 0]);
-  const tiers = 5, seg = 10;
-  // one tier: a drooping skirt of branches (smooth normals), with a snow cap resting on top
-  const skirt = (yy, r, h, rot, col, sk) => {
-    const ap = [x, yy + h, z], ring = [];
-    for (let i = 0; i <= seg; i++) { const a = rot + i / seg * 6.2832, wob = 1 + 0.12 * Math.sin(a * 3 + rot * 5); ring.push([x + Math.cos(a) * r * wob, yy - 0.18 * r * sk, z + Math.sin(a) * r * wob, a]); }
-    for (let i = 0; i < seg; i++) {
-      const p0 = ring[i], p1 = ring[i + 1], nn = q => { const k = h / r; return [Math.cos(q[3]), 1 / Math.max(0.4, k) * 0.9, Math.sin(q[3])]; };
-      mb.triN(p0, ap, p1, nn(p0), [0, 1, 0], nn(p1), col);
-      const in0 = [x + (p0[0] - x) * 0.6, yy + 0.05 * h, z + (p0[2] - z) * 0.6], in1 = [x + (p1[0] - x) * 0.6, yy + 0.05 * h, z + (p1[2] - z) * 0.6];
-      mb.triN(p0, p1, in1, [0, -1, 0], [0, -1, 0], [0, -1, 0], dark); mb.triN(p0, in1, in0, [0, -1, 0], [0, -1, 0], [0, -1, 0], dark);
+  // spruce: tiers of star-shaped branch skirts (tips droop), snow lying on the inner part of every tier
+  const g = 0.17 + R() * 0.08, hue = R() * 0.04;
+  const deep = [0.035, g * 0.62, 0.075 + hue, 0], green = [0.06 + hue, g, 0.1 + hue * 2, 0], tipC = [0.1 + hue, g + 0.06, 0.12, 0];
+  const cover = C.bigair ? 0.35 : 0.35 + R() * 0.55, snow = [0.9, 0.93, 1.0, 0], under = [0.03, 0.08, 0.06, 0];
+  mb.tube(M4.compose(x, y + 0.6 * s, z, 0, 0.3 * s, 1.6 * s, 0.3 * s), 7, [0.26, 0.19, 0.14, 0]);
+  const tiers = 6, nb = 7;
+  const tier = (yy, r, h, rot, k) => {
+    const ap = [x, yy + h, z], tip = [], mid = [];
+    for (let i = 0; i <= nb * 2; i++) {
+      const a = rot + i / (nb * 2) * 6.2832, isTip = i % 2 === 0 && i < nb * 2 || i === nb * 2, rr = r * (isTip ? 0.92 + 0.16 * Math.sin(a * 5 + rot * 3) : 0.6);
+      const dy = isTip ? -0.32 * r : -0.06 * r;
+      tip.push([x + Math.cos(a) * rr, yy + dy, z + Math.sin(a) * rr, a, isTip]);
+      mid.push([x + Math.cos(a) * rr * 0.5, yy + h * 0.45 + dy * 0.4, z + Math.sin(a) * rr * 0.5, a]);
+    }
+    const nrm = (q, up) => { const l = Math.hypot(1, up); return [Math.cos(q[3]) / l, up / l, Math.sin(q[3]) / l]; };
+    const sc = (k2) => mixc(green, snow, k2);
+    const midC = [...sc(clamp(cover * 1.3, 0, 1)), 0], apC = [...sc(clamp(cover * 1.5, 0, 1)), 0];
+    for (let i = 0; i < nb * 2; i++) {
+      const t0 = tip[i], t1 = tip[i + 1], m0 = mid[i], m1 = mid[i + 1];
+      const c0 = t0[4] ? tipC : deep, c1 = t1[4] ? tipC : deep;
+      triNC(mb, ap, m0, m1, [0, 1, 0], nrm(m0, 1.4), nrm(m1, 1.4), apC, midC, midC);
+      triNC(mb, m0, t0, t1, nrm(m0, 1.4), nrm(t0, 0.7), nrm(t1, 0.7), midC, [...c0, 0].slice(0, 4), [...c1, 0].slice(0, 4));
+      triNC(mb, m0, t1, m1, nrm(m0, 1.4), nrm(t1, 0.7), nrm(m1, 1.4), midC, [...c1, 0].slice(0, 4), midC);
+      // underside, dark
+      const u0 = [x + (t0[0] - x) * 0.3, yy - 0.02 * r, z + (t0[2] - z) * 0.3], u1 = [x + (t1[0] - x) * 0.3, yy - 0.02 * r, z + (t1[2] - z) * 0.3];
+      triNC(mb, t0, u0, u1, [0, -1, 0], [0, -1, 0], [0, -1, 0], under, under, under);
+      triNC(mb, t0, u1, t1, [0, -1, 0], [0, -1, 0], [0, -1, 0], under, under, under);
     }
   };
   for (let k = 0; k < tiers; k++) {
-    const yy = y + (1.3 + k * 1.35) * s, r = (2.9 - k * 0.48) * s, h = (2.2 - k * 0.12) * s, rot = R() * 6;
-    skirt(yy, r, h, rot, k % 2 ? mid : dark, 1);
-    skirt(yy + h * 0.42, r * 0.62, h * 0.36, rot + 0.3, snow, 0.6);
+    const f = k / tiers, yy = y + (1.2 + k * 1.15) * s, r = (2.8 * (1 - f * 0.82)) * s, h = (1.7 - f * 0.4) * s;
+    tier(yy, r, h, R() * 6.28, k);
   }
-  skirt(y + (1.3 + tiers * 1.35) * s - 0.5 * s, 0.75 * s, 1.5 * s, 0, snow, 0.3);
+  tier(y + (1.2 + tiers * 1.15) * s - 0.2 * s, 0.45 * s, 1.3 * s, R() * 6.28, tiers);
 }
 function buildPipeMesh(mb, f, R) {
   const half = PIPE.floor + PIPE.R + PIPE.deck + 12;

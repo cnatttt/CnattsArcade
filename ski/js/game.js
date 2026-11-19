@@ -183,6 +183,7 @@ function crash(reason) {
   P.tumbleV = [rand(5, 9) * (Math.random() < 0.5 ? -1 : 1), rand(3, 7) * (Math.random() < 0.5 ? -1 : 1)];
   run.combo = 1; run.comboT = 0; run.crashes++;
   sfx.crash(); popMsg(reason || 'BAIL!');
+  puffBurst(16, 1.0, 3, 1.8, 1.8);
   for (let i = 0; i < 50; i++) parts.push([P.p[0], P.p[1] + 0.6, P.p[2], rand(-4, 4) + P.v[0] * 0.3, rand(1, 6), rand(-2, 4) + P.v[2] * 0.3, rand(0.7, 1.3), rand(0.25, 0.6), 0]);
 }
 function takeoff(kind) {
@@ -343,6 +344,8 @@ function land() {
   P.fakie = sw; P.spin = 0; P.flip = 0; P.squash = clamp(impact / 14, 0.25, 1);
   sfx.land(quality === 'hard' ? 'hard' : 'ok');
   if (quality === 'perfect') flash(0.09, [1, 0.95, 0.82]);
+  cam.shake = Math.max(cam.shake || 0, clamp((impact - 6) / 14, 0, 1) * 0.35);
+  if (!P.rail) puffBurst(Math.round(6 + Math.min(impact, 16) * 0.6), 0.75, 1.6 + Math.min(impact, 16) * 0.12, 0.9, 1.3);
   for (let i = 0; i < 26; i++) parts.push([P.p[0] + rand(-0.4, 0.4), P.p[1] + 0.1, P.p[2] + rand(-0.4, 0.4), rand(-3, 3) + P.v[0] * 0.25, rand(1, 3.6), rand(-1.5, 2) + P.v[2] * 0.25, rand(0.5, 0.9), rand(0.2, 0.5), 0]);
   // score
   const gp = P.grabs.reduce((a, g) => a + 120 + Math.min(g.t, 2) * 260 + (g.t > 0.9 ? 150 : 0), 0);
@@ -1024,10 +1027,21 @@ function updateCam(dt, snap) {
   const f = [Math.sin(cam.dir), 0, Math.cos(cam.dir)];
   const e = [P.p[0] - f[0] * dist, P.p[1] + hgt, P.p[2] - f[2] * dist];
   const ge = heightAt(e[0], e[2]) + 1.2; if (e[1] < ge) e[1] = ge;
+  // smooth the camera's offset from the rider (not its absolute position), so it never falls behind at speed
   const k = snap ? 1 : 1 - Math.exp(-dt * (P.ground ? 7 : 4.5));
-  for (let i = 0; i < 3; i++) cam.eye[i] += (e[i] - cam.eye[i]) * k;
+  if (!cam.off || snap) cam.off = v3.sub(e, P.p);
+  const want3 = v3.sub(e, P.p); for (let i = 0; i < 3; i++) cam.off[i] += (want3[i] - cam.off[i]) * k;
+  const lag = v3.mul(P.v, -0.035);
+  for (let i = 0; i < 3; i++) cam.eye[i] = P.p[i] + cam.off[i] + lag[i];
+  if (cam.eye[1] < ge) cam.eye[1] = ge;
+  // landing / speed shake
+  cam.shake = Math.max(0, (cam.shake || 0) - dt * 2.2);
+  const sh = cam.shake * cam.shake + (P.ground && !P.rail ? clamp((sp - 20) / 30, 0, 1) * 0.012 : 0), tt = t * 37;
+  if (!snap && sh > 0) { cam.eye[0] += Math.sin(tt) * sh * 0.6; cam.eye[1] += Math.sin(tt * 1.37 + 1) * sh; }
   const at = [P.p[0] + f[0] * 4.5, P.p[1] + 0.75, P.p[2] + f[2] * 4.5];
-  for (let i = 0; i < 3; i++) cam.at[i] = snap ? at[i] : cam.at[i] + (at[i] - cam.at[i]) * Math.min(1, dt * 10);
+  if (!cam.atOff || snap) cam.atOff = v3.sub(at, P.p);
+  const wa = v3.sub(at, P.p); for (let i = 0; i < 3; i++) cam.atOff[i] += (wa[i] - cam.atOff[i]) * Math.min(1, dt * 10);
+  for (let i = 0; i < 3; i++) cam.at[i] = P.p[i] + cam.atOff[i];
   cam.fov += (1.02 + Math.min(0.26, v3.len(P.v) / 120) - cam.fov) * (snap ? 1 : Math.min(1, dt * 2));
 }
 
@@ -1108,10 +1122,25 @@ function render3D(dt) {
   Rider.draw(R3, myMesh, riderRoot(P), riderPose(P), false, 0.25);
   others().forEach(o => { if (o.mesh && Math.abs(o.P.p[2] - cam.eye[2]) < 400) Rider.draw(R3, o.mesh, riderRoot(o.P), riderPose(o.P, o.look.board), false, 0.25); });
   R3.flat(buildTracks(), false);
-  const pts = [];
-  parts.forEach(p => { p[0] += p[3] * dt; p[1] += p[4] * dt; p[2] += p[5] * dt; p[4] -= 7 * dt; p[3] *= 1 - dt * 1.5; p[5] *= 1 - dt * 1.5; p[6] -= dt;
-    const a = clamp(p[6] * 1.6, 0, 1); if (p[8]) pts.push(p[0], p[1], p[2], 1, 0.82, 0.4, a, p[7]); else pts.push(p[0], p[1], p[2], 0.97, 0.98, 1, a * 0.85, p[7]); });
+  const pts = [], sparks = [], clouds = [];
+  const snowTint = C.bigair ? [0.55, 0.58, 0.72] : [0.97, 0.98, 1];
+  parts.forEach(p => {
+    const k = p[8];
+    if (k === 2) {   // powder cloud: drifts, slows hard, swells and thins out
+      p[3] *= 1 - Math.min(1, dt * 2.6); p[5] *= 1 - Math.min(1, dt * 2.6); p[4] = p[4] * (1 - Math.min(1, dt * 2)) - 0.4 * dt;
+      p[0] += p[3] * dt + (C.wind || 0) * dt * 2; p[1] += p[4] * dt; p[2] += p[5] * dt; p[6] -= dt; p[7] += dt * (p[10] || 1.2);
+      const life = p[6] / p[9], a = clamp(life * 1.4, 0, 1) * clamp((1 - life) * 8, 0, 1) * 0.5;
+      clouds.push(p[0], p[1], p[2], snowTint[0], snowTint[1], snowTint[2], a, p[7]);
+      return;
+    }
+    p[0] += p[3] * dt; p[1] += p[4] * dt; p[2] += p[5] * dt; p[4] -= (k ? 11 : 7) * dt; p[3] *= 1 - dt * 1.5; p[5] *= 1 - dt * 1.5; p[6] -= dt;
+    const a = clamp(p[6] * 1.6, 0, 1);
+    if (k) sparks.push(p[0], p[1], p[2], 3.2, 1.7, 0.6, a, p[7] * 0.7); else pts.push(p[0], p[1], p[2], snowTint[0], snowTint[1], snowTint[2], a * 0.85, p[7]);
+  });
   parts = parts.filter(p => p[6] > 0);
+  if (parts.length > 900) parts.splice(0, parts.length - 900);
+  if (clouds.length) R3.points(clouds, false, true);
+  if (sparks.length) R3.points(sparks, true);
   const sf = C.snowfall || 0;
   for (let i = 0; i < 260 * sf; i++) { const a = i * 12.9898, x = cam.eye[0] + ((((Math.sin(a) * 437.5 + t * (0.5 + i % 3 * 0.3)) % 50) + 50) % 50) - 25, z = cam.eye[2] + ((((Math.cos(a) * 913.1 - t * 1.5) % 50) + 50) % 50) - 12, y = cam.eye[1] + 10 - ((t * (1.1 + (i % 5) * 0.2) + i * 3.7) % 18); pts.push(x, y, z, 1, 1, 1, 0.85, 0.07); }
   if (C.lights) W0.lights.forEach(Lg => { if (Math.abs(Lg.z - camZ) < 400) pts.push(Lg.x, Lg.y + 10, Lg.z, 1, 0.92, 0.75, 0.55, 6); });
@@ -1482,14 +1511,23 @@ function heatResults() {
 
 // ------------------------------------------------------------ loop
 let last = 0, paused = false, hold = false;
+function puff(p, v, life, size, grow = 1.2) { parts.push([p[0], p[1], p[2], v[0], v[1], v[2], life, size, 2, life, grow]); }
+function puffBurst(n, size, spread, up, life = 1.4) {
+  for (let i = 0; i < n; i++) { const a = Math.random() * 6.283, r = rand(0.3, 1) * spread; puff([P.p[0] + Math.cos(a) * 0.4, P.p[1] + 0.25, P.p[2] + Math.sin(a) * 0.4], [Math.cos(a) * r + P.v[0] * 0.25, rand(0.3, 1) * up, Math.sin(a) * r + P.v[2] * 0.25], rand(life * 0.7, life * 1.2), size * rand(0.7, 1.2), 1.4); }
+}
 function effects(dt) {
   if (!P) return;
   if (P.ground && !P.rail && P.crash <= 0) {
     const sp = v3.len(P.v), I = input(), amt = clamp((P.slip - 1.5) / 6, 0, 1) + (I.down && sp > 4 ? 0.6 : 0);
+    const S = sp > 0.5 ? v3.norm(v3.cross(P.n, v3.norm(P.v))) : [1, 0, 0], side = Math.sign(P.lean || 1);
     if (amt > 0 && Math.random() < amt * 1.5 && sp > 1) {
-      const S = v3.norm(v3.cross(P.n, v3.norm(P.v))), side = Math.sign(P.lean || 1);
-      for (let i = 0; i < 2; i++) parts.push([P.p[0] - side * S[0] * 0.3, P.p[1] + 0.1, P.p[2] - side * S[2] * 0.3, -side * S[0] * rand(2, 5) + P.v[0] * 0.4, rand(1, 3), -side * S[2] * rand(2, 5) + P.v[2] * 0.4, rand(0.4, 0.8), rand(0.2, 0.5), 0]);
+      for (let i = 0; i < 3; i++) parts.push([P.p[0] - side * S[0] * 0.3, P.p[1] + 0.1, P.p[2] - side * S[2] * 0.3, -side * S[0] * rand(2, 5) + P.v[0] * 0.4, rand(1, 3.4), -side * S[2] * rand(2, 5) + P.v[2] * 0.4, rand(0.4, 0.8), rand(0.12, 0.3), 0]);
+      // a spray of powder off the edge on hard carves / skids
+      if (Math.random() < amt * 0.7) puff([P.p[0] - side * S[0] * 0.35, P.p[1] + 0.2, P.p[2] - side * S[2] * 0.35], [-side * S[0] * rand(1.5, 3.5) + P.v[0] * 0.35, rand(0.6, 1.8), -side * S[2] * rand(1.5, 3.5) + P.v[2] * 0.35], rand(0.7, 1.2), rand(0.5, 0.9), 1.6);
     }
+    // off the groomer, deep snow kicks up a lingering trail
+    const deep = Math.abs(P.p[0] - cx(P.p[2])) > 40 || (C.rough && W0.roughAt(P.p[2]) > 0.7);
+    if (deep && sp > 6 && Math.random() < dt * (6 + sp * 0.35)) puff([P.p[0] + rand(-0.3, 0.3), P.p[1] + 0.15, P.p[2] + rand(-0.3, 0.3)], [rand(-0.6, 0.6) + P.v[0] * 0.15, rand(0.4, 1.2), rand(-0.6, 0.6) + P.v[2] * 0.15], rand(1.2, 2.0), rand(0.5, 0.8), 1.1);
     const lt = tracks[tracks.length - 1];
     if (!lt || Math.hypot(lt.p[0] - P.p[0], lt.p[2] - P.p[2]) > 0.6) {
       const S = v3.norm(v3.cross(P.n, sp > 0.5 ? v3.norm(P.v) : [Math.sin(P.yaw), 0, Math.cos(P.yaw)]));
